@@ -1,0 +1,6 @@
+const V="quiz-ci-v19";const SHELL=["./","index.html","style.css","app.js","boot.js","logo-bspp.png","logo-crf.png","manifest.webmanifest","icon-180.png","icon-192.png","icon-512.png","pdfjs/pdf.min.js","pdfjs/pdf.worker.min.js","secteurs.json","leaflet/leaflet.js","leaflet/leaflet.css"];
+self.addEventListener("install",e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL)));self.skipWaiting()});
+self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==V&&x!=="quiz-ci-docs").map(x=>caches.delete(x)))));self.clients.claim()});
+self.addEventListener("fetch",e=>{const r=e.request;if(r.method!=="GET"||r.headers.has("range"))return;const u=new URL(r.url);if(u.origin!==location.origin||u.pathname.includes("/api/"))return;
+ if(u.pathname.includes("/pdf/")){e.respondWith(caches.open("quiz-ci-docs").then(c=>c.match(r).then(m=>m||fetch(r))));return}
+ e.respondWith(caches.match(r,{ignoreSearch:true}).then(m=>{const net=fetch(r).then(res=>{if(res.ok){const cp=res.clone();caches.open(V).then(c=>c.put(r,cp))}return res}).catch(()=>m||caches.match("index.html"));return m||net}))});

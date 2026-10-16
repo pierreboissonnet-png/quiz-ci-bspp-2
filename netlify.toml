@@ -1,0 +1,9 @@
+# Configuration Netlify du Quiz CI BSPP
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
