@@ -238,7 +238,9 @@ footer.note{font-size:12px;color:var(--muted);margin:26px 4px 0;line-height:1.5}
 body.booting #app{visibility:hidden}
 .gatev{min-height:100vh;display:flex;align-items:center}
 .gatebox{width:100%;max-width:440px;margin:0 auto;padding:30px 0}
-.gatebox .logos{width:max-content}
+.gatebox .logos{width:max-content;gap:18px;padding:12px 20px;border-radius:16px}
+.gatebox .logos img{height:84px}.gatebox .logos img.crf{height:50px}
+@media (max-width:380px){.gatebox .logos img{height:68px}.gatebox .logos img.crf{height:40px}}
 
 /* marqueurs */
 .qhead{display:flex;justify-content:space-between;align-items:center;gap:10px}

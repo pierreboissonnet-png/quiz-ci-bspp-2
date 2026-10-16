@@ -64,6 +64,9 @@
         ${pending ? `<p class="small" style="margin:12px 0 0">Connexion en cours… Une fois connecté sur la page Google, reviens simplement ici.</p>` : ""}`;
       document.getElementById("gLogin").onclick = loginGoogle;
       if (pending) startPoll();
+    } else if (!cfg.teamCode) {
+      card.innerHTML = `<p style="margin:0"><b>Connexion pas encore configurée.</b></p><p class="small" style="margin:8px 0 0">L'administrateur doit renseigner la variable <b>GOOGLE_CLIENT_ID</b> dans l'hébergeur puis redéployer le site.</p><button class="btn sec full" style="margin-top:12px" id="retry">Réessayer</button>`;
+      document.getElementById("retry").onclick = async () => { cfg = null; LS.del("srvCfg"); renderLogin(); };
     } else {
       card.innerHTML = `<form id="tform" class="form"><label for="tP">Pseudo</label><input id="tP" maxlength="24" required placeholder="ex. Pierre B.">
         <label for="tU">Unité (facultatif)</label><input id="tU" maxlength="40" placeholder="ex. CRF Paris 18">

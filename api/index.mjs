@@ -208,6 +208,7 @@ async function handler(req) {
     // ---- création sans Google (mode code d'équipe, si GOOGLE_CLIENT_ID absent)
     if (route === "profile" && req.method === "POST") {
       if (CLIENT_ID) return json({ error: "Utilise la connexion Google." }, 400);
+      if (!process.env.TEAM_CODE) return json({ error: "La connexion n'est pas configurée sur ce site." }, 503);
       if (!teamOk(body.team)) return json({ error: "Code d'équipe incorrect." }, 403);
       const pseudo = clean(body.pseudo, 24);
       if (pseudo.length < 2) return json({ error: "Choisis un pseudo d'au moins 2 caractères." }, 400);
