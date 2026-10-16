@@ -763,7 +763,15 @@ const telHtml=x=>x.tel?`<a class="cadr" href="tel:${x.tel.replace(/\s/g,"")}">${
 const adrHtml=x=>x.adr?`<a class="cadr" href="${mapsUrl(x.adr)}" target="_blank" rel="noopener">${PIN}<span>${esc(x.adr)}<small>Itinéraire</small></span></a>`:"";
 function makeMap(el,opts={}){const L=window.L;const dark=window.matchMedia("(prefers-color-scheme: dark)").matches;
  const m=L.map(el,{zoomControl:false,attributionControl:true,minZoom:11,maxZoom:18}).setView([48.858,2.345],12);
- L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark?"dark_all":"light_all"}/{z}/{x}/{y}{r}.png`,{subdomains:"abcd",maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a> · secteurs : uMap'}).addTo(m);
+ // fonds de carte : OpenStreetMap, puis Esri si les tuiles ne se chargent pas (CARTO exige désormais une clé)
+ const OSM='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+ const BASES=[["https://tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:OSM,className:dark?"tiles-dark":""}],
+  ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{attribution:"Fond © Esri",className:dark?"tiles-dark":""}]];
+ let bi=Math.max(0,Math.min(BASES.length-1,+(store.get("mapBase2",0))||0)),base=null;
+ const useBase=i=>{if(base)m.removeLayer(base);let ok=0,ko=0;const[u,o]=BASES[i];base=L.tileLayer(u,{maxZoom:19,...o,attribution:o.attribution+" · secteurs : uMap"}).addTo(m);base.bringToBack();
+  base.on("tileload",()=>{if(!ok++)store.set("mapBase2",i)});
+  base.on("tileerror",()=>{ko++;if(!ok&&ko>=3){if(i+1<BASES.length)useBase(i+1);else{store.del("mapBase2");toast("Fond de carte indisponible : vérifie ta connexion ou désactive le bloqueur de contenu.")}}})};
+ useBase(bi);
  L.control.zoom({position:"bottomright"}).addTo(m);
  const layers={};
  SECT.sect.forEach(s=>{const col=GCOL[s.golf]||"#8e8e93";

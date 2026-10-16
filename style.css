@@ -306,3 +306,4 @@ body.booting #app{visibility:hidden}
 .hbrow .nm .small{white-space:nowrap}
 .hbgap{text-align:center;color:var(--muted);line-height:1;padding:2px 0}
 .hbhead .small{white-space:nowrap}
+.tiles-dark{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}
