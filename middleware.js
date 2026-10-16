@@ -1,9 +1,9 @@
-// Protège les contenus du quiz (questions, index de recherche, PDF) : accès réservé aux membres connectés.
+// Protège les contenus du quiz (questions, index de recherche, carte et annuaire des CS, PDF) : accès réservé aux membres connectés.
 // Vérifie le cookie signé « qs » posé par l'API à la connexion (variable SESSION_SECRET).
 import { next } from "@vercel/functions";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const config = { matcher: ["/data.js", "/search.json", "/pdf/:path*"], runtime: "nodejs" };
+export const config = { matcher: ["/data.js", "/search.json", "/secteurs.json", "/pdf/:path*"], runtime: "nodejs" };
 
 export default function middleware(req) {
   const secret = (process.env.SESSION_SECRET || "").trim();

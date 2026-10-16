@@ -756,6 +756,11 @@ function loadLeaflet(){if(window.L)return Promise.resolve(window.L);if(leafP)ret
 function inPoly(ll,ring){let x=ll[1],y=ll[0],ins=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const xi=ring[i][1],yi=ring[i][0],xj=ring[j][1],yj=ring[j][0];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))ins=!ins}return ins}
 const sectAt=ll=>SECT.sect.find(s=>inPoly(ll,s.poly))||null;
 const csName=s=>`${s.name} (${s.code})`;
+const mapsUrl=a=>(isIOS()?"https://maps.apple.com/?q=":"https://www.google.com/maps/search/?api=1&query=")+encodeURIComponent(a);
+const PIN='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+const PHONE='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+const telHtml=x=>x.tel?`<a class="cadr" href="tel:${x.tel.replace(/\s/g,"")}">${PHONE}<span>PVO ${esc(x.code)} · ${esc(x.tel)}<small>Appeler</small></span></a>`:"";
+const adrHtml=x=>x.adr?`<a class="cadr" href="${mapsUrl(x.adr)}" target="_blank" rel="noopener">${PIN}<span>${esc(x.adr)}<small>Itinéraire</small></span></a>`:"";
 function makeMap(el,opts={}){const L=window.L;const dark=window.matchMedia("(prefers-color-scheme: dark)").matches;
  const m=L.map(el,{zoomControl:false,attributionControl:true,minZoom:11,maxZoom:18}).setView([48.858,2.345],12);
  L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark?"dark_all":"light_all"}/{z}/{x}/{y}{r}.png`,{subdomains:"abcd",maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a> · secteurs : uMap'}).addTo(m);
@@ -766,7 +771,7 @@ function makeMap(el,opts={}){const L=window.L;const dark=window.matchMedia("(pre
   if(!opts.quiz){pg.bindTooltip(s.code,{permanent:true,direction:"center",className:"sectlbl"});
    L.circleMarker(s.ll,{radius:5,color:"#fff",weight:2,fillColor:col,fillOpacity:1}).addTo(m).on("click",()=>opts.onPick&&opts.onPick(s))}
   pg.on("click",e=>opts.onPick&&opts.onPick(s,e));layers[s.code]=pg});
- if(!opts.quiz)(SECT.extra||[]).forEach(x=>L.circleMarker(x.ll,{radius:4,color:"#fff",weight:2,fillColor:"#8e8e93",fillOpacity:1}).addTo(m).bindTooltip("CS "+x.name));
+ if(!opts.quiz)(SECT.extra||[]).forEach(x=>L.circleMarker(x.ll,{radius:5,color:"#fff",weight:2,fillColor:GCOL[x.golf]||"#8e8e93",fillOpacity:1}).addTo(m).on("click",()=>opts.onPick&&opts.onPick(x)));
  m.fitBounds(L.featureGroup(Object.values(layers)).getBounds(),{padding:[8,8]});
  return{m,layers}}
 function styleSect(layers,fn){Object.entries(layers).forEach(([c,l])=>{const s=SECT.by[c];const col=GCOL[s.golf];l.setStyle(fn(s,col))})}
@@ -785,9 +790,10 @@ function carteMapView(){const b=$("#cbody");
   <p class="small" style="margin:10px 4px 0">Données : carte uMap « CS et secteurs BSPP ». Tracés indicatifs : en cas de doute, le parcellaire du PVO fait foi.</p>`;
  const {m,layers}=makeMap($("#map"),{onPick:s=>select(s)});cartMap=m;cleanup=()=>{try{m.remove()}catch(e){}cartMap=null};
  const restyle=()=>styleSect(layers,(s,col)=>{const on=carteG==="all"||s.golf===carteG;const sel=carteSel===s.code;return{color:col,weight:sel?3.5:1.6,opacity:on?1:.25,fillOpacity:sel?.32:on?.13:.03}});
- const select=(s,fit)=>{carteSel=s.code;restyle();if(fit)m.fitBounds(layers[s.code].getBounds(),{padding:[30,30]});
-  $("#cinfo").innerHTML=`<div class="card sectcard"><div style="display:flex;gap:12px;align-items:center"><span class="sectcode" style="background:${GCOL[s.golf]}">${esc(s.code)}</span><div style="flex:1;min-width:0"><b style="font-size:18px">CS ${esc(s.name)}</b><div class="small">Groupement ${esc(s.golf)} · interlocuteur radio « Golf ${esc(s.golf)} » · ${String(s.area).replace(".",",")} km²</div></div></div>
-   <div class="small" style="margin:12px 0 6px">Secteurs limitrophes (« carré des neuf »)</div><div class="chips wrap">${s.nb.map(c=>`<button class="chip" data-nb="${c}"><i class="gdot" style="background:${GCOL[SECT.by[c].golf]}"></i>${esc(SECT.by[c].name)}</button>`).join("")}</div>
+ const select=(s,fit)=>{carteSel=s.code;restyle();if(fit){if(layers[s.code])m.fitBounds(layers[s.code].getBounds(),{padding:[30,30]});else m.setView(s.ll,15)}
+  $("#cinfo").innerHTML=`<div class="card sectcard"><div style="display:flex;gap:12px;align-items:center"><span class="sectcode" style="background:${GCOL[s.golf]}">${esc(s.code)}</span><div style="flex:1;min-width:0"><b style="font-size:18px">CS ${esc(s.name)}</b><div class="small">Groupement ${esc(s.golf)} · interlocuteur radio « Golf ${esc(s.golf)} »${s.area?` · ${String(s.area).replace(".",",")} km²`:""}</div></div></div>
+   ${s.adr||s.tel?`<div class="cadrs">${adrHtml(s)}${telHtml(s)}</div>`:""}
+   ${s.nb?`<div class="small" style="margin:12px 0 6px">Secteurs limitrophes (« carré des neuf »)</div>`:`<p class="small" style="margin:12px 0 0">Pas de secteur tracé pour ce centre sur la carte.</p>`}<div class="chips wrap">${(s.nb||[]).map(c=>`<button class="chip" data-nb="${c}"><i class="gdot" style="background:${GCOL[SECT.by[c].golf]}"></i>${esc(SECT.by[c].name)}</button>`).join("")}</div>
    <div class="actions"><button class="btn sec" id="cMine">${radioId.cs===s.name?"Mon CS de garde ✓":"C'est mon CS de garde"}</button></div><p class="small" id="cMineMsg" style="margin:0"></p></div>`;
   $("#cinfo").querySelectorAll("[data-nb]").forEach(x=>x.onclick=()=>select(SECT.by[x.dataset.nb],true));
   $("#cMine").onclick=()=>{saveRadioId({...radioId,cs:s.name,golf:s.golf});$("#cMine").textContent="Mon CS de garde ✓";$("#cMineMsg").textContent=`Indicatif radio mis à jour : ${rMe()}, interlocuteur ${rGolf()}.`}};
@@ -798,12 +804,12 @@ function carteMapView(){const b=$("#cbody");
    if(m._me)m.removeLayer(m._me);m._me=window.L.circleMarker(ll,{radius:8,color:"#fff",weight:3,fillColor:"#0a84ff",fillOpacity:1}).addTo(m);
    const s=sectAt(ll);if(s){select(s);m.setView(ll,15);toast(`Tu es dans le secteur de ${s.name} (Golf ${s.golf}).`)}else{m.setView(ll,13);toast("Tu es hors des secteurs de cette carte.")}},
    ()=>toast("Localisation refusée ou impossible."),{enableHighAccuracy:true,timeout:12000})};
- restyle();if(carteSel&&SECT.by[carteSel])select(SECT.by[carteSel],true);
+ restyle();const selObj=carteSel&&(SECT.by[carteSel]||(SECT.extra||[]).find(x=>x.code===carteSel));if(selObj)select(selObj,true);
  setTimeout(()=>m.invalidateSize(),60)}
 function carteListView(){const b=$("#cbody");
- b.innerHTML=["1","2","3"].map(g=>`<div class="sect"><i class="gdot" style="background:${GCOL[g]}"></i> Groupement ${g} · Golf ${g}</div><div class="list">${SECT.sect.filter(s=>s.golf===g).sort((a,c)=>a.name.localeCompare(c.name)).map(s=>`<button class="row" data-cs="${s.code}"><span class="sectcode" style="background:${GCOL[g]}">${s.code}</span><span class="tx"><b>${esc(s.name)}</b><span>Voisins : ${s.nb.map(c=>esc(SECT.by[c].name)).join(", ")}</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div>`).join("")
-  +(SECT.extra&&SECT.extra.length?`<p class="small" style="margin:10px 4px 0">Également sur la carte, sans secteur tracé : ${SECT.extra.map(x=>"CS "+esc(x.name)).join(", ")}.</p>`:"");
- b.querySelectorAll("[data-cs]").forEach(x=>x.onclick=()=>{carteSel=x.dataset.cs;carteTab="map";store.set("carteTab","map");viewCarte()})}
+ b.innerHTML=["1","2","3"].map(g=>`<div class="sect"><i class="gdot" style="background:${GCOL[g]}"></i> Groupement ${g} · Golf ${g}</div><div class="list">${SECT.sect.concat(SECT.extra||[]).filter(s=>s.golf===g).sort((a,c)=>a.name.localeCompare(c.name)).map(s=>`<button class="row" data-cs="${s.code}"><span class="sectcode" style="background:${GCOL[g]}">${s.code}</span><span class="tx"><b>${esc(s.name)}</b><span>${s.adr?esc(s.adr):""}</span>${s.tel?`<span>PVO ${esc(s.tel)}</span>`:""}${s.nb?`<span>Voisins : ${s.nb.map(c=>esc(SECT.by[c].name)).join(", ")}</span>`:""}</span>${s.tel?`<a class="callbtn" href="tel:${s.tel.replace(/\s/g,"")}" aria-label="Appeler le PVO ${esc(s.name)}" data-call="1">${PHONE}</a>`:`<span class="chev">${I.chev}</span>`}</button>`).join("")}</div>`).join("")
+  +`<p class="small" style="margin:10px 4px 0">Touche un centre pour le voir sur la carte, ou le combiné pour appeler son PVO. Numéros : annuaire CIS pour AASC (version du 03/12/2025).${(SECT.extra||[]).length?` ${SECT.extra.map(x=>"CS "+esc(x.name)).join(", ")} : pas de secteur tracé.`:""}</p>`;
+ b.querySelectorAll("[data-cs]").forEach(x=>x.onclick=e=>{if(e.target.closest("[data-call]"))return;carteSel=x.dataset.cs;carteTab="map";store.set("carteTab","map");viewCarte()})}
 function carteQuizView(){const b=$("#cbody");const bq=store.get("carteBest",{});
  b.innerHTML=`<div class="tiles">
   <button class="tile" data-cq="qcm"><span class="ic" style="background:#0a84ff">${I.quiz}</span><b>Quiz secteurs</b><span>Codes, groupements, voisins, lieux${bq.qcm!=null?` · record ${bq.qcm}/10`:""}</span></button>
@@ -817,6 +823,7 @@ function carteQuestions(){const S=SECT.sect;const P=()=>pick(S);const other=(s,n
   ()=>{const s=P();return{id:"golf:"+s.code,q:`Tu es de garde au CS ${s.name}. Quel est ton interlocuteur radio ?`,o:["Golf 1","Golf 2","Golf 3"],a:+s.golf-1,e:`${s.name} appartient au groupement ${s.golf} : le CSO s'appelle « Golf ${s.golf} ».`}},
   ()=>{const s=P();if(!s.nb.length)return null;const n=SECT.by[pick(s.nb)];return{id:"nb:"+s.code,q:`Lequel de ces secteurs est limitrophe de ${s.name} ?`,o:[n.name,...other(s,3,x=>!s.nb.includes(x.code)).map(x=>x.name)],e:`Secteurs voisins de ${s.name} : ${s.nb.map(c=>SECT.by[c].name).join(", ")}.`}},
   ()=>{const l=pick(SECT.lm);const s=SECT.by[l.s];return{id:"lm:"+l.n.slice(0,30),q:`Dans quel secteur se trouve ${l.n} ?`,o:[s.name,...other(s,3,x=>s.nb.includes(x.code)).concat(other(s,3)).filter((x,i,a)=>a.indexOf(x)===i).slice(0,3).map(x=>x.name)],e:`${cap(l.n)} est dans le secteur de ${s.name} (${s.code}, Golf ${s.golf}).`}},
+  ()=>{const s=pick(S.filter(x=>x.adr));const strip=a=>a.replace(/, 750\d\d Paris$/,"");return{id:"adr:"+s.code,q:`Quelle est l'adresse du CS ${s.name} ?`,o:[strip(s.adr),...other(s,3,x=>x.adr).map(x=>strip(x.adr))],e:`CS ${s.name} : ${s.adr}.`}},
   ()=>{const g=pick(["1","2","3"]);const s=pick(S.filter(x=>x.golf===g));return{id:"grp:"+s.code,q:`Lequel de ces CS appartient au groupement ${g} ?`,o:[s.name,...shuffle(S.filter(x=>x.golf!==g)).slice(0,3).map(x=>x.name)],e:`Groupement ${g} : ${S.filter(x=>x.golf===g).map(x=>x.name).join(", ")}.`}},
  ];
  let guard=0;const seen=new Set();while(Q.length<10&&guard++<200){const q=gens[Math.floor(Math.random()*gens.length)]();if(!q||seen.has(q.id))continue;seen.add(q.id);
@@ -1063,7 +1070,7 @@ async function pollLogin(){const pl=store.get("pendingLogin",null);if(!pl||Date.
     profTab="moi";store.set("profTab",profTab);go("profile");if(j.isNew)profileSheet(true,true);else toast("Connecté : "+j.email);syncNow()}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&store.get("pendingLogin",null))startPoll()});
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3200)}
-async function clearProtected(){try{for(const k of await caches.keys()){const c=await caches.open(k);if(k==="quiz-ci-docs"){await caches.delete(k);continue}await c.delete("data.js");await c.delete("search.json");for(const r of await c.keys()){if(/\/(data\.js|search\.json)$/.test(new URL(r.url).pathname))await c.delete(r)}}}catch(e){}}
+async function clearProtected(){try{for(const k of await caches.keys()){const c=await caches.open(k);if(k==="quiz-ci-docs"){await caches.delete(k);continue}await c.delete("data.js");await c.delete("search.json");await c.delete("secteurs.json");for(const r of await c.keys()){if(/\/(data\.js|search\.json|secteurs\.json)$/.test(new URL(r.url).pathname))await c.delete(r)}}}catch(e){}}
 async function logout(){try{await syncNow()}catch(e){}try{await api("logout","POST",{})}catch(e){}applyProgress({resetAt:0});store.del("progOwner");me=null;saveMe();board=null;store.del("board");await clearProtected();location.replace(location.pathname)}
 
 /* ---- affichage */
@@ -1100,7 +1107,7 @@ function renderBoard(fromRefresh){const el=$("#board");if(!el)return;
   if(!fromRefresh&&(!board||Date.now()-board.at>8000))loadBoard(true);
 }
 function teamRanking(){const P=board&&board.profiles||[];return (board&&board.teams||[]).map(t=>{const m=P.filter(p=>p.team===t.id);const pts=m.map(p=>(p.stats&&p.stats.points)||0);const sum=pts.reduce((a,b)=>a+b,0);
-  return {t,n:m.length,sum,avg:m.length?Math.round(sum/m.length):0}}).filter(x=>x.n>0).sort((a,b)=>b.avg-a.avg||b.n-a.n)}
+  return {t,n:m.length,sum,avg:m.length?Math.round(sum/m.length):0}}).sort((a,b)=>b.avg-a.avg||b.n-a.n||String(a.t.name).localeCompare(b.t.name))}
 function renderTeamsBoard(el,fromRefresh){const rows=teamRanking();const mine=myTeamId();
   el.innerHTML=`<div class="seg" style="margin-bottom:12px"><button data-sc="team" aria-pressed="false">Mon équipe</button><button data-sc="all" aria-pressed="false">Tout le monde</button><button data-sc="teams" aria-pressed="true">Équipes</button></div>
    <p class="small" style="margin:0 4px 10px">Classement des équipes selon la <b>moyenne des points</b> de leurs membres.</p>
@@ -1133,10 +1140,21 @@ async function teamsSheet(){const sh=sheet(`<h2>Équipes</h2><p class="small">Tu
   sh.querySelectorAll("[data-join]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{const j=await api("teams/join","POST",{teamId:b.dataset.join});me.team=j.team.id;saveMe();closeSheet();await loadBoard(true);viewProfile();toast("Tu as rejoint « "+j.team.name+" ».")}catch(e){sh.querySelector("#tsMsg").textContent=e.error||"Erreur.";b.disabled=false}});
   sh.querySelector("#tform").onsubmit=async e=>{e.preventDefault();const name=sh.querySelector("#tName").value.trim();try{const j=await api("teams","POST",{name});me.team=j.team.id;saveMe();closeSheet();await loadBoard(true);viewProfile();toast("Équipe « "+j.team.name+" » créée.")}catch(err){sh.querySelector("#tsMsg").textContent=err.error||"Erreur."}};
 }
-function homeBoard(){if(!me||!board)return `<div id="homeBoard"></div>`;const r=ranked("defi").slice(0,3);const mr=myRank("defi"),pr=myRank("points");
-  return `<div id="homeBoard"><div class="sect">${esc(teamOf(myTeamId())?teamOf(myTeamId()).name:"Classement")}</div>${(()=>{const rk=teamRanking();const i=rk.findIndex(x=>x.t.id===myTeamId());return i<0?"":`<button class="teamrank" id="hbTeams" style="margin-bottom:10px"><span class="rk ${i<3?"top"+(i+1):""}" style="font-size:22px;width:auto">${i+1}<sup style="font-size:12px">${i?"e":"re"}</sup></span><span style="flex:1;text-align:left"><b>Ton équipe sur ${rk.length}</b><br><span class="small">${rk[i].avg.toLocaleString("fr-FR")} pts de moyenne par membre</span></span><span class="small" style="color:var(--red);font-weight:600">Équipes ›</span></button>`})()}<button class="card" id="hbGo" style="display:block;width:100%;text-align:left">
-   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px"><b>Classement du défi</b><span class="small">${mr?`Toi : ${mr.pos}e/${mr.of}`:"Pas encore joué"}${pr?` · ${pr.pos}e en points`:""}</span></div>
-   ${r.length?r.map((p,i)=>`<div style="display:flex;gap:10px;align-items:center;padding:4px 0"><span class="rk top${i+1}">${i+1}</span>${avatar(p,28)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.pseudo)}</span><span class="small">${p.stats.defi.score}/20</span></div>`).join(""):`<span class="small">Personne n'a encore relevé le défi cette semaine.</span>`}</button></div>`}
+function homeBoard(){if(!me||!board)return `<div id="homeBoard"></div>`;
+  const tid=myTeamId(),tm=teamOf(tid),all=board.profiles||[];const w=isoWeek();
+  const pts=p=>(p.stats&&p.stats.points)||0,dfi=p=>p.stats&&p.stats.defi&&p.stats.defi.week===w?p.stats.defi.score:null;
+  const members=(tm?all.filter(p=>p.team===tid):all).slice().sort((a,b)=>pts(b)-pts(a)||(dfi(b)??-1)-(dfi(a)??-1)||String(a.pseudo).localeCompare(b.pseudo));
+  const cut=(list,isMine,n=6)=>{const k=list.findIndex(isMine);if(list.length<=n||k<n-1)return list.slice(0,n).map((x,i)=>[x,i]);return list.slice(0,n-2).map((x,i)=>[x,i]).concat([[null,-1],[list[k],k]])};
+  const rowP=([p,i])=>p?`<div class="hbrow ${p.id===me.id?"mine":""}"><span class="rk ${i<3?"top"+(i+1):""}">${i+1}</span>${avatar(p,28)}<span class="nm">${esc(p.pseudo)}${p.id===me.id?" (toi)":""}</span><span class="small">${dfi(p)!=null?`défi ${dfi(p)}/20 · `:""}<b>${pts(p).toLocaleString("fr-FR")}</b> pts</span></div>`:`<div class="hbgap">⋯</div>`;
+  const rk=teamRanking();const ti=rk.findIndex(x=>x.t.id===tid);
+  const rowT=([x,i])=>x?`<div class="hbrow ${x.t.id===tid?"mine":""}"><span class="rk ${i<3?"top"+(i+1):""}">${i+1}</span><span class="nm"><b>${esc(x.t.name)}</b><br><span class="small">${x.n} membre${x.n>1?"s":""}</span></span><span class="small"><b>${x.avg.toLocaleString("fr-FR")}</b> pts moy.</span></div>`:`<div class="hbgap">⋯</div>`;
+  return `<div id="homeBoard"><div class="sect">${tm?"Mon équipe · "+esc(tm.name):"Classement général"}</div>
+   <button class="card hbcard" id="hbGo"><div class="hbhead"><b>${tm?"Mon équipe":"Tous les membres"}</b><span class="small">${members.length} membre${members.length>1?"s":""} ›</span></div>
+    ${members.length?cut(members,p=>p.id===me.id).map(rowP).join(""):`<span class="small">Aucun membre pour l'instant.</span>`}
+    ${tm&&members.length===1?`<p class="small" style="margin:8px 0 0">Tu es seul dans l'équipe : invite tes coéquipiers à la rejoindre depuis Profil › Équipe.</p>`:""}
+    ${tm?"":`<p class="small" style="margin:8px 0 0">Rejoins une équipe depuis Profil › Équipe pour te comparer à tes coéquipiers.</p>`}</button>
+   ${rk.length?`<button class="card hbcard" id="hbTeams" style="margin-top:10px"><div class="hbhead"><b>Équipes</b><span class="small">${ti>=0?`Ton équipe : ${ti+1}<sup>${ti?"e":"re"}</sup>/${rk.length}`:`${rk.length} équipe${rk.length>1?"s":""}`} ›</span></div>
+    ${cut(rk,x=>x.t.id===tid,5).map(rowT).join("")}<p class="small" style="margin:8px 0 0">Moyenne des points des membres de chaque équipe.</p></button>`:""}</div>`}
 const GLOGO='<svg viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 function noProfileCard(){
   const exp=me&&me.expired;
