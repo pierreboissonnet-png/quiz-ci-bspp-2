@@ -456,7 +456,10 @@ function viewCri(){
 let level=store.get("level","expert");
 const SPARK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
 const SEARCH_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
-function levelSwitch(){return `<div class="lvl"><div class="seg"><button data-lvl="simple" aria-pressed="${level==="simple"}">Mode simple <small>×0,5</small></button><button data-lvl="expert" aria-pressed="${level==="expert"}">Mode expert <small>×2</small></button></div></div>`}
+// insignes de grade stylisés (fourreau d'épaule) : sapeur = un chevron rouge, lieutenant = deux galons dorés
+const GRADE_SAP='<svg class="grade" viewBox="0 0 28 40" aria-hidden="true"><path d="M3 9a11 7 0 0 1 22 0v28a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#14223f" stroke="#0b1428" stroke-width="1"/><circle cx="14" cy="8" r="2.2" fill="#c9ccd3"/><path d="M6 28l8-6 8 6v4l-8-6-8 6z" fill="#e3051b"/></svg>';
+const GRADE_LTN='<svg class="grade" viewBox="0 0 28 40" aria-hidden="true"><path d="M3 9a11 7 0 0 1 22 0v28a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#14223f" stroke="#0b1428" stroke-width="1"/><circle cx="14" cy="8" r="2.2" fill="#d4af37"/><rect x="4" y="24" width="20" height="3.2" rx=".6" fill="#d4af37"/><rect x="4" y="30" width="20" height="3.2" rx=".6" fill="#d4af37"/></svg>';
+function levelSwitch(){return `<div class="lvl"><div class="seg"><button data-lvl="simple" aria-pressed="${level==="simple"}" title="Mode simple : grade sapeur">${GRADE_SAP}<span>Simple<small>Sapeur</small></span></button><button data-lvl="expert" aria-pressed="${level==="expert"}" title="Mode expert : grade lieutenant">${GRADE_LTN}<span>Expert<small>Lieutenant</small></span></button></div></div>`}
 function bindLevel(){app.querySelectorAll("[data-lvl]").forEach(b=>b.onclick=()=>{if(level===b.dataset.lvl)return;level=b.dataset.lvl;store.set("level",level);viewHome();window.scrollTo(0,0)})}
 let SIMPLE=null,simpleP=null;
 function loadSimple(){if(SIMPLE)return Promise.resolve(SIMPLE);if(simpleP)return simpleP;

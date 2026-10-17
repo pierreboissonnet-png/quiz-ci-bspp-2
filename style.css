@@ -308,7 +308,7 @@ body.booting #app{visibility:hidden}
 .hbhead .small{white-space:nowrap}
 .tiles-dark{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}
 /* Mode simple */
-.lvl{margin:4px 0 16px}.lvl .seg button{min-height:40px;font-size:14px}.lvl .seg small{font:600 11px var(--mono);opacity:.7;margin-left:4px}
+.lvl{margin:4px 0 16px}.lvl .seg button{min-height:56px;font-size:15px;display:flex;align-items:center;justify-content:center;gap:10px}.lvl .seg button span{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15}.lvl .seg small{font-size:11.5px;font-weight:500;opacity:.75}.lvl .grade{width:22px;height:32px;flex:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25))}
 .lvl .seg button[data-lvl="simple"][aria-pressed="true"]{background:var(--ok);color:#fff}
 .lvl .seg button[data-lvl="expert"][aria-pressed="true"]{background:var(--navy2);color:#fff}
 .disc .dnum{font:800 28px var(--mono);color:var(--ok)}.disc .dnum small{font-size:15px;color:var(--muted)}
