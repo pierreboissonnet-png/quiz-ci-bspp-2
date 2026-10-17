@@ -65,7 +65,9 @@ function sanitizeStats(s = {}) {
   return out;
 }
 const emptyStats = () => sanitizeStats({});
-const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: !!p.onFire });
+const fxOf = (p) => (["off", "sgt", "fire"].includes(p.fxm) ? p.fxm : p.onFire ? "fire" : "off"); // mode d'ambiance : normal / sergent / On Fire
+const setFx = (p, m) => { p.fxm = m; p.onFire = m === "fire"; };
+const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: fxOf(p) === "fire", fx: fxOf(p) });
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
   const rdA = a.radio, rdB = b.radio; // l'indicatif radio survit aux remises à zéro
@@ -312,7 +314,8 @@ async function handler(req) {
       if (body.pseudo !== undefined) { const ps = clean(body.pseudo, 24); if (ps.length >= 2 && ps.toLowerCase() !== me.pseudo.toLowerCase()) { const all = await allProfiles(st); if (all.some((x) => x.id !== me.id && x.pseudo.toLowerCase() === ps.toLowerCase())) return json({ error: "Ce pseudo est déjà pris." }, 409); me.pseudo = ps; } }
       if (body.unite !== undefined) me.unite = clean(body.unite, 40);
       if (COLORS.includes(body.color)) me.color = body.color;
-      if (typeof body.fire === "boolean") me.onFire = body.fire; // le membre allume / éteint lui-même le mode On Fire
+      if (["off", "sgt", "fire"].includes(body.fx)) setFx(me, body.fx); // le membre choisit lui-même : normal, sergent ou On Fire
+      else if (typeof body.fire === "boolean") setFx(me, body.fire ? "fire" : "off");
       if (body.stats) {
         // un administrateur a remis les scores à zéro : l'appli doit d'abord appliquer la remise à zéro
         const s = sanitizeStats(body.stats); if (me.stats?.defi && s.defi && me.stats.defi.week === s.defi.week) s.defi = me.stats.defi; me.stats = s;
@@ -361,15 +364,16 @@ async function handler(req) {
       if (route === "admin/member" && req.method === "PUT") {
         const t = await st.get("p/" + clean(body.target, 40), { type: "json" });
         if (!t) return json({ error: "Membre introuvable." }, 404);
-        const fun = body.action === "fire" || body.action === "unfire"; // le mode On Fire peut viser tout le monde, super admin compris
+        const fun = ["fire", "unfire", "sergent"].includes(body.action); // le mode On Fire peut viser tout le monde, super admin compris
         if (!fun && t.email === SUPER && body.action !== "reset") return json({ error: "Le super administrateur ne peut pas être modifié." }, 403);
         if (!fun && isAdmin(t, cfg) && !superMe && t.id !== me.id) return json({ error: "Seul le super administrateur peut modifier un administrateur." }, 403);
         switch (body.action) {
           case "reset": t.stats = emptyStats(); t.resetAt = Date.now(); await st.setJSON("u/" + t.id, { v: 1, resetAt: t.resetAt }); break;
           case "block": t.blocked = true; break;
           case "unblock": t.blocked = false; break;
-          case "fire": t.onFire = true; t.fireAt = Date.now(); break; // mode « On Fire » activé par un administrateur
-          case "unfire": t.onFire = false; break;
+          case "fire": setFx(t, "fire"); t.fireAt = Date.now(); break; // mode « On Fire » activé par un administrateur
+          case "sergent": setFx(t, "sgt"); t.fireAt = Date.now(); break; // mode Braise : messages musclés sans thème visuel
+          case "unfire": setFx(t, "off"); break;
           case "rename": { const ps = clean(body.pseudo, 24); if (ps.length < 2) return json({ error: "Pseudo trop court." }, 400); t.pseudo = await uniquePseudo(st, ps, t.id); break; }
           case "admin": case "unadmin":
             if (!superMe) return json({ error: "Seul le super administrateur gère les administrateurs." }, 403);
