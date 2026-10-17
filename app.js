@@ -198,21 +198,46 @@ function learnerTier(){const ids=Object.keys(hist);const answered=Object.values(
  const rate=recent.length?recent.reduce((a,b)=>a+b,0)/recent.length:0;
  if(answered<30||rate<.55)return "debut";if(answered>=60&&rate>=.8)return "aise";return "mid"}
 const FB={
- debut:{ok:["Bravo, c'est exactement ça !","Super, tu progresses !","Bien vu, continue comme ça !","Excellent réflexe !","Oui ! Tu as le bon raisonnement.","Génial, une de plus dans la poche !"],
-  ko:["Pas grave, c'est en se trompant qu'on apprend.","Presque ! Lis l'explication, tu l'auras la prochaine fois.","Normal de ne pas tout savoir au début, tu avances bien.","Ce n'est pas ça, mais cette explication va t'aider."],
-  ko2:["Courage ! Prends le temps de lire l'explication et la page du référentiel : ça aide énormément.","On s'accroche ! Tout le monde est passé par là, chaque erreur te fait progresser."],
-  back:["Et voilà, tu te reprends bien !","Bien joué, c'est reparti !"]},
- mid:{ok:["Exact !","Bien joué !","Bonne réponse.","C'est ça !"],ko:["Raté, retiens bien l'explication.","Pas tout à fait.","Non, mais tu étais proche."],ko2:["Deux de suite : relis bien l'explication."],back:["Exact, tu te reprends !"]},
- aise:{ok:["Correct.","Exact.","Juste.","Imparable."],ko:["Erreur : à revoir.","Raté.","Piège classique, celui-là."],ko2:["Attention, deux erreurs d'affilée."],back:["Correct."]}};
+ debut:{
+  ok:["Bravo, c'est exactement ça !","Super, tu progresses !","Bien vu, continue comme ça !","Excellent réflexe !","Oui ! Tu as le bon raisonnement.","Génial, une de plus dans la poche !",
+   "Parfait, tu apprends vite !","Bonne réponse, tu prends de l'assurance !","Yes ! Tu es sur la bonne voie.","Très bien, ça rentre !","Impeccable, continue sur ta lancée !",
+   "Bien joué, le futur CI se dessine !","C'est juste ! Tu vois, tu en sais déjà plus que tu ne crois.","Top ! Ton équipage serait fier de toi.","Exactement, bravo pour ta réflexion !",
+   "Bonne pioche, et pas par hasard !","Réponse validée, tu avances bien !","Bravo, tu viens de marquer des points !","Super réflexe, on sent que tu as compris.","Juste ! Garde ce rythme."],
+  ko:["Pas grave, c'est en se trompant qu'on apprend.","Presque ! Lis l'explication, tu l'auras la prochaine fois.","Normal de ne pas tout savoir au début, tu avances bien.","Ce n'est pas ça, mais cette explication va t'aider.",
+   "Pas cette fois, mais maintenant tu sais !","Raté, mais tu viens d'apprendre quelque chose d'utile.","Ce n'était pas évident, celle-là !","Pas de souci : même les chefs d'agrès ont commencé par là.",
+   "Erreur de débutant, et c'est très bien : on est là pour apprendre.","Tu y étais presque ! Jette un œil à l'explication.","Une erreur aujourd'hui, une bonne réponse en garde demain.","Pas grave du tout : retiens juste l'idée principale.",
+   "Ce n'est pas la bonne, mais tu as eu raison d'essayer.","On ne naît pas CI, on le devient : continue !","Pas tout à fait, mais tu progresses à chaque question.","C'est noté pour la prochaine fois : tu vas la réussir."],
+  ko2:["Courage ! Prends le temps de lire l'explication et la page du référentiel : ça aide énormément.","On s'accroche ! Tout le monde est passé par là, chaque erreur te fait progresser.",
+   "Petite série difficile : respire, relis l'explication, et ça va revenir.","Ne lâche rien ! Les questions difficiles sont celles qui t'apprennent le plus.","Tu as le droit de trébucher : l'important, c'est de continuer.",
+   "Ça arrive à tout le monde ! Le référentiel est à un clic pour t'aider.","Tiens bon, la prochaine sera la bonne !","C'est en forgeant qu'on devient forgeron : tu es en plein apprentissage.",
+   "Pas de panique : un CI garde son calme, même dans une série compliquée.","Ces erreurs-là, tu ne les referas plus. Continue !"],
+  back:["Et voilà, tu te reprends bien !","Bien joué, c'est reparti !","Le voilà, ce retour en force !","Tu vois ? Il suffisait d'y croire !","Superbe rebond, bravo !","Ah, ça fait du bien ! Continue comme ça.","Retour gagnant, tu remontes la pente !","Bravo, tu t'es accroché et ça paie !"]},
+ mid:{
+  ok:["Exact !","Bien joué !","Bonne réponse.","C'est ça !","Très bien.","Bien vu.","Juste !","Parfait.","Dans le mille !","Correct, bravo.","Bonne lecture du référentiel.","Réponse validée.","Tu maîtrises.","Nickel.","Bien raisonné."],
+  ko:["Raté, retiens bien l'explication.","Pas tout à fait.","Non, mais tu étais proche.","Pas cette fois.","Erreur : relis la page citée.","Ce n'est pas ça.","Presque, mais non.","Pas la bonne réponse.","À revoir.","Raté, celle-là méritait réflexion.","Non, regarde bien la nuance.","Pas ça : note-le pour la suite."],
+  ko2:["Deux de suite : relis bien l'explication.","Petite baisse de régime : prends ton temps.","Deux erreurs : le référentiel peut t'aider.","Concentre-toi, tu connais la réponse.","Ralentis un peu et lis bien chaque choix.","Série compliquée, reste attentif."],
+  back:["Exact, tu te reprends !","C'est reparti.","Bien rattrapé.","Voilà qui est mieux.","Bonne réponse, bien rebondi.","Retour dans le bon sens."]},
+ aise:{
+  ok:["Correct.","Exact.","Juste.","Imparable.","Validé.","Sans hésitation.","Précis.","Nickel.","Évidemment.","Du travail de pro.","Rien à redire.","Propre."],
+  ko:["Erreur : à revoir.","Raté.","Piège classique, celui-là.","Inattendu de ta part.","Non.","Faux : vérifie la source.","Raté, ça arrive aux meilleurs.","Pas cette fois.","Erreur notée.","Point de vigilance pour toi."],
+  ko2:["Attention, deux erreurs d'affilée.","Deux de suite : reste concentré.","Inhabituel : relis bien les énoncés.","Vigilance, la série se complique.","Deux ratés : un retour au référentiel s'impose."],
+  back:["Correct.","Retour à la normale.","Rétabli.","Voilà.","Bien rattrapé."]}};
+// tirage sans répéter les messages récents
+const fbRecent=[];
+function pickFresh(list){const avail=list.filter(m=>!fbRecent.includes(m));const m=pick(avail.length?avail:list);fbRecent.push(m);if(fbRecent.length>Math.min(12,Math.max(3,Math.floor(list.length*.6))))fbRecent.shift();return m}
 let fbStreak=0;
 function cheer(ok){const t=FB[learnerTier()];let m;
- if(ok){m=pick(fbStreak<=-2?t.back:t.ok);fbStreak=fbStreak>0?fbStreak+1:1}
- else{fbStreak=fbStreak<0?fbStreak-1:-1;m=pick(fbStreak<=-2?t.ko2:t.ko)}
+ if(ok){m=pickFresh(fbStreak<=-2?t.back:t.ok);fbStreak=fbStreak>0?fbStreak+1:1}
+ else{fbStreak=fbStreak<0?fbStreak-1:-1;m=pickFresh(fbStreak<=-2?t.ko2:t.ko)}
  return m}
-function grade(p){const t=learnerTier();
- if(t==="debut")return p>=90?"Formidable, tu es prêt pour la suite !":p>=70?"Très beau résultat, continue !":p>=50?"Bon travail, tu progresses à chaque partie !":"Bravo d'avoir joué : relis le corrigé, la prochaine sera meilleure !";
- if(t==="aise")return p>=90?"Prêt pour la garde.":p>=70?"Solide.":p>=50?"À consolider.":"Retour au référentiel.";
- return p>=90?"Prêt pour la garde":p>=70?"Solide, encore un effort":p>=50?"À consolider":"Relis le corrigé et retente ta chance"}
+const ENDMSG={
+ debut:[["Formidable, tu es prêt pour la suite !","Quel score ! Tu peux être fier de toi.","Impressionnant pour un début, bravo !","Superbe partie, tu as tout compris !"],
+  ["Très beau résultat, continue !","Belle partie, tu progresses vraiment !","Bravo, c'est un très bon score !","Tu montes en compétence, ça se voit !"],
+  ["Bon travail, tu progresses à chaque partie !","La moitié est acquise, la suite viendra vite !","Pas mal du tout, continue à t'entraîner !","Tu poses de bonnes bases, bravo !"],
+  ["Bravo d'avoir joué : relis le corrigé, la prochaine sera meilleure !","Chaque partie te rapproche du but, continue !","Le plus dur, c'est de commencer : c'est fait !","Relis les explications tranquillement, puis retente : tu verras la différence."]],
+ mid:[["Prêt pour la garde","Excellent score","Très solide, bravo"],["Solide, encore un effort","Bon niveau, continue","Bien, tu y es presque"],["À consolider","Moyen, mais en progrès","Encore quelques révisions"],["Relis le corrigé et retente ta chance","Partie difficile : retour aux explications","Retente après une petite révision"]],
+ aise:[["Prêt pour la garde.","Sans faute ou presque.","Niveau confirmé."],["Solide.","Bon niveau.","Quelques points à affiner."],["À consolider.","En dessous de ton niveau habituel.","Révision conseillée."],["Retour au référentiel.","Partie ratée : on révise.","À reprendre à tête reposée."]]};
+function grade(p){const L=ENDMSG[learnerTier()];return pick(L[p>=90?0:p>=70?1:p>=50?2:3])}
 function srcBtn(it){if(!it.ref||!DOC[it.ref.d])return `<span class="src">Source : ${esc(it.source)}</span>`;
   return `<button class="srcbtn" data-src="${esc(it._id)}">${I.doc}<span>Voir dans le référentiel · ${esc(DOC[it.ref.d].t)}, p. ${it.ref.p}</span></button>`}
 function bindSrc(root=app){root.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{const it=BYID[b.dataset.src];openDoc(it.ref.d,it.ref.p,termsFor(it))})}
@@ -572,7 +597,7 @@ const GBY=Object.fromEntries(GR.map(g=>[g[0],g]));
 function gradeSvg(code,cls,serv){const g=GBY[code];const W=60,H=52;let inner="";const col={r:"#d0412b",y:"#e2d97f",w:"#ffffff",g:"#e2d97f",s:"#f4f4f4"};
  if(serv){const sv=SERV.find(x=>x[0]===serv[0]);const n=serv[1];inner+=`<rect x="0" y="4" width="${W}" height="6" fill="${sv[2]}"/><rect x="0" y="${H-10}" width="${W}" height="6" fill="${sv[2]}"/>`;
   const top=13,bot=H-13,h=(bot-top-(n-1)*2)/n;for(let i=0;i<n;i++)inner+=`<rect x="4" y="${top+i*(h+2)}" width="${W-8}" height="${h}" fill="${col.g}"/>`}
- else if(Array.isArray(g[3])){const L=g[3];const sw=8,gap=4,tot=L.length*sw+(L.length-1)*gap,x0=(W-tot)/2+6;
+ else if(Array.isArray(g[3])){const L=g[3];const sw=L.length>=4?7:8,gap=L.length>=4?3:4,tot=L.length*sw+(L.length-1)*gap,x0=(W-tot-14)/2; // centré : le galon penche de 14 px
   L.forEach((c,i)=>{const x=x0+i*(sw+gap);const pts=`${x},${H-6} ${x+sw},${H-6} ${x+sw+14},6 ${x+14},6`;
    if(c==="ye")inner+=`<polygon points="${pts}" fill="#d0412b"/><polygon points="${x+2},${H-6} ${x+sw-2},${H-6} ${x+sw+12},6 ${x+16},6" fill="#e2d97f"/>`;else inner+=`<polygon points="${pts}" fill="${col[c]}"/>`})}
  else if(g[3].h){const L=g[3].h;const hh=L.length===1?10:8,tot=L.length*hh+(L.length-1)*2,y0=(H-tot)/2;
