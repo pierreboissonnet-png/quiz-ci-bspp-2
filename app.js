@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.1.2";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.1.3";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 function alog(k,v,d){try{logBuf.push({t:Date.now(),k:String(k).slice(0,16),v:String(v==null?"":v).slice(0,60),d:d==null?"":(typeof d==="string"?d:JSON.stringify(d)).slice(0,400)});if(logBuf.length>400)logBuf=logBuf.slice(-400);store.set("logBuf",logBuf);
  clearTimeout(logT);logT=setTimeout(logFlush,logBuf.length>=50?500:20000)}catch(e){}}
@@ -393,7 +393,7 @@ function viewRevise(){
   app.innerHTML=`${backLink()}<h1 class="big">Réviser</h1><p class="sub">Toutes les questions avec leur réponse et le lien vers le référentiel.</p>
    <input class="search" id="rq" type="search" placeholder="Rechercher : VSAV, 4C-N, plan rouge…" value="${esc(revQ)}">
    <div class="seg" style="margin:12px 0">${Object.keys(lab).map(k=>`<button data-rt="${k}" aria-pressed="${k===revTab}">${lab[k]}</button>`).join("")}</div><div id="rl"></div>`;
-  const draw=()=>{const qn=norm(revQ);const list=ALL.filter(x=>(revTab==="marks"?!!marks[x._id]:x._k===revTab)&&(!qn||norm(JSON.stringify([x.q,x.choices,x.explication,x.recto,x.verso,x.titre,x.etapes,x.situation,x.questions])).includes(qn))).slice(0,150);if(revTab==="marks")list.sort((a,b)=>marks[b._id]-marks[a._id]);
+  const draw=()=>{const qn=norm(revQ);const list=(revTab==="marks"?Object.keys(marks).map(id=>BYID[id]).filter(Boolean):ALL.filter(x=>x._k===revTab)).filter(x=>(!qn||norm(JSON.stringify([x.q,x.choices,x.explication,x.recto,x.verso,x.titre,x.etapes,x.situation,x.questions])).includes(qn))).slice(0,150);if(revTab==="marks")list.sort((a,b)=>marks[b._id]-marks[a._id]);
     $("#rl").innerHTML=(revTab==="marks"&&list.length?`<p class="small" style="margin:0 4px 10px">Les éléments que tu as marqués pendant les quiz, avec la réponse et le référentiel. Touche « J'ai compris » pour retirer le marqueur.</p>`:"")+list.map(it=>{let body="";
       const KL={qcm:"QCM",vf:"Vrai/faux",flashcards:"Mémo",ordre:"Séquence",cas:"Cas pratique"};
       if(it._k==="qcm")body=`<b>${esc(it.q)}</b><div class="a">${LETTERS[it.answer]}. ${esc(it.choices[it.answer])}</div><div class="e">${esc(it.explication)}</div>`;
@@ -405,6 +405,8 @@ function viewRevise(){
       return `<div class="card recap" style="margin-bottom:10px;display:block"><div class="qhead">${body.match(/^<b>.*?<\/b>/)[0]}${markBtn(it._id,false)}</div>${body.replace(/^<b>.*?<\/b>/,"")}${srcBtn(it)}</div>`}).join("")||`<p class="sub">${revTab==="marks"?"Aucune question marquée. Pendant un quiz, touche le drapeau « Marquer » sur une question que tu veux revoir plus tard.":"Aucun résultat."}</p>`;bindSrc();
     $("#rl").querySelectorAll("[data-retry]").forEach(b=>b.onclick=()=>runQuiz([BYID[b.dataset.retry]],"review",true,()=>{go("revise")}))};
   draw();
+  // les questions marquées au niveau Sapeur ne sont connues qu'une fois ses questions chargées
+  if(Object.keys(marks).some(id=>!BYID[id])&&typeof loadSimple==="function")loadSimple().then(()=>{if(tab==="revise"&&$("#rl"))draw()}).catch(()=>{});
   app.querySelectorAll("[data-rt]").forEach(b=>b.onclick=()=>{revTab=b.dataset.rt;app.querySelectorAll("[data-rt]").forEach(x=>x.setAttribute("aria-pressed",x===b));draw()});
   let to;$("#rq").oninput=e=>{revQ=e.target.value;clearTimeout(to);to=setTimeout(draw,180)};
 }
