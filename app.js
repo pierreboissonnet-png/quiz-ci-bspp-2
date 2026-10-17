@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.1.6";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.1.7";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 function alog(k,v,d){try{logBuf.push({t:Date.now(),k:String(k).slice(0,16),v:String(v==null?"":v).slice(0,60),d:d==null?"":(typeof d==="string"?d:JSON.stringify(d)).slice(0,400)});if(logBuf.length>400)logBuf=logBuf.slice(-400);store.set("logBuf",logBuf);
  clearTimeout(logT);logT=setTimeout(logFlush,logBuf.length>=50?500:20000)}catch(e){}}
@@ -157,7 +157,7 @@ window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPro
 const isStandalone=()=>window.matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
 const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 function installBanner(){if(isStandalone()||store.get("hideInstall",false))return"";
-  return `<div class="install"><img src="icon-180.png" alt=""><div><b>Installer l'appli</b><span>Ajoute le quiz à ton écran d'accueil pour l'ouvrir en plein écran, même hors réseau.</span></div><button class="btn small" id="installBtn">Ajouter</button></div>`}
+  return `<div class="install"><img src="casque-180.png" alt=""><div><b>Installer l'appli</b><span>Ajoute le quiz à ton écran d'accueil pour l'ouvrir en plein écran, même hors réseau.</span></div><button class="btn small" id="installBtn">Ajouter</button></div>`}
 function bindInstall(){const b=$("#installBtn");if(!b)return;b.onclick=async()=>{
   if(deferredPrompt){deferredPrompt.prompt();const r=await deferredPrompt.userChoice.catch(()=>null);deferredPrompt=null;if(r&&r.outcome==="accepted")viewProfile();return}
   const ios=isIOS();const safari=ios&&!/crios|fxios|edgios|gsa|fban|fbav|instagram/i.test(navigator.userAgent);

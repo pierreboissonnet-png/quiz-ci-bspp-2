@@ -1,4 +1,4 @@
-const V="quiz-ci-3.1.6";const SHELL=["./","index.html","style.css","app.js","boot.js","logo-bspp.png","logo-crf.png","manifest.webmanifest","icon-180.png","icon-192.png","icon-512.png","pdfjs/pdf.min.js","pdfjs/pdf.worker.min.js","leaflet/leaflet.js","leaflet/leaflet.css"];
+const V="quiz-ci-3.1.7";const SHELL=["./","index.html","style.css","app.js","boot.js","logo-bspp.png","logo-crf.png","manifest.webmanifest","casque-180.png","casque-192.png","casque-512.png","pdfjs/pdf.min.js","pdfjs/pdf.worker.min.js","leaflet/leaflet.js","leaflet/leaflet.css"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL)));self.skipWaiting()});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==V&&x!=="quiz-ci-docs").map(x=>caches.delete(x)))));self.clients.claim()});
 self.addEventListener("fetch",e=>{const r=e.request;if(r.method!=="GET"||r.headers.has("range"))return;const u=new URL(r.url);if(u.origin!==location.origin||u.pathname.includes("/api/"))return;
