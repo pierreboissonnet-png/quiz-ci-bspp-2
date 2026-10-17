@@ -361,8 +361,9 @@ async function handler(req) {
       if (route === "admin/member" && req.method === "PUT") {
         const t = await st.get("p/" + clean(body.target, 40), { type: "json" });
         if (!t) return json({ error: "Membre introuvable." }, 404);
-        if (t.email === SUPER && body.action !== "reset") return json({ error: "Le super administrateur ne peut pas être modifié." }, 403);
-        if (isAdmin(t, cfg) && !superMe && t.id !== me.id) return json({ error: "Seul le super administrateur peut modifier un administrateur." }, 403);
+        const fun = body.action === "fire" || body.action === "unfire"; // le mode On Fire peut viser tout le monde, super admin compris
+        if (!fun && t.email === SUPER && body.action !== "reset") return json({ error: "Le super administrateur ne peut pas être modifié." }, 403);
+        if (!fun && isAdmin(t, cfg) && !superMe && t.id !== me.id) return json({ error: "Seul le super administrateur peut modifier un administrateur." }, 403);
         switch (body.action) {
           case "reset": t.stats = emptyStats(); t.resetAt = Date.now(); await st.setJSON("u/" + t.id, { v: 1, resetAt: t.resetAt }); break;
           case "block": t.blocked = true; break;

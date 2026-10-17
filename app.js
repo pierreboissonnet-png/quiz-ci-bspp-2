@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="v48";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="v49";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 function alog(k,v,d){try{logBuf.push({t:Date.now(),k:String(k).slice(0,16),v:String(v==null?"":v).slice(0,60),d:d==null?"":(typeof d==="string"?d:JSON.stringify(d)).slice(0,400)});if(logBuf.length>400)logBuf=logBuf.slice(-400);store.set("logBuf",logBuf);
  clearTimeout(logT);logT=setTimeout(logFlush,logBuf.length>=50?500:20000)}catch(e){}}
@@ -576,9 +576,10 @@ function viewHomeSimple(){
     <button class="tile" data-sm="vf"><span class="ic" style="background:#ff9f0a">${I.bolt}</span><b>Vrai ou faux ?</b><span>10 affirmations à trancher</span></button>
     <button class="tile" data-sm="doc"><span class="ic" style="background:#5e5ce6">${SEARCH_IC}</span><b>Devine le document</b><span>Quel document ouvrir pour…</span></button>
     <button class="tile" data-sm="mix"><span class="ic" style="background:#0a84ff">${I.cards}</span><b>Grand mélange</b><span>20 questions de tous les thèmes</span></button>
+    <button class="tile" data-sm="rbuild"><span class="ic" style="background:#ff375f">${RADIO_IC_T}</span><b>Jeu radio</b><span>Remets le message dans l'ordre</span></button>
     <button class="tile" data-sm="radio"><span class="ic" style="background:#0f1d36">${RADIO_IC_T}</span><b>Messages radio</b><span>Construis tes messages pas à pas</span></button>
     <button class="tile" data-sm="carte"><span class="ic" style="background:#1f9d55">${MAP_IC_T}</span><b>Carte des secteurs</b><span>Les CS, leurs adresses, leur Golf</span></button>
-    <button class="tile wide" data-sm="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><div><b>Les grades</b><br><span>Reconnais les galons, du sapeur au général</span></div></button>
+    <button class="tile" data-sm="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><b>Les grades</b><span>Reconnais les galons</span></button>
    </div>
    <div class="sect">Thèmes du quiz</div><div class="chips">${Object.entries(Q.themes).map(([k,l])=>`<button class="chip" data-st="${k}" aria-pressed="${sSel.has(k)}">${esc(l)}</button>`).join("")}</div>
    <div class="sect">Cette semaine</div>
@@ -591,7 +592,7 @@ function viewHomeSimple(){
   const back=()=>go("home");
   app.querySelectorAll("[data-sm]").forEach(b=>b.onclick=()=>({quiz:()=>runSimple(fresh(pool()).slice(0,10),"Quiz découverte"),vf:()=>runSimple(fresh(pool("vf")).slice(0,10),"Vrai ou faux ?"),
    doc:()=>runSimple(docQuestions(10),"Devine le document"),mix:()=>runSimple(fresh(Q.items).slice(0,16).concat(docQuestions(4)).sort(()=>Math.random()-.5),"Grand mélange"),
-   radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(false)})[b.dataset.sm]());
+   radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(false),rbuild:()=>runRadioBuild(()=>go("home"))})[b.dataset.sm]());
   $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
  }).catch(()=>{const b=$("#sbody");if(b)b.innerHTML=`<div class="card"><p style="margin:0">Impossible de charger les questions du niveau Sapeur. Vérifie ta connexion.</p><button class="btn sec full" style="margin-top:12px" id="sRetry">Réessayer</button></div>`;const r=$("#sRetry");if(r)r.onclick=viewHomeSimple})}
 function runSimple(qs,title){if(!qs.length)return;let i=0,score=0,combo=0,bestCombo=0;const missed=[];const back=()=>go("home");const before=discovered();
@@ -1012,7 +1013,10 @@ function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
  if(radioTab==="build")body=`<div class="list">${Object.entries(RB).map(([k,b])=>`<button class="row" data-rb="${k}"><span class="ic" style="background:${b.c}">${k==="rentree"?I.doc:k==="danger"?I.siren:RADIO_IC}</span><span class="tx"><b>${esc(b.t)}</b><span>${esc(b.s)}</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div>
    <div class="card" style="margin-top:14px"><b>Règles d'or</b><ul class="rrules"><li>Fréquence <b>SGAP-OPS</b> du groupement où tu te trouves.</li><li>Vérifie qu'aucun échange n'est en cours avant de transmettre.</li><li>Appuie sur la pédale, attends environ <b>3 secondes</b> (relais) puis parle.</li><li>Interlocuteur principal : le CSO (« Golf »). Radio en panne : téléphone au CSO, à défaut au PVO.</li><li>La victime d'abord : mieux vaut un message imparfait qu'une victime délaissée.</li></ul><button class="srcbtn" data-gp="8">${I.doc}<span>Guide pratique CI, p. 8-16</span></button></div>`;
  else if(radioTab==="train"){const st=store.get("radioBest",null);
-  body=`<div class="card"><h2 style="font-size:20px;margin:0 0 6px">Simulateur radio</h2><p class="small" style="margin:0 0 12px">10 situations tirées au hasard : statut à passer, moyen à demander, bon message à transmettre, réponse au CSO, CRI… Chaque bonne réponse rapporte des points au classement.</p>
+  const bb=store.get("radioBuildBest",null);
+  body=`<div class="card"><h2 style="font-size:20px;margin:0 0 6px">Construis le message</h2><p class="small" style="margin:0 0 12px">Remets les morceaux du message radio dans le bon ordre : appel, demande de moyens, renseignement, statuts, message de rentrée… Idéal pour débuter.</p>
+   ${bb!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${bb}/8</b></p>`:""}<button class="btn full" id="buildGo">Jouer</button></div>
+   <div class="card" style="margin-top:12px"><h2 style="font-size:20px;margin:0 0 6px">Simulateur radio</h2><p class="small" style="margin:0 0 12px">10 situations tirées au hasard : statut à passer, moyen à demander, bon message à transmettre, réponse au CSO, CRI… Chaque bonne réponse rapporte des points au classement.</p>
    ${st!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${st}/10</b></p>`:""}<button class="btn full" id="simGo">Commencer</button></div>
    <div class="card" style="margin-top:12px"><b>Écouter les messages</b><p class="small" style="margin:6px 0 0">Dans le constructeur et le simulateur, le bouton « Écouter » lit le message à voix haute : pratique pour s'habituer au rythme de la phonie.</p></div>`}
  else body=`<div class="list">${STATUTS.map(s=>`<div class="row"><span class="stc ${["3","4"].includes(s[0])?"off":""}">${s[0]}</span><span class="tx"><b>${esc(s[1])}</b><span>${esc(s[2])}</span></span></div>`).join("")}</div>
@@ -1024,7 +1028,7 @@ function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
  app.querySelectorAll("[data-rt]").forEach(b=>b.onclick=()=>{radioTab=b.dataset.rt;store.set("radioTab",radioTab);viewRadio()});
  app.querySelectorAll("[data-rb]").forEach(b=>b.onclick=()=>runBuilder(b.dataset.rb));
  app.querySelectorAll("[data-gp]").forEach(b=>b.onclick=()=>openDoc("guide",+b.dataset.gp,["message","radio"]));
- const sg=$("#simGo");if(sg)sg.onclick=runRadioSim;
+ const sg=$("#simGo");if(sg)sg.onclick=runRadioSim;const bg=$("#buildGo");if(bg)bg.onclick=()=>runRadioBuild();
  if(!radioId.num&&!store.get("ridAsked",false)){store.set("ridAsked",true);indicSheet()}
 }
 function phonieHtml(r,pvo){if(!r.lines.length)return "";
@@ -1066,6 +1070,46 @@ function criPicker(cb){let q="";sheet(`<h2>Code CRI</h2><input class="search" id
   $("#cpl").innerHTML=`<div class="list">${list.slice(0,60).map(c=>`<button class="row" data-cp="${esc(c[0])}"><span class="crc">${esc(c[0])}</span><span class="tx"><b>${esc(c[1])}</b>${c[3]?`<span>${esc(c[3])}</span>`:""}</span></button>`).join("")||`<div class="row"><span class="tx"><span>Aucun code trouvé.</span></span></div>`}</div>`;
   $("#cpl").querySelectorAll("[data-cp]").forEach(b=>b.onclick=()=>{closeSheet();cb(b.dataset.cp)})};
  draw();let to;$("#cpq").oninput=e=>{q=e.target.value;clearTimeout(to);to=setTimeout(draw,120)}}
+
+/* ---- Jeu « Construis le message » : remettre les morceaux d'un message radio dans l'ordre ---- */
+function buildScenarios(){const me_=rMe(),g=rGolf(),h=rHour(),num=radioId.num||"XXX";const A=pick(R_ADR),H=pick(R_HOP);
+ return [
+ {id:"appel",sit:`Tu veux appeler le CSO de ton groupement (${g}).`,parts:[g,`ici la ${me_},`,"parlez."],e:"On appelle d'abord son interlocuteur (le Golf), on s'annonce, puis « parlez » pour lui donner la parole.",p:10},
+ {id:"depart",sit:`Mode dégradé : tu dois annoncer ton départ pour un malaise au ${A}.`,parts:[`${g},`,`la ${me_}`,"partie","pour malaise,",`${A}.`],e:"Statut 1 en phonie : Golf, indicatif, « partie », le motif puis l'adresse.",p:9},
+ {id:"presente",sit:"Mode dégradé : tu arrives sur les lieux.",parts:[`${g},`,`la ${me_}`,"se présente."],e:"Statut 2 en phonie : Golf, ton indicatif, « se présente ».",p:9},
+ {id:"hopital",sit:`Tu pars vers l'hôpital ${H} avec la victime (mode dégradé).`,parts:[`${g},`,`la ${me_}`,"se dirige vers l'hôpital",`${H}.`],e:"Statut 5 en phonie : « se dirige vers l'hôpital » + nom de l'hôpital.",p:9},
+ {id:"police",sit:`Une personne en état d'ébriété sur la voie publique au ${A} : tu demandes la police.`,parts:[`De la ${me_},`,"je demande Police,",`${A},`,"voie publique,","personne en état d'ébriété,",`${g} parlez.`],e:"Règle SAM : Service (Police), Adresse, Motif, puis « Golf, parlez ».",p:10},
+ {id:"ep",sit:`Porte fermée, victime qui ne répond pas au ${A} : tu demandes un engin pompe et la police.`,parts:[`De la ${me_},`,"je demande un engin pompe","et Police,",`${A},`,"ouverture de porte,",`${g} parlez.`],e:"Les moyens BSPP passent avant les services publics, puis l'adresse et le motif.",p:10},
+ {id:"rens",sit:`Homme en arrêt cardio-respiratoire au ${A}, tu attends l'équipe médicale.`,parts:[`De la ${me_},`,"secours à un homme en arrêt cardio-respiratoire,","urgence absolue,",`${A},`,"et attendons équipe médicale,",`${g} parlez.`],e:"Message de renseignement : nature, urgence, adresse, puis « et attendons équipe médicale ».",p:13},
+ {id:"pres",sit:"La police que tu avais demandée arrive sur place.",parts:[`De la ${me_} :`,"la police se présente.",`${g} parlez.`],e:"Principe du tiroir : on présente le moyen non BSPP qu'on avait demandé.",p:12},
+ {id:"trafic",sit:`Tu es bloqué dans la circulation place de Clichy et ne pourras pas arriver à temps au ${A}.`,parts:[`De la ${me_} :`,"faites partir un autre engin",`${A}`,"pour malaise ;",`${me_} bloquée dans la circulation`,"place de Clichy,",`${g} parlez.`],e:"On demande un autre engin pour l'intervention, puis on signale où l'on est bloqué.",p:20},
+ {id:"collation",sit:`Le CSO collationne ta demande de police : « … message reçu à ${h} ». Que réponds-tu ?`,parts:[`${h},`,"correct,","et attendons."],e:"Service public seul : on confirme l'heure, « correct », « et attendons ».",p:10},
+ {id:"rentree",sit:`Message de rentrée au PVO : bilan avec contact médecin, homme de 45 ans UR transporté au SAU ${H.replace(/^Hôpital /,"")}, pas de dégâts, maladie.`,parts:["1/ Bilan, contact médecin coordinateur",`2/ Un homme de 45 ans, UR, transporté par CRF ${num} vers SAU ${H.replace(/^Hôpital /,"")}`,"5/ Néant","CRI 320"],e:"Les points dans l'ordre (1 actions, 2 victimes, 5 dégâts), puis le CRI.",p:35},
+ {id:"danger",sit:"Une personne seule devient agressive envers ton équipage : tu demandes la police.",parts:[`De la ${me_},`,"je demande Police,",`${A},`,"personne agressive envers les secours,",`${g} parlez.`],e:"Les mots choisis comptent : « personne agressive envers les secours » déclenche une patrouille.",p:15}]}
+function runRadioBuild(back){back=back||(()=>{radioTab="train";store.set("radioTab","train");go("radio")});
+ const all=buildScenarios();const qs=fresh(all.map(x=>({...x,_id:"s:rb:"+x.id}))).slice(0,8);let i=0,score=0;cleanup=stopSpeak;
+ const show=()=>{const q=qs[i];const pool=shuffle(q.parts.map((t,k)=>({t,k})));const chosen=[];let done=false;
+  const draw=()=>{app.innerHTML=push("Construis le message",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
+    <div class="qhead"><span class="qtag">Jeu radio${radioId.num?"":" · indicatif à renseigner"}</span></div><p class="qtext rbsit">${esc(q.sit)}</p>
+    <div class="sect" style="margin-top:6px">Ton message</div><div class="rbmsg ${done?(chosen.map(c=>c.t).join("|")===q.parts.join("|")?"good":"bad"):""}">${chosen.length?chosen.map((c,j)=>`<button class="rbp in" data-out="${j}" ${done?"disabled":""}>${esc(c.t)}</button>`).join(""):`<span class="small">Touche les morceaux ci-dessous dans le bon ordre.</span>`}</div>
+    ${done?"":`<div class="sect">Morceaux</div><div class="rbpool">${pool.map((p,j)=>chosen.includes(p)?"":`<button class="rbp" data-in="${j}">${esc(p.t)}</button>`).join("")}</div>
+    <div class="actions"><button class="btn sec" id="rbHint">Indice</button><button class="btn" id="rbOk" ${chosen.length===q.parts.length?"":"disabled"} style="flex:1">Valider</button></div>`}<div id="after"></div>`;
+   bindBack(()=>{stopSpeak();back()});
+   app.querySelectorAll("[data-in]").forEach(b=>b.onclick=()=>{chosen.push(pool[+b.dataset.in]);draw()});
+   app.querySelectorAll("[data-out]").forEach(b=>b.onclick=()=>{chosen.splice(+b.dataset.out,1);draw()});
+   const hi=$("#rbHint");if(hi)hi.onclick=()=>{let n=0;while(n<chosen.length&&chosen[n].k===n)n++;chosen.length=n;const nx=pool.find(p=>p.k===n);if(nx)chosen.push(nx);toast("Le morceau suivant est placé.");draw()};
+   const ok=$("#rbOk");if(ok)ok.onclick=()=>{done=true;const good=chosen.map(c=>c.t).join("|")===q.parts.join("|");if(good)score++;record(q._id,good);draw();
+    const full=q.parts.join(" ");$("#after").innerHTML=`<div class="fb ${good?"good":"bad"}"><b>${cheer(good)}</b>${good?"":`<div class="rbright">${esc(full)}</div>`}${esc(q.e)}
+     <div style="display:flex;gap:14px;flex-wrap:wrap"><button class="srcbtn" id="say">${SPK}<span>Écouter</span></button><button class="srcbtn" id="gsrc">${I.doc}<span>Guide pratique CI, p. ${q.p}</span></button></div></div>
+     <div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Message suivant":"Voir le score"}</button></div>`;
+    $("#say").onclick=()=>speak(full);$("#gsrc").onclick=()=>openDoc("guide",q.p,["message"]);
+    const n=$("#next");n.onclick=()=>{stopSpeak();i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})}};
+  draw()};
+ const end=()=>{const b=store.get("radioBuildBest",null);if(b==null||score>b)store.set("radioBuildBest",score);setTimeout(syncSoon,50);
+  app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${grade(score/qs.length*100)}</div><p class="small">messages parfaitement construits · +${score*5} points</p></div>
+   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="toB">Constructeur</button></div>`;
+  bindBack(back);$("#again").onclick=()=>runRadioBuild(back);$("#toB").onclick=()=>{radioTab="build";store.set("radioTab","build");go("radio")};window.scrollTo(0,0)};
+ show()}
 
 /* ---- Simulateur ---- */
 const R_ADR=["12 rue Ordener","4 rue Edmond Rousse","30 quai de la Rapée","2 boulevard Barbès","15 avenue de Clichy","8 place de la Nation","40 rue Marcadet","1 rue de Rivoli"];
