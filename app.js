@@ -31,8 +31,10 @@ if(!cntDev){cntDev={};cntDev[DEV]=store.get("cnt",{points:0,answered:0,correct:0
 if(!cntDev[DEV])cntDev[DEV]={points:0,answered:0,correct:0};
 let cnt=cntDev[DEV];
 function cntTotal(){const t={points:0,answered:0,correct:0};Object.values(cntDev).forEach(c=>{t.points+=c.points||0;t.answered+=c.answered||0;t.correct+=c.correct||0});return t}
-function record(id,ok,bonus){if(typeof syncSoon==="function")syncSoon(6000);cnt.answered++;if(ok){cnt.correct++;cnt.points+=10+(bonus||0)}store.set("cntDev",cntDev);const h=(hist[id]||[]).concat(ok?1:0).slice(-5);hist[id]=h;histT[id]=Date.now();store.set("hist",hist);store.set("histT",histT);
-  if(ok){if(review.delete(id))store.set("review",[...review])}else{review.add(id);store.set("review",[...review])}
+// barème : questions simples ×0,5 (5 pts), questions expert ×2 (20 pts), radio et carte ×1 (10 pts)
+const ptsMult=id=>/^(s|doc):/.test(id)?.5:/^(radio|carte):/.test(id)?1:2;
+function record(id,ok,bonus){if(typeof syncSoon==="function")syncSoon(6000);cnt.answered++;if(ok){cnt.correct++;cnt.points+=Math.round((10+(bonus||0))*ptsMult(id))}store.set("cntDev",cntDev);const h=(hist[id]||[]).concat(ok?1:0).slice(-5);hist[id]=h;histT[id]=Date.now();store.set("hist",hist);store.set("histT",histT);
+  if(ok){if(review.delete(id))store.set("review",[...review])}else if(BYID[id]&&!/^(s|doc):/.test(id)){review.add(id);store.set("review",[...review])}
   const d=today();if(days[days.length-1]!==d){days.push(d);days=days.slice(-400);store.set("days",days)}}
 function setBest(mode,val){if(typeof best[mode]!=="number"||val>best[mode]){best[mode]=val;store.set("best",best)}}
 function known(id){const h=hist[id];if(!h||!h.length)return null;const l=h.slice(-2);return l.every(x=>x===1)||(h.length===1&&h[0]===1)}
@@ -144,7 +146,7 @@ const ST={ok:["Acquise","ok"],warn:["En cours","warn"],ko:["À travailler","ko"]
 function globalStats(){let n=0,ok=0;const by={ok:0,warn:0,ko:0,none:0};FICHES.forEach(f=>{const s=ficheStats(f.id);n+=s.n;ok+=s.ok;by[s.st]++});return{n,ok,by}}
 
 /* ============ Accueil ============ */
-function viewHome(){
+function viewHome(){if(level==="simple")return viewHomeSimple();
   const g=globalStats();const pct=g.n?Math.round(g.ok/g.n*100):0;const C=2*Math.PI*36;
   const w=isoWeek();const dd=defiDone[w];
   const todo=FICHES.map(f=>({f,s:ficheStats(f.id)})).filter(x=>x.s.st==="ko").sort((a,b)=>b.s.ko-a.s.ko)[0];
@@ -153,7 +155,7 @@ function viewHome(){
   const tile=(m,ic,col,t,s)=>`<button class="tile" data-m="${m}"><span class="ic" style="background:${col}">${ic}</span><b>${t}</b><span>${s}</span></button>`;
   app.innerHTML=`
    <div class="hello">${LOGOS}</div>
-   <h1 class="big">Quiz CI BSPP</h1><p class="sub">Parcours Chef d'Intervention en réseau de secours BSPP.</p>
+   <h1 class="big">Quiz CI BSPP</h1><p class="sub">Parcours Chef d'Intervention en réseau de secours BSPP.</p>${levelSwitch()}
    <div class="card summary"><div class="ring"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="36" fill="none" stroke="var(--card2)" stroke-width="9"/><circle cx="42" cy="42" r="36" fill="none" stroke="var(--ok)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct/100)}"/></svg><b>${pct}%</b></div>
      <div><div style="font-weight:600;margin-bottom:8px">Connaissances acquises</div><div class="kpis"><div class="kpi"><b>${streak()}</b><span>jours de suite</span></div><div class="kpi"><b>${g.by.ko}</b><span>fiches à travailler</span></div><div class="kpi"><b>${review.size}</b><span>à revoir</span></div></div></div></div>
    <div class="sect">Cette semaine</div>
@@ -179,7 +181,7 @@ function viewHome(){
    </div>
    <footer class="note">Questions tirées des référentiels du parcours CI BSPP (Guide pratique CI, BSP 112/115/118/200.2/200.20/300.16, MACA 2025-2026, eFiBi…) et, en bonus, du guide PSE CRF. En cas de doute, le référentiel en vigueur fait foi.</footer>
    <footer class="note" style="margin-top:10px"><b>Application non officielle.</b> Elle n'est ni éditée ni validée par la BSPP ni par la Croix-Rouge française et sert uniquement à s'entraîner et à réviser. Développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française.</footer>`;
-  app.querySelectorAll(".chip[data-t]").forEach(c=>c.onclick=()=>{const id=c.dataset.t;selected.has(id)?selected.delete(id):selected.add(id);if(!selected.size)selected.add(id);store.set("themes",[...selected]);c.setAttribute("aria-pressed",selected.has(id))});
+  bindLevel();app.querySelectorAll(".chip[data-t]").forEach(c=>c.onclick=()=>{const id=c.dataset.t;selected.has(id)?selected.delete(id):selected.add(id);if(!selected.size)selected.add(id);store.set("themes",[...selected]);c.setAttribute("aria-pressed",selected.has(id))});
   $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
   const ds=$("#defiShare");if(ds)ds.onclick=()=>shareText(`Défi CI BSPP ${w} : ${dd.score}/20 en ${fmtTime(dd.ms)}. À toi de jouer !`,$("#defiMsg"));
   app.querySelectorAll("[data-fiche]").forEach(b=>b.onclick=()=>reviseFiche(b.dataset.fiche));
@@ -449,6 +451,85 @@ function viewCri(){
   app.querySelectorAll("[data-cf]").forEach(b=>b.onclick=()=>{criFam=b.dataset.cf;app.querySelectorAll("[data-cf]").forEach(x=>x.setAttribute("aria-pressed",x===b));draw()});
   let to;$("#cq").oninput=e=>{criQ=e.target.value;clearTimeout(to);to=setTimeout(draw,150)};
 }
+
+/* ============ Mode simple (découverte) ============ */
+let level=store.get("level","expert");
+const SPARK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
+const SEARCH_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+function levelSwitch(){return `<div class="lvl"><div class="seg"><button data-lvl="simple" aria-pressed="${level==="simple"}">Mode simple <small>×0,5</small></button><button data-lvl="expert" aria-pressed="${level==="expert"}">Mode expert <small>×2</small></button></div></div>`}
+function bindLevel(){app.querySelectorAll("[data-lvl]").forEach(b=>b.onclick=()=>{if(level===b.dataset.lvl)return;level=b.dataset.lvl;store.set("level",level);viewHome();window.scrollTo(0,0)})}
+let SIMPLE=null,simpleP=null;
+function loadSimple(){if(SIMPLE)return Promise.resolve(SIMPLE);if(simpleP)return simpleP;
+ simpleP=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="simple.js";sc.onload=()=>{const Q=window.QSIMPLE;
+   Q.items.forEach(it=>{it._id=it.id;it._k=it.k;it._t={id:"s-"+it.g,theme:Q.themes[it.g]};SHORT["s-"+it.g]=Q.themes[it.g];BYID[it.id]=it});SIMPLE=Q;res(Q)};
+  sc.onerror=()=>{simpleP=null;rej()};document.body.appendChild(sc)});return simpleP}
+let sSel=new Set(store.get("sThemes",["guide","ssuap","acr","efibi","bsp"]));
+// documents découverts : une bonne réponse sur une question simple qui s'y rapporte
+function discovered(){const set=new Set();if(!SIMPLE)return set;Object.entries(hist).forEach(([id,h])=>{if(!h.includes(1))return;
+  if(id.startsWith("doc:"))set.add(id.split(":")[1]);else if(id.startsWith("s:")&&BYID[id])set.add(BYID[id].ref.d)});return set}
+function docQuestions(n){const Q=SIMPLE;const docs=DOCS.filter(d=>Q.fam[d.id]);
+ return shuffle(Q.docq).slice(0,n).map(x=>{const fam=Q.fam[x.d];const others=shuffle(docs.filter(d=>d.id!==x.d&&Q.fam[d.id]!==fam)).slice(0,2);
+  const opts=shuffle([x.d,...others.map(d=>d.id)]);const D=DOC[x.d];
+  return {_id:"doc:"+x.d,_k:"qcm",_t:{id:"s-doc",theme:"Devine le document"},q:x.q+" Quel document ouvres-tu ?",choices:opts.map(id=>DOC[id].t),answer:opts.indexOf(x.d),
+   explication:`C'est « ${D.t} »${D.n>1?` (${D.n} pages)`:""}. Touche « Voir dans le référentiel » pour le feuilleter.`,ref:{d:x.d,p:x.p}}})}
+const CHEERS=["Bien joué !","Exact !","Bravo !","Dans le mille !","Parfait !","Yes !"],OOPS=["Pas tout à fait…","Raté, mais tu viens d'apprendre quelque chose.","Presque !","Non, mais retiens bien celle-là."];
+function viewHomeSimple(){
+ app.innerHTML=`<div class="hello">${LOGOS}</div><h1 class="big">Quiz CI BSPP</h1><p class="sub">Découvre les documents du parcours CI en t'amusant.</p>${levelSwitch()}<div id="sbody"><div class="loading">Chargement…</div></div>`;
+ bindLevel();
+ loadSimple().then(Q=>{if(tab!=="home"||level!=="simple"||!$("#sbody"))return;const disc=discovered();const tot=DOCS.filter(d=>Q.fam[d.id]).length;const nd=[...disc].filter(d=>Q.fam[d]).length;
+  const sv=Object.keys(hist).filter(id=>/^(s|doc):/.test(id));const sok=sv.filter(id=>hist[id][hist[id].length-1]===1).length;
+  const w=isoWeek(),dd=defiDone[w];
+  $("#sbody").innerHTML=`<div class="card disc"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>Documents découverts</b><span class="dnum">${nd}<small>/${tot}</small></span></div>
+    <div class="prog" style="height:10px;margin-top:10px"><i class="p1" style="width:${nd/tot*100}%"></i></div>
+    <p class="small" style="margin:8px 0 0">${nd?`Encore ${tot-nd} à découvrir. `:""}Un document est découvert dès que tu réussis une question qui s'y rapporte. ${sv.length?`${sok}/${sv.length} questions réussies.`:""}</p></div>
+   <div class="sect">Jouer</div>
+   <div class="tiles">
+    <button class="tile" data-sm="quiz"><span class="ic" style="background:#34c759">${SPARK}</span><b>Quiz découverte</b><span>10 questions faciles, 3 choix</span></button>
+    <button class="tile" data-sm="vf"><span class="ic" style="background:#ff9f0a">${I.bolt}</span><b>Vrai ou faux ?</b><span>10 affirmations à trancher</span></button>
+    <button class="tile" data-sm="doc"><span class="ic" style="background:#5e5ce6">${SEARCH_IC}</span><b>Devine le document</b><span>Quel document ouvrir pour…</span></button>
+    <button class="tile" data-sm="mix"><span class="ic" style="background:#0a84ff">${I.cards}</span><b>Grand mélange</b><span>20 questions de tous les thèmes</span></button>
+    <button class="tile" data-sm="radio"><span class="ic" style="background:#0f1d36">${RADIO_IC_T}</span><b>Messages radio</b><span>Construis tes messages pas à pas</span></button>
+    <button class="tile" data-sm="carte"><span class="ic" style="background:#1f9d55">${MAP_IC_T}</span><b>Carte des secteurs</b><span>Les CS, leurs adresses, leur Golf</span></button>
+   </div>
+   <div class="sect">Thèmes du quiz</div><div class="chips">${Object.entries(Q.themes).map(([k,l])=>`<button class="chip" data-st="${k}" aria-pressed="${sSel.has(k)}">${esc(l)}</button>`).join("")}</div>
+   <div class="sect">Cette semaine</div>
+   <div class="defi"><div class="wk">DÉFI ${w}</div><h2>Défi de la semaine</h2><p>Le défi est en mode expert (×2) : tente-le quand tu te sens prêt.</p>${dd?`<p class="done">Ton premier essai : <b>${dd.score}/20</b></p>`:""}<div class="actions" style="margin-top:0"><button class="btn" id="defiGo">${dd?"Rejouer":"Relever le défi"}</button></div></div>
+   ${homeBoard()}
+   <div class="card" style="margin-top:14px"><b>Comment ça marche ?</b><p class="small" style="margin:6px 0 0">En mode simple, chaque bonne réponse rapporte 5 points (×0,5). En mode expert, 20 points (×2). Après chaque question, « Voir dans le référentiel » t'ouvre la bonne page du document : c'est le meilleur moyen de les découvrir.</p></div>
+   <footer class="note" style="margin-top:10px"><b>Application non officielle.</b> Elle n'est ni éditée ni validée par la BSPP ni par la Croix-Rouge française et sert uniquement à s'entraîner et à réviser. Développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française.</footer>`;
+  const pool=k=>Q.items.filter(x=>sSel.has(x.g)&&(!k||x.k===k));
+  app.querySelectorAll("[data-st]").forEach(c=>c.onclick=()=>{const k=c.dataset.st;sSel.has(k)?sSel.delete(k):sSel.add(k);if(!sSel.size)sSel.add(k);store.set("sThemes",[...sSel]);c.setAttribute("aria-pressed",sSel.has(k))});
+  const back=()=>go("home");
+  app.querySelectorAll("[data-sm]").forEach(b=>b.onclick=()=>({quiz:()=>runSimple(shuffle(pool()).slice(0,10),"Quiz découverte"),vf:()=>runSimple(shuffle(pool("vf")).slice(0,10),"Vrai ou faux ?"),
+   doc:()=>runSimple(docQuestions(10),"Devine le document"),mix:()=>runSimple(shuffle(Q.items).slice(0,16).concat(docQuestions(4)).sort(()=>Math.random()-.5),"Grand mélange"),
+   radio:()=>go("radio"),carte:()=>go("carte")})[b.dataset.sm]());
+  $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
+ }).catch(()=>{const b=$("#sbody");if(b)b.innerHTML=`<div class="card"><p style="margin:0">Impossible de charger les questions du mode simple. Vérifie ta connexion.</p><button class="btn sec full" style="margin-top:12px" id="sRetry">Réessayer</button></div>`;const r=$("#sRetry");if(r)r.onclick=viewHomeSimple})}
+function runSimple(qs,title){if(!qs.length)return;let i=0,score=0,combo=0,bestCombo=0;const missed=[];const back=()=>go("home");const before=discovered();
+ const show=()=>{const q=qs[i];
+  const choices=q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`
+   :`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
+  app.innerHTML=push(title,`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
+   <div class="qhead"><span class="qtag">${esc(q._t.theme)}${q._k==="vf"?" · vrai ou faux":""}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span>${q._id.startsWith("doc:")?"":markBtn(q._id)}</div><p class="qtext">${esc(q.q)}</p>${choices}<div id="after"></div>`;
+  bindBack(back);
+  app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k;const correct=q._k==="qcm"?q.answer:(q.answer?1:0);const ok=k===correct;
+   if(ok){score++;combo++;bestCombo=Math.max(bestCombo,combo)}else{combo=0;missed.push(q)}record(q._id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
+   app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===correct)o.classList.add("good");else if(o===b)o.classList.add("bad")});
+   const D=DOC[q.ref.d];
+   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${pick(ok?CHEERS:OOPS)}${ok&&combo>=3?` Série de ${combo} !`:""}</b>${esc(q.explication)}
+     ${D?`<button class="srcbtn" id="sSrc">${I.doc}<span>Voir dans le référentiel : ${esc(D.t)}, p. ${q.ref.p}</span></button>`:""}</div>
+     <div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
+   const sb=$("#sSrc");if(sb)sb.onclick=()=>openDoc(q.ref.d,q.ref.p,tokens(q.q).slice(0,6));
+   const n=$("#next");n.onclick=()=>{i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})})};
+ const end=()=>{setTimeout(syncSoon,50);const after=discovered();const nw=[...after].filter(d=>!before.has(d)&&DOC[d]);const p=Math.round(score/qs.length*100);
+  app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${p>=90?"Excellent, passe en mode expert !":p>=70?"Très bien !":p>=50?"Bon début, continue !":"Chaque erreur t'apprend quelque chose."}</div>
+    <p class="small">+${score*5} points${bestCombo>=3?` · meilleure série : ${bestCombo}`:""}</p></div>
+   ${nw.length?`<div class="card"><b>Nouveaux documents découverts</b><div class="list" style="margin-top:8px">${nw.map(d=>`<button class="row" data-od="${d}"><span class="ic" style="background:var(--navy2)">${I.book}</span><span class="tx"><b>${esc(DOC[d].t)}</b><span>${DOC[d].n} page${DOC[d].n>1?"s":""} · ouvrir</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div></div>`:""}
+   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="home2">Accueil</button></div>
+   ${missed.length?`<div class="sect">À retenir</div><div class="recap">${missed.map(q=>`<div class="card"><b>${esc(q.q)}</b><div class="a">${esc(q._k==="qcm"?q.choices[q.answer]:(q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(q.explication)}</div></div>`).join("")}</div>`:""}`;
+  bindBack(back);$("#again").onclick=()=>runSimple(title==="Devine le document"?docQuestions(qs.length):shuffle(qs),title);$("#home2").onclick=back;
+  app.querySelectorAll("[data-od]").forEach(b=>b.onclick=()=>openDoc(b.dataset.od,1,[]));window.scrollTo(0,0)};
+ show()}
 
 /* ============ Messages radio ============ */
 const RADIO_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="12" height="13" rx="2.5"/><path d="M9 8 7 3"/><path d="M9.5 12h5M9.5 15h5"/><circle cx="12" cy="18.2" r=".6" fill="currentColor"/></svg>';
@@ -1078,7 +1159,7 @@ async function pollLogin(){const pl=store.get("pendingLogin",null);if(!pl||Date.
     profTab="moi";store.set("profTab",profTab);go("profile");if(j.isNew)profileSheet(true,true);else toast("Connecté : "+j.email);syncNow()}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&store.get("pendingLogin",null))startPoll()});
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3200)}
-async function clearProtected(){try{for(const k of await caches.keys()){const c=await caches.open(k);if(k==="quiz-ci-docs"){await caches.delete(k);continue}await c.delete("data.js");await c.delete("search.json");await c.delete("secteurs.json");for(const r of await c.keys()){if(/\/(data\.js|search\.json|secteurs\.json)$/.test(new URL(r.url).pathname))await c.delete(r)}}}catch(e){}}
+async function clearProtected(){try{for(const k of await caches.keys()){const c=await caches.open(k);if(k==="quiz-ci-docs"){await caches.delete(k);continue}await c.delete("data.js");await c.delete("search.json");await c.delete("secteurs.json");await c.delete("simple.js");for(const r of await c.keys()){if(/\/(data\.js|search\.json|secteurs\.json|simple\.js)$/.test(new URL(r.url).pathname))await c.delete(r)}}}catch(e){}}
 async function logout(){try{await syncNow()}catch(e){}try{await api("logout","POST",{})}catch(e){}applyProgress({resetAt:0});store.del("progOwner");me=null;saveMe();board=null;store.del("board");await clearProtected();location.replace(location.pathname)}
 
 /* ---- affichage */
@@ -1262,6 +1343,7 @@ function memberSheet(m){const A=adminData;const canAdmin=A.superAdmin&&m.email&&
 /* ============ Démarrage ============ */
 const LOGOS=window.QLOGOS||"";
 app.addEventListener("click",e=>{if(e.target.closest("#hbTeams")){profTab="equipe";store.set("profTab",profTab);boardScope="teams";store.set("boardScope",boardScope);go("profile");return}if(e.target.closest("#hbGo")){profTab="equipe";store.set("profTab",profTab);go("profile")}});
+setTimeout(()=>loadSimple().then(()=>{if(tab==="revise"&&!document.body.classList.contains("pushed"))viewRevise()}).catch(()=>{}),1500);
 if(me&&me.id){const o=store.get("progOwner",null);if(o&&o!==me.id)applyProgress({resetAt:0});store.set("progOwner",me.id)}
 go(tab);if(store.get("welcome",false)){store.del("welcome");setTimeout(()=>{profTab="moi";go("profile");profileSheet(true,true)},300)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)loadBoard(true).then(syncSoon);
 if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});

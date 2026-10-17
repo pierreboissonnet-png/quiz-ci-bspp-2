@@ -3,7 +3,7 @@
 import { next } from "@vercel/functions";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const config = { matcher: ["/data.js", "/search.json", "/secteurs.json", "/pdf/:path*"], runtime: "nodejs" };
+export const config = { matcher: ["/data.js", "/search.json", "/secteurs.json", "/simple.js", "/pdf/:path*"], runtime: "nodejs" };
 
 export default function middleware(req) {
   const secret = (process.env.SESSION_SECRET || "").trim();

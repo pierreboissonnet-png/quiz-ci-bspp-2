@@ -307,3 +307,9 @@ body.booting #app{visibility:hidden}
 .hbgap{text-align:center;color:var(--muted);line-height:1;padding:2px 0}
 .hbhead .small{white-space:nowrap}
 .tiles-dark{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}
+/* Mode simple */
+.lvl{margin:4px 0 16px}.lvl .seg button{min-height:40px;font-size:14px}.lvl .seg small{font:600 11px var(--mono);opacity:.7;margin-left:4px}
+.lvl .seg button[data-lvl="simple"][aria-pressed="true"]{background:var(--ok);color:#fff}
+.lvl .seg button[data-lvl="expert"][aria-pressed="true"]{background:var(--navy2);color:#fff}
+.disc .dnum{font:800 28px var(--mono);color:var(--ok)}.disc .dnum small{font-size:15px;color:var(--muted)}
+.combo{color:var(--warn);font-weight:700}
