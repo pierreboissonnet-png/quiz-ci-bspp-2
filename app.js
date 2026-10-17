@@ -6,11 +6,12 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.1.8";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.1.9";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
-function logCtx(){try{const g=curGame?curGame.title:"";return [typeof tab!=="undefined"?tab:"",g?"écran="+g:"",typeof level!=="undefined"?(level==="expert"?"Lieutenant":"Sapeur"):"",typeof usage!=="undefined"?usage:"",typeof fxMode!=="undefined"&&fxMode!=="off"?"amb="+fxMode:"",navigator.onLine===false?"hors-ligne":""].filter(Boolean).join(" · ")}catch(e){return ""}}
+function tabName(t){try{const x=TABS.find(x=>x[0]===t);return x?x[1]:(t==="profile"?"Profil":t||"?")}catch(e){return t||"?"}}
+function logCtx(){try{const g=curGame?curGame.title:"";return [typeof tab!=="undefined"?"onglet "+tabName(tab):"",g?"écran « "+g+" »":"",typeof level!=="undefined"?(level==="expert"?"Lieutenant":"Sapeur"):"",typeof usage!=="undefined"?usage:"",typeof fxMode!=="undefined"&&fxMode!=="off"?"amb="+fxMode:"",navigator.onLine===false?"hors-ligne":""].filter(Boolean).join(" · ")}catch(e){return ""}}
 function alog(k,v,d){try{logBuf.push({t:Date.now(),k:String(k).slice(0,16),v:String(v==null?"":v).slice(0,100),d:d==null?"":(typeof d==="string"?d:JSON.stringify(d)).slice(0,800),c:logCtx().slice(0,140)});if(logBuf.length>400)logBuf=logBuf.slice(-400);store.set("logBuf",logBuf);
  clearTimeout(logT);logT=setTimeout(logFlush,logBuf.length>=50?500:20000)}catch(e){}}
 async function logFlush(final){const m=store.get("me",null);if(!logBuf.length||!m||!m.token||m.expired||navigator.onLine===false)return;const evs=logBuf.slice(0,300);
@@ -19,13 +20,22 @@ async function logFlush(final){const m=store.get("me",null);if(!logBuf.length||!
 let hiddenAt=0;document.addEventListener("visibilitychange",()=>{if(document.hidden){hiddenAt=Date.now();alog("app","mise en arrière-plan","");logFlush(true)}else alog("app","retour au premier plan",hiddenAt?"absent "+Math.round((Date.now()-hiddenAt)/1000)+" s":"")});
 window.addEventListener("online",()=>alog("app","réseau retrouvé",""));window.addEventListener("offline",()=>alog("app","réseau perdu",""));
 window.addEventListener("pagehide",()=>logFlush(true));
-window.addEventListener("error",e=>alog("erreur",(e.message||"erreur").slice(0,60),`${(e.filename||"").split("/").pop()}:${e.lineno||""}:${e.colno||""} ${e.error&&e.error.stack?String(e.error.stack).slice(0,300):""}`));
-window.addEventListener("unhandledrejection",e=>{const r=e.reason;alog("erreur","promesse rejetée",r&&(r.stack||r.message||r.error)?String(r.stack||r.message||r.error).slice(0,300):JSON.stringify(r||"").slice(0,300))});
+// erreurs : message, explication en clair, fonction et ligne concernées
+function errExplain(m){m=String(m||"");if(/null is not an object|undefined is not an object|Cannot read propert|Cannot set propert|of null|of undefined/i.test(m))return "Un élément de l'écran était introuvable : l'écran a sans doute changé (retour, navigation) avant la fin d'un chargement.";
+ if(/is not a function/i.test(m))return "Une fonction attendue n'existe pas : souvent un mélange d'ancienne et de nouvelle version de l'appli (mise à jour en cours).";
+ if(/is not defined|Can't find variable/i.test(m))return "Une variable attendue n'existe pas : souvent un mélange de versions, ou un fichier non chargé.";
+ if(/Load failed|Failed to fetch|NetworkError|network/i.test(m))return "Problème de réseau pendant un chargement.";
+ if(/QuotaExceeded|quota/i.test(m))return "La mémoire du navigateur est pleine.";
+ if(/JSON/i.test(m))return "Réponse du serveur illisible (souvent une coupure réseau ou une erreur serveur).";return ""}
+function errWhere(stack){const L=String(stack||"").split("\n").map(x=>x.trim()).filter(Boolean);const f=L.find(x=>/app\.js|boot\.js|data\.js/.test(x))||L[0]||"";const m=f.match(/^(?:at\s+)?([^@(\s]*)[@(\s]*.*?([a-z]+\.js):(\d+):(\d+)/i);return m?{fonction:m[1]||"(anonyme)",fichier:m[2],ligne:m[3]+":"+m[4]}:{}}
+function logErr(kind,msg,stack){msg=String(msg||"Erreur inconnue");if(!/^[A-Z][a-zA-Z]*Error/.test(msg)&&!stack)msg=msg;const w=errWhere(stack);alog("erreur",msg.slice(0,100),{explication:errExplain(msg),type:kind,...w,pile:String(stack||"").split("\n").slice(0,4).join(" ← ").slice(0,300)})}
+window.addEventListener("error",e=>logErr("erreur JavaScript",(e.error&&e.error.message)||e.message,(e.error&&e.error.stack)||`${(e.filename||"").split("/").pop()}:${e.lineno||""}:${e.colno||""}`));
+window.addEventListener("unhandledrejection",e=>{const r=e.reason;if(r&&r.offline)return;const msg=r&&(r.message||r.error)?String(r.message||r.error):(typeof r==="string"?r:JSON.stringify(r||""));logErr("erreur asynchrone (chargement)",(r&&r.name&&r.message?r.name+": ":"")+msg,r&&r.stack)});
 const LOG_ATTR=["tab","m","sm","rb","ci","lvl","usage","pt","rt","ct","cq","gq","g","k","fiche","cs","mk","od","ci","cf","st","t","pf","sc","teams","join"];
 document.addEventListener("click",e=>{try{const el=e.target.closest&&e.target.closest("button,a,[role=button],summary,.tile,.row,.chip,.acr");if(!el)return;
  const attrs=LOG_ATTR.filter(a=>el.dataset&&el.dataset[a]!=null).map(a=>a+"="+el.dataset[a]).join(" ");
  if(el.classList.contains("opt"))lastPick={txt:(el.textContent||"").replace(/\s+/g," ").trim().replace(/^[A-D]\s+/,""),t:Date.now()};const bt=el.querySelector&&el.querySelector("b");const lab=el.classList.contains("opt")?"réponse "+(el.dataset.k||""):(el.getAttribute("aria-label")||(bt&&bt.textContent)||el.textContent||"").replace(/\s+/g," ").trim().slice(0,50);
- alog("clic",(el.id?"#"+el.id+" ":"")+lab,attrs+(typeof tab!=="undefined"?" · vue="+tab:""))}catch(err){}},true);
+ alog("clic",lab||(el.id?"#"+el.id:"(sans libellé)"),attrs?{"détails":attrs+(el.id?" · id="+el.id:"")}:(el.id?{id:el.id}:""))}catch(err){}},true);
 let selected=new Set(store.get("themes",DATA.filter(t=>t.id!=="pse").map(t=>t.id)));
 let review=new Set(store.get("review",[]));
 let best=store.get("best",{});
@@ -148,7 +158,7 @@ function renderTabs(){const cur=TABS.find(t=>t[0]===tab);const TABS_V=visTabs();
   if(!renderTabs.bound){renderTabs.bound=true;document.addEventListener("click",e=>{const p=$("#menuPanel");if(p&&!p.hidden&&!e.target.closest("#tabbar")){p.hidden=true;const b=$("#menuBtn");if(b)b.setAttribute("aria-expanded","false")}});
     document.addEventListener("keydown",e=>{if(e.key==="Escape"){const p=$("#menuPanel");if(p)p.hidden=true}})}}
 let navStack=[];
-function go(t,fromBack){if(cleanup){cleanup();cleanup=null}if(!visTabs().some(x=>x[0]===t))t="home";alog("nav",(tab||"?")+" → "+t,fromBack?"retour":"");if(curGame){if(curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame=null}lastEcran="";if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
+function go(t,fromBack){if(cleanup){cleanup();cleanup=null}if(!visTabs().some(x=>x[0]===t))t="home";alog("nav",tabName(tab)+" → "+tabName(t),fromBack?"par le bouton Retour":"");if(curGame){if(curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame=null}lastEcran="";if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
   app.className="view";({home:viewHome,revise:viewRevise,chat:viewChat,cri:viewCri,radio:viewRadio,carte:viewCarte,grades:()=>viewGrades(level==="expert",true),lexique:()=>viewLexique(true),docs:viewDocs,profile:viewProfile})[t]();bindTabBack();window.scrollTo(0,0)}
 function goBack(){const prev=navStack.pop();if(prev)go(prev,true);else go("home",true)}
 function backLink(){return tab!=="home"?`<button class="tback" id="tback">${I.back}${esc((TABS.find(x=>x[0]===(navStack[navStack.length-1]||"home"))||[])[1]||"Accueil")}</button>`:""}
@@ -802,7 +812,7 @@ async function viewLogs(){app.innerHTML=push("Journaux d'activité")+`<div class
   <label for="lgUser">Membre</label><select id="lgUser" class="lgsel"><option value="">Tous les membres</option>${(adminData&&adminData.members||[]).sort((a,b)=>a.pseudo.localeCompare(b.pseudo)).map(m=>`<option value="${esc(m.id)}" ${m.id===logUser?"selected":""}>${esc(m.pseudo)}${m.email?" · "+esc(m.email):""}</option>`).join("")}</select></div>
   <div class="chips" style="margin-top:10px">${Object.entries(LOGK).map(([k,l])=>`<button class="chip" data-lk="${k}" aria-pressed="${k===logKind}">${l}</button>`).join("")}</div>
   <input class="search" id="lgQ" type="search" placeholder="Filtrer : texte, question, erreur, écran…" style="margin-top:10px"><div class="actions" style="margin:10px 0"><button class="btn sec" id="lgReload">Actualiser</button><button class="btn sec" id="lgExport">Exporter (JSON)</button></div><div id="lgList"><div class="loading">Chargement…</div></div>
-  <p class="small" style="margin:12px 4px 0">Heures au fuseau du téléphone. Les journaux sont conservés 30 jours (20 000 évènements par jour au maximum).</p>`;
+  <p class="small" style="margin:12px 4px 0">Lecture d'une ligne : l'heure, le membre, le type d'évènement et ce qui s'est passé. En bleu, où il se trouvait (onglet, écran, niveau, mode). En gris, les détails : pour une erreur, l'explication en clair et l'endroit du code. Les numéros de session distinguent deux appareils ou deux onglets ouverts en même temps. Heures au fuseau du téléphone. Les journaux sont conservés 30 jours (20 000 évènements par jour au maximum).</p>`;
  bindBack(()=>viewAdmin());
  const load=async()=>{$("#lgList").innerHTML=`<div class="loading">Chargement…</div>`;try{logData=await api("admin/logs?day="+logDay+"&n=5000")}catch(e){$("#lgList").innerHTML=`<p class="small">${esc(e.error||"Erreur.")}</p>`;return}draw()};
  const draw=()=>{const lq=norm(($("#lgQ")&&$("#lgQ").value)||"");const L=(logData&&logData.logs||[]).filter(x=>(!logUser||x.u===logUser)&&(logKind==="all"||x.k===logKind)&&(!lq||norm([x.v,x.d,x.c,x.p].join(" ")).includes(lq))).sort((a,b)=>b.t-a.t);
@@ -1871,8 +1881,9 @@ let adminData=null,adminQ="";
 async function viewAdmin(){app.innerHTML=push("Administration")+`<div class="loading">Chargement…</div>`;bindBack(()=>go("profile"));
   try{adminData=await api("admin/members")}catch(e){app.innerHTML=push("Administration")+`<p class="sub" style="margin-top:20px">${esc(e.error||"Accès refusé.")}</p>`;bindBack(()=>go("profile"));return}
   drawAdmin()}
-async function drawAdminTeams(){const el=$("#adTeams");if(!el)return;let d;try{d=await api("teams")}catch(e){el.innerHTML=`<p class="small">${esc(e.error||"Erreur.")}</p>`;return}
-  const rk=teamRanking();$("#tcount").textContent=d.teams.length;
+async function drawAdminTeams(){const el=$("#adTeams");if(!el)return;let d;try{d=await api("teams")}catch(e){if(el.isConnected)el.innerHTML=`<p class="small">${esc(e.error||"Erreur.")}</p>`;return}
+  if(!el.isConnected)return; // l'écran a été quitté pendant le chargement
+  const rk=teamRanking();const tc=$("#tcount");if(tc)tc.textContent=d.teams.length;
   el.innerHTML=d.teams.length?`<div class="list">${d.teams.map(t=>{const r=rk.find(x=>x.t.id===t.id);return `<div class="row"><span class="av" style="width:36px;height:36px;background:var(--navy2);font-size:14px">${esc(initials(t.name))}</span><span class="tx"><b>${esc(t.name)}</b><span>${t.members} membre(s) · créée par ${esc(t.owner)}${r?` · ${r.avg.toLocaleString("fr-FR")} pts de moyenne`:""}</span></span><button class="btn sec small" data-deltm="${esc(t.id)}" style="color:var(--ko)">Supprimer</button></div>`}).join("")}</div><p class="small" id="tmAdMsg" style="margin:6px 4px 0">Supprimer une équipe retire ses membres de l'équipe ; leurs scores sont conservés.</p>`:`<p class="small">Aucune équipe.</p>`;
   el.querySelectorAll("[data-deltm]").forEach(b=>b.onclick=async()=>{if(!b.dataset.c){b.dataset.c="1";b.textContent="Confirmer";return}b.disabled=true;
     try{await api("teams","DELETE",{teamId:b.dataset.deltm});if(me.team===b.dataset.deltm){me.team=null;saveMe()}toast("Équipe supprimée.");await loadBoard(true);drawAdminTeams()}catch(e){$("#tmAdMsg").textContent=e.error||"Erreur.";b.disabled=false}})}
