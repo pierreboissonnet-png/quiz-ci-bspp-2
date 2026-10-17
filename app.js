@@ -191,7 +191,27 @@ function viewHome(){if(level==="simple")return viewHomeSimple();
 }
 
 /* ============ Jeux ============ */
-function grade(p){return p>=90?"Prêt pour la garde":p>=70?"Solide, encore un effort":p>=50?"À consolider":"Retour au référentiel"}
+/* Encouragements adaptés au niveau : plus chaleureux pour qui débute ou se trompe souvent, plus sobres pour qui est à l'aise */
+function learnerTier(){const ids=Object.keys(hist);const answered=Object.values(hist).reduce((a,h)=>a+h.length,0);
+ const recent=ids.sort((a,b)=>(histT[b]||0)-(histT[a]||0)).slice(0,40).map(id=>hist[id][hist[id].length-1]);
+ const rate=recent.length?recent.reduce((a,b)=>a+b,0)/recent.length:0;
+ if(answered<30||rate<.55)return "debut";if(answered>=60&&rate>=.8)return "aise";return "mid"}
+const FB={
+ debut:{ok:["Bravo, c'est exactement ça !","Super, tu progresses !","Bien vu, continue comme ça !","Excellent réflexe !","Oui ! Tu as le bon raisonnement.","Génial, une de plus dans la poche !"],
+  ko:["Pas grave, c'est en se trompant qu'on apprend.","Presque ! Lis l'explication, tu l'auras la prochaine fois.","Normal de ne pas tout savoir au début, tu avances bien.","Ce n'est pas ça, mais cette explication va t'aider."],
+  ko2:["Courage ! Prends le temps de lire l'explication et la page du référentiel : ça aide énormément.","On s'accroche ! Tout le monde est passé par là, chaque erreur te fait progresser."],
+  back:["Et voilà, tu te reprends bien !","Bien joué, c'est reparti !"]},
+ mid:{ok:["Exact !","Bien joué !","Bonne réponse.","C'est ça !"],ko:["Raté, retiens bien l'explication.","Pas tout à fait.","Non, mais tu étais proche."],ko2:["Deux de suite : relis bien l'explication."],back:["Exact, tu te reprends !"]},
+ aise:{ok:["Correct.","Exact.","Juste.","Imparable."],ko:["Erreur : à revoir.","Raté.","Piège classique, celui-là."],ko2:["Attention, deux erreurs d'affilée."],back:["Correct."]}};
+let fbStreak=0;
+function cheer(ok){const t=FB[learnerTier()];let m;
+ if(ok){m=pick(fbStreak<=-2?t.back:t.ok);fbStreak=fbStreak>0?fbStreak+1:1}
+ else{fbStreak=fbStreak<0?fbStreak-1:-1;m=pick(fbStreak<=-2?t.ko2:t.ko)}
+ return m}
+function grade(p){const t=learnerTier();
+ if(t==="debut")return p>=90?"Formidable, tu es prêt pour la suite !":p>=70?"Très beau résultat, continue !":p>=50?"Bon travail, tu progresses à chaque partie !":"Bravo d'avoir joué : relis le corrigé, la prochaine sera meilleure !";
+ if(t==="aise")return p>=90?"Prêt pour la garde.":p>=70?"Solide.":p>=50?"À consolider.":"Retour au référentiel.";
+ return p>=90?"Prêt pour la garde":p>=70?"Solide, encore un effort":p>=50?"À consolider":"Relis le corrigé et retente ta chance"}
 function srcBtn(it){if(!it.ref||!DOC[it.ref.d])return `<span class="src">Source : ${esc(it.source)}</span>`;
   return `<button class="srcbtn" data-src="${esc(it._id)}">${I.doc}<span>Voir dans le référentiel · ${esc(DOC[it.ref.d].t)}, p. ${it.ref.p}</span></button>`}
 function bindSrc(root=app){root.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{const it=BYID[b.dataset.src];openDoc(it.ref.d,it.ref.p,termsFor(it))})}
@@ -211,7 +231,7 @@ function runQuiz(qs,mode,instant,back){
       if(ok)score++;if(mode!=="defi"||!defiDone[isoWeek()])record(q._id,ok,mode==="defi"?5:0);answers.push({q,ok});
       if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
       if(instant){app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===correct)o.classList.add("good");else if(o===b)o.classList.add("bad")});
-        $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${ok?"Exact !":"Raté"}</b>${esc(q.explication)}${srcBtn(q)}</div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
+        $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}</b>${esc(q.explication)}${srcBtn(q)}</div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
         bindSrc();const n=$("#next");n.onclick=()=>{i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"});
       }else{i++;i<qs.length?show():end()}});
   };
@@ -219,7 +239,7 @@ function runQuiz(qs,mode,instant,back){
     if(["qcm","exam"].includes(mode))setBest(mode,p);setTimeout(syncSoon,50);
     const w=isoWeek();let first=false;if(mode==="defi"&&!defiDone[w]){defiDone[w]={score,ms};store.set("defi",defiDone);first=true}
     const recap=answers.filter(a=>!a.ok).map(({q})=>`<div class="card"><div class="qhead"><b>${esc(q.q)}</b>${markBtn(q._id,false)}</div><div class="a">${esc(q._k==="qcm"?q.choices[q.answer]:(q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(q.explication)}</div>${srcBtn(q)}</div>`).join("");
-    app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${grade(p)}</div><p class="small">${p} % de bonnes réponses${mode==="defi"?` en ${fmtTime(ms)}${first?"":" (hors premier essai)"}`:""}.</p></div>
+    app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${grade(p)}</div>${p<50&&level==="expert"&&learnerTier()==="debut"?`<p class="small">Astuce : le niveau Sapeur propose des questions de découverte, idéales pour démarrer. Tu peux le choisir en haut de l'accueil.</p>`:""}<p class="small">${p} % de bonnes réponses${mode==="defi"?` en ${fmtTime(ms)}${first?"":" (hors premier essai)"}`:""}.</p></div>
       <div class="actions"><button class="btn" id="again">Rejouer</button>${mode==="defi"||mode==="exam"?`<button class="btn sec" id="shareRes">${I.share.replace('<svg','<svg width="18" height="18"')} Partager</button>`:""}</div><p class="small" id="shareMsg"></p>
       ${recap?`<div class="sect">Corrigé de tes erreurs</div><div class="recap">${recap}</div>`:`<p class="sub" style="text-align:center">Sans faute, bravo.</p>`}`;
     bindBack(back);bindSrc();
@@ -518,13 +538,13 @@ function runSimple(qs,title){if(!qs.length)return;let i=0,score=0,combo=0,bestCo
    if(ok){score++;combo++;bestCombo=Math.max(bestCombo,combo)}else{combo=0;missed.push(q)}record(q._id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
    app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===correct)o.classList.add("good");else if(o===b)o.classList.add("bad")});
    const D=DOC[q.ref.d];
-   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${pick(ok?CHEERS:OOPS)}${ok&&combo>=3?` Série de ${combo} !`:""}</b>${esc(q.explication)}
+   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}${ok&&combo>=3?` Série de ${combo} !`:""}</b>${esc(q.explication)}
      ${D?`<button class="srcbtn" id="sSrc">${I.doc}<span>Voir dans le référentiel : ${esc(D.t)}, p. ${q.ref.p}</span></button>`:""}</div>
      <div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
    const sb=$("#sSrc");if(sb)sb.onclick=()=>openDoc(q.ref.d,q.ref.p,tokens(q.q).slice(0,6));
    const n=$("#next");n.onclick=()=>{i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})})};
  const end=()=>{setTimeout(syncSoon,50);const after=discovered();const nw=[...after].filter(d=>!before.has(d)&&DOC[d]);const p=Math.round(score/qs.length*100);
-  app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${p>=90?"Excellent, tente le niveau Lieutenant !":p>=70?"Très bien !":p>=50?"Bon début, continue !":"Chaque erreur t'apprend quelque chose."}</div>
+  app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${p>=90?"Excellent, tente le niveau Lieutenant !":grade(p)}</div>
     <p class="small">+${score*5} points${bestCombo>=3?` · meilleure série : ${bestCombo}`:""}</p></div>
    ${nw.length?`<div class="card"><b>Nouveaux documents découverts</b><div class="list" style="margin-top:8px">${nw.map(d=>`<button class="row" data-od="${d}"><span class="ic" style="background:var(--navy2)">${I.book}</span><span class="tx"><b>${esc(DOC[d].t)}</b><span>${DOC[d].n} page${DOC[d].n>1?"s":""} · ouvrir</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div></div>`:""}
    <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="home2">Accueil</button></div>
@@ -597,9 +617,9 @@ function runGradeQuiz(expert){const qs=gradeQuestions(expert);let i=0,score=0,co
   bindBack(()=>viewGrades(expert));
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const ok=+b.dataset.k===q.answer;if(ok){score++;combo++}else combo=0;record(pre+q.id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
    app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===q.answer)o.classList.add("good");else if(o===b)o.classList.add("bad")});
-   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${pick(ok?CHEERS:OOPS)}</b>${esc(q.imgChoices?"Réponse : "+q.choices[q.answer]+". ":"")}${esc(q.e)}</div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
+   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}</b>${esc(q.imgChoices?"Réponse : "+q.choices[q.answer]+". ":"")}${esc(q.e)}</div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
    const n=$("#next");n.onclick=()=>{i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})})};
- const end=()=>{setTimeout(syncSoon,50);app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${score>=9?"Tu reconnais les galons comme un chef !":score>=6?"Bien, encore un peu d'entraînement.":"Repasse par la planche des grades."}</div><p class="small">+${score*(expert?20:5)} points</p></div>
+ const end=()=>{setTimeout(syncSoon,50);app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${score>=9?"Tu reconnais les galons comme un chef !":grade(score*10)}${score<6?" Repasse par la planche des grades.":""}</div><p class="small">+${score*(expert?20:5)} points</p></div>
   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="planche">Planche des grades</button></div>`;
   bindBack(()=>go("home"));$("#again").onclick=()=>runGradeQuiz(expert);$("#planche").onclick=()=>viewGrades(expert);window.scrollTo(0,0)};
  show()}
@@ -891,7 +911,7 @@ function runRadioSim(){const qs=radioQuestions();let i=0,score=0;cleanup=stopSpe
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k,ok=k===q.a;if(ok)score++;record("radio:"+q.id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
    app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===q.a)o.classList.add("good");else if(o===b)o.classList.add("bad")});
    const say=q.say||(q.o[q.a].length>40?q.o[q.a]:"");
-   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${ok?"Exact !":"Raté"}</b>${esc(q.e)}<div style="display:flex;gap:14px;flex-wrap:wrap">${say?`<button class="srcbtn" id="say">${SPK}<span>Écouter</span></button>`:""}<button class="srcbtn" id="gsrc">${I.doc}<span>Guide pratique CI, p. ${q.p}</span></button></div></div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Situation suivante":"Voir le score"}</button></div>`;
+   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}</b>${esc(q.e)}<div style="display:flex;gap:14px;flex-wrap:wrap">${say?`<button class="srcbtn" id="say">${SPK}<span>Écouter</span></button>`:""}<button class="srcbtn" id="gsrc">${I.doc}<span>Guide pratique CI, p. ${q.p}</span></button></div></div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Situation suivante":"Voir le score"}</button></div>`;
    const sy=$("#say");if(sy)sy.onclick=()=>speak(say);$("#gsrc").onclick=()=>openDoc("guide",q.p,["message"]);
    const n=$("#next");n.onclick=()=>{stopSpeak();i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})})};
  const end=()=>{const b=store.get("radioBest",null);if(b==null||score>b)store.set("radioBest",score);setTimeout(syncSoon,50);
@@ -997,7 +1017,7 @@ function runCarteQuiz(){loadSect().then(()=>{const qs=carteQuestions();let i=0,s
   bindBack(()=>go("carte"));
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const ok=+b.dataset.k===q.a;if(ok)score++;record("carte:"+q.id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
    app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===q.a)o.classList.add("good");else if(o===b)o.classList.add("bad")});
-   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${ok?"Exact !":"Raté"}</b>${esc(q.e)}</div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
+   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}</b>${esc(q.e)}</div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
    const n=$("#next");n.onclick=()=>{i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})})};
  const end=()=>{const bq=store.get("carteBest",{});if(bq.qcm==null||score>bq.qcm){bq.qcm=score;store.set("carteBest",bq)}setTimeout(syncSoon,50);
   app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${grade(score*10)}</div></div><div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="toMap">Voir la carte</button></div>`;
@@ -1011,7 +1031,7 @@ function runCarteTap(){const targets=shuffle(SECT.sect).slice(0,10);let i=0,scor
  const ask=()=>{locked=false;base();const t=targets[i];setRight(`${i+1}/10`);$("#tapQ").innerHTML=`Touche le secteur de <b>${esc(t.name)}</b>`;$("#after").innerHTML=""};
  const pickS=s=>{if(locked)return;locked=true;const t=targets[i];const ok=s.code===t.code;if(ok)score++;record("carte:tap:"+t.code,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
   layers[t.code].setStyle({color:"#1f9d55",weight:3,fillColor:"#1f9d55",fillOpacity:.45});if(!ok)layers[s.code].setStyle({color:"#d92d20",weight:3,fillColor:"#d92d20",fillOpacity:.35});
-  $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${ok?"Exact !":"Raté"}</b>${ok?"":`Tu as touché ${esc(s.name)}. `}${esc(t.name)} (${t.code}) · Golf ${t.golf}.</div><div class="actions"><button class="btn full" id="next">${i+1<10?"Secteur suivant":"Voir le score"}</button></div>`;
+  $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}</b>${ok?"":`Tu as touché ${esc(s.name)}. `}${esc(t.name)} (${t.code}) · Golf ${t.golf}.</div><div class="actions"><button class="btn full" id="next">${i+1<10?"Secteur suivant":"Voir le score"}</button></div>`;
   $("#next").onclick=()=>{i++;if(i<10)ask();else end()}};
  const end=()=>{const bq=store.get("carteBest",{});if(bq.tap==null||score>bq.tap){bq.tap=score;store.set("carteBest",bq)}setTimeout(syncSoon,50);if(cleanup){cleanup();cleanup=null}
   app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/10</div><div class="grade">${grade(score*10)}</div><p class="small">secteurs situés du premier coup</p></div><div class="actions"><button class="btn" id="again">Rejouer</button></div>`;
