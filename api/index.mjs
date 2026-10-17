@@ -334,7 +334,7 @@ async function handler(req) {
       const byDay = {};
       for (const e of evs) {
         const t = Math.min(now, Math.max(now - 7 * 86400e3, Number(e && e.t) || now));
-        const rec = { t, u: me.id, p: clean(me.pseudo, 24), k: clean(e && e.k, 16), v: clean(e && e.v, 60), d: clean(typeof (e && e.d) === "string" ? e.d : JSON.stringify((e && e.d) || ""), 400), s: clean(body.s, 12), ver: clean(body.ver, 12), ua };
+        const rec = { t, u: me.id, p: clean(me.pseudo, 24), k: clean(e && e.k, 16), v: clean(e && e.v, 100), d: clean(typeof (e && e.d) === "string" ? e.d : JSON.stringify((e && e.d) || ""), 800), c: clean(e && e.c, 140), s: clean(body.s, 12), ver: clean(body.ver, 12), ua };
         const day = new Date(t).toISOString().slice(0, 10); (byDay[day] = byDay[day] || []).push(JSON.stringify(rec));
       }
       for (const [day, list] of Object.entries(byDay)) await st.logPush("log/" + day, list);
