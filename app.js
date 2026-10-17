@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.1.1";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.1.2";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 function alog(k,v,d){try{logBuf.push({t:Date.now(),k:String(k).slice(0,16),v:String(v==null?"":v).slice(0,60),d:d==null?"":(typeof d==="string"?d:JSON.stringify(d)).slice(0,400)});if(logBuf.length>400)logBuf=logBuf.slice(-400);store.set("logBuf",logBuf);
  clearTimeout(logT);logT=setTimeout(logFlush,logBuf.length>=50?500:20000)}catch(e){}}
@@ -68,7 +68,13 @@ function record(id,ok,bonus){alog("rep",id,ok?"juste":"faux");if(typeof syncSoon
   if(ok){if(review.delete(id))store.set("review",[...review])}else if(BYID[id]&&!/^(s|doc):/.test(id)){review.add(id);store.set("review",[...review])}
   const d=today();if(days[days.length-1]!==d){days.push(d);days=days.slice(-400);store.set("days",days)}}
 // tirage varié : d'abord les questions jamais vues, puis les moins récentes, avec du hasard pour ne jamais avoir la même série
-function fresh(list){const now=Date.now();return list.map(x=>{const t=histT[x._id]||0;return [t?(t+Math.random()*3*864e5):(-1-Math.random()),x]}).sort((a,b)=>a[0]-b[0]).map(x=>x[1])}
+// tirage : jamais vues d'abord (au hasard), puis les plus anciennement vues ; le hasard est proportionnel à l'ancienneté pour qu'une question vue il y a une heure ne repasse pas devant une question vue il y a deux jours
+function fresh(list){const now=Date.now();return list.map(x=>{const t=histT[x._id]||0;return [t?t+Math.random()*Math.min((now-t)*.3,5*864e5):-1-Math.random(),x]}).sort((a,b)=>a[0]-b[0]).map(x=>x[1])}
+// mélange l'ordre des réponses d'un QCM (la bonne réponse ne reste pas toujours à la même place)
+function mixQ(q){if(!q||q._k!=="qcm"||!Array.isArray(q.choices))return q;const o=shuffle(q.choices.map((t,k)=>({t,k})));return {...q,choices:o.map(x=>x.t),answer:o.findIndex(x=>x.k===q.answer)}}
+// vrai/faux tirés des QCM : « question → réponse proposée » (bonne réponse ou piège), une variante par question
+function vfFromQcm(list){return list.filter(q=>q._k==="qcm").map(q=>{const good=Math.random()<.5;const k=good?q.answer:pick(q.choices.map((_,i)=>i).filter(i=>i!==q.answer));
+ return {...q,_k:"vf",_der:1,q:`${q.q} → ${q.choices[k]}`,answer:good,explication:(good?"":`Non : la bonne réponse est « ${q.choices[q.answer]} ». `)+(q.explication||"")}})}
 function setBest(mode,val){if(typeof best[mode]!=="number"||val>best[mode]){best[mode]=val;store.set("best",best)}}
 function known(id){const h=hist[id];if(!h||!h.length)return null;const l=h.slice(-2);return l.every(x=>x===1)||(h.length===1&&h[0]===1)}
 function streak(){let s=0;const set=new Set(days);let d=new Date();if(!set.has(today()))d.setDate(d.getDate()-1);
@@ -286,7 +292,7 @@ function srcBtn(it){if(!it.ref||!DOC[it.ref.d])return `<span class="src">Source 
 function bindSrc(root=app){root.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{const it=BYID[b.dataset.src];openDoc(it.ref.d,it.ref.p,termsFor(it))})}
 function termsFor(it){const txt=it._k==="qcm"?it.choices[it.answer]+" "+it.explication:it._k==="vf"?it.q:it._k==="flashcards"?it.verso:it.titre;return tokens(txt).slice(0,8)}
 const MODE_T={exam:"Examen blanc",review:"À revoir",defi:"Défi de la semaine",qcm:"Quiz",fiche:"Révision de fiche"};
-function runQuiz(qs,mode,instant,back){
+function runQuiz(qs,mode,instant,back){qs=(qs||[]).map(mixQ);
   if(!qs.length){app.innerHTML=push("Quiz")+`<p class="sub" style="margin-top:20px">Aucune question pour ces thèmes.</p>`;bindBack(back);return}
   let i=0,score=0;const answers=[];const t0=Date.now();
   const show=()=>{const q=qs[i];
@@ -318,7 +324,7 @@ function runQuiz(qs,mode,instant,back){
   show();
 }
 function runChrono(){
-  const qs=fresh(pool("vf"));if(!qs.length)return;
+  const qs=fresh([...pool("vf"),...vfFromQcm(pool("qcm"))]);if(!qs.length)return;
   let i=0,score=0,errs=0,timer,over=false;const missed=[];let deadline=Date.now()+60000;
   const left=()=>Math.max(0,Math.ceil((deadline-Date.now())/1000));
   const stop=()=>clearInterval(timer);
@@ -593,12 +599,12 @@ function viewHomeSimple(){
   const pool=k=>Q.items.filter(x=>sSel.has(x.g)&&(!k||x.k===k));
   app.querySelectorAll("[data-st]").forEach(c=>c.onclick=()=>{const k=c.dataset.st;sSel.has(k)?sSel.delete(k):sSel.add(k);if(!sSel.size)sSel.add(k);store.set("sThemes",[...sSel]);c.setAttribute("aria-pressed",sSel.has(k))});
   const back=()=>go("home");
-  app.querySelectorAll("[data-sm]").forEach(b=>b.onclick=()=>({quiz:()=>runSimple(fresh(pool()).slice(0,10),"Quiz découverte"),vf:()=>runSimple(fresh(pool("vf")).slice(0,10),"Vrai ou faux ?"),
+  app.querySelectorAll("[data-sm]").forEach(b=>b.onclick=()=>({quiz:()=>runSimple(fresh(pool()).slice(0,10),"Quiz découverte"),vf:()=>runSimple(fresh([...pool("vf"),...vfFromQcm(pool("qcm"))]).slice(0,10),"Vrai ou faux ?"),
    doc:()=>runSimple(docQuestions(10),"Devine le document"),mix:()=>runSimple(fresh(Q.items).slice(0,16).concat(docQuestions(4)).sort(()=>Math.random()-.5),"Grand mélange"),
    radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(false),hosp:()=>runHospQuiz(false),rbuild:()=>runRadioBuild(()=>go("home"))})[b.dataset.sm]());
   $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
  }).catch(()=>{const b=$("#sbody");if(b)b.innerHTML=`<div class="card"><p style="margin:0">Impossible de charger les questions du niveau Sapeur. Vérifie ta connexion.</p><button class="btn sec full" style="margin-top:12px" id="sRetry">Réessayer</button></div>`;const r=$("#sRetry");if(r)r.onclick=viewHomeSimple})}
-function runSimple(qs,title){if(!qs.length)return;let i=0,score=0,combo=0,bestCombo=0;const missed=[];const back=()=>go("home");const before=discovered();
+function runSimple(qs,title){if(!qs.length)return;qs=qs.map(mixQ);let i=0,score=0,combo=0,bestCombo=0;const missed=[];const back=()=>go("home");const before=discovered();
  const show=()=>{const q=qs[i];
   const choices=q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`
    :`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
