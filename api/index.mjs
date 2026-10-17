@@ -26,6 +26,9 @@ const store = () => ({
   set: (k, v) => redis(["SET", NS + k, String(v)]),
   setJSON: (k, v, ttl) => redis(ttl ? ["SET", NS + k, JSON.stringify(v), "EX", String(ttl)] : ["SET", NS + k, JSON.stringify(v)]),
   delete: (k) => redis(["DEL", NS + k]),
+  // journaux : une liste par jour, plafonnée et effacée au bout de 30 jours
+  logPush: async (k, vals) => { await redis(["RPUSH", NS + k, ...vals]); await redis(["LTRIM", NS + k, "-20000", "-1"]); await redis(["EXPIRE", NS + k, String(30 * 86400)]); },
+  logRange: (k, n) => redis(["LRANGE", NS + k, String(-n), "-1"]),
   list: async ({ prefix }) => { const keys = new Set(); let cur = "0", n = 0;
     do { const [c, ks] = await redis(["SCAN", cur, "MATCH", NS + prefix + "*", "COUNT", "1000"]); cur = String(c); ks.forEach((k) => keys.add(k.slice(NS.length))); } while (cur !== "0" && ++n < 50);
     return { blobs: [...keys].sort().map((key) => ({ key })) }; },
@@ -52,18 +55,23 @@ const num = (v, max) => { const x = Number(v); return Number.isFinite(x) ? Math.
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 function sanitizeStats(s = {}) {
-  const out = { points: num(s.points, 1e7), answered: num(s.answered, 1e6), correct: num(s.correct, 1e6), fichesOk: num(s.fichesOk, 500), fichesTotal: num(s.fichesTotal, 500), seen: num(s.seen, 5000), streak: num(s.streak, 5000), bestExam: num(s.bestExam, 100), bestQcm: num(s.bestQcm, 100), bestChrono: num(s.bestChrono, 500), themes: {}, defi: null };
+  const out = { points: num(s.points, 1e7), total: num(s.total, 1e8), week: /^\d{4}-S\d{2}$/.test(s.week || "") ? s.week : null, answered: num(s.answered, 1e6), correct: num(s.correct, 1e6), fichesOk: num(s.fichesOk, 500), fichesTotal: num(s.fichesTotal, 500), seen: num(s.seen, 5000), streak: num(s.streak, 5000), bestExam: num(s.bestExam, 100), bestQcm: num(s.bestQcm, 100), bestChrono: num(s.bestChrono, 500), themes: {}, defi: null };
   if (out.correct > out.answered) out.correct = out.answered;
   if (s.themes && typeof s.themes === "object") for (const [k, v] of Object.entries(s.themes).slice(0, 12)) out.themes[clean(k, 12)] = num(v, 100);
+  // historique pour les graphiques : 12 dernières semaines et 12 derniers mois
+  out.hw = {}; if (s.hw && typeof s.hw === "object") for (const [k, v] of Object.entries(s.hw).slice(-16)) if (/^\d{4}-S\d{2}$/.test(k)) out.hw[k] = num(v, 1e7);
+  out.hm = {}; if (s.hm && typeof s.hm === "object") for (const [k, v] of Object.entries(s.hm).slice(-16)) if (/^\d{4}-\d{2}$/.test(k)) out.hm[k] = num(v, 1e7);
   if (s.defi && /^\d{4}-S\d{2}$/.test(s.defi.week || "")) out.defi = { week: s.defi.week, score: num(s.defi.score, 20), ms: num(s.defi.ms, 36e5) };
   return out;
 }
 const emptyStats = () => sanitizeStats({});
-const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt });
+const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: !!p.onFire });
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
   const rdA = a.radio, rdB = b.radio; // l'indicatif radio survit aux remises à zéro
   const usA = a.usage, usB = b.usage; // le mode d'utilisation aussi
+  const wkA = a.wk, wkB = b.wk; // points de la semaine (par appareil)
+  const dpA = a.dp, dpB = b.dp; // points par jour et par appareil (historique des graphiques)
   const ra = Number(a.resetAt) || 0, rb = Number(b.resetAt) || 0;
   if (rb > ra) a = { resetAt: rb }; else if (ra > rb) b = { resetAt: ra };
   const out = { v: 1, resetAt: Math.max(ra, rb), hist: {}, histT: {}, best: {}, days: [], defi: {}, cntDev: {}, marks: {} };
@@ -94,6 +102,27 @@ function mergeProgress(a, b) {
   const rd = [rdA, rdB].filter((x) => x && typeof x === "object").sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
   const us = [usA, usB].filter((x) => x && typeof x === "object" && (x.v === "ci" || x.v === "apprenti")).sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
   if (us) out.usage = { v: us.v, t: Number(us.t) || 0 };
+  {
+    const dp = {};
+    for (const src of [dpA, dpB]) if (src && typeof src === "object") for (const [day, devs] of Object.entries(src)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !devs || typeof devs !== "object") continue;
+      const o = dp[day] || (dp[day] = {});
+      for (const [dev, v] of Object.entries(devs)) { if (typeof dev !== "string" || dev.length > 60 || !Array.isArray(v)) continue; const c = o[dev] || [0, 0, 0]; o[dev] = [0, 1, 2].map((i) => Math.max(c[i], Math.min(1e6, Number(v[i]) || 0))); }
+    }
+    const days = Object.keys(dp).sort().slice(-400); if (days.length) { out.dp = {}; for (const d of days) out.dp[d] = dp[d]; }
+  }
+  {
+    const ok = (x) => x && typeof x === "object" && /^\d{4}-S\d{2}$/.test(x.w || "");
+    const list = [wkA, wkB].filter(ok);
+    if (list.length) {
+      const w = list.map((x) => x.w).sort().pop(); const d = {};
+      for (const x of list.filter((x) => x.w === w)) for (const [dev, c] of Object.entries(x.d || {})) {
+        if (typeof dev !== "string" || dev.length > 60 || !c) continue; const o = d[dev] || { points: 0, answered: 0, correct: 0 };
+        for (const k of ["points", "answered", "correct"]) o[k] = Math.max(o[k], Number(c[k]) || 0); d[dev] = o;
+      }
+      out.wk = { w, d };
+    }
+  }
   if (rd) out.radio = { num: String(rd.num || "").slice(0, 6), cs: String(rd.cs || "").slice(0, 40), golf: String(rd.golf || "").slice(0, 3), t: Number(rd.t) || 0 };
   return out;
 }
@@ -283,6 +312,7 @@ async function handler(req) {
       if (body.pseudo !== undefined) { const ps = clean(body.pseudo, 24); if (ps.length >= 2 && ps.toLowerCase() !== me.pseudo.toLowerCase()) { const all = await allProfiles(st); if (all.some((x) => x.id !== me.id && x.pseudo.toLowerCase() === ps.toLowerCase())) return json({ error: "Ce pseudo est déjà pris." }, 409); me.pseudo = ps; } }
       if (body.unite !== undefined) me.unite = clean(body.unite, 40);
       if (COLORS.includes(body.color)) me.color = body.color;
+      if (body.fire === false) me.onFire = false; // le membre peut éteindre lui-même le mode On Fire
       if (body.stats) {
         // un administrateur a remis les scores à zéro : l'appli doit d'abord appliquer la remise à zéro
         const s = sanitizeStats(body.stats); if (me.stats?.defi && s.defi && me.stats.defi.week === s.defi.week) s.defi = me.stats.defi; me.stats = s;
@@ -293,10 +323,31 @@ async function handler(req) {
     if (route === "logout" && req.method === "POST") { const h = sha(req.headers.get("x-token") || body?.token); await st.delete("s/" + h); if ((me.sessions || []).includes(h)) { me.sessions = me.sessions.filter((x) => x !== h); await st.setJSON("p/" + me.id, me); } return withCookie(json({ ok: true }), null); }
     if (route === "profile" && req.method === "DELETE") { if (me.email === SUPER) return json({ error: "Le super administrateur ne peut pas supprimer son profil." }, 400); await st.delete("p/" + me.id); await st.delete("u/" + me.id); if (me.sub) await st.delete("g/" + me.sub); return json({ ok: true }); }
 
+    // ---- journal d'activité (pour analyser les bugs a posteriori)
+    if (route === "log" && req.method === "POST") {
+      const evs = Array.isArray(body.events) ? body.events.slice(0, 300) : [];
+      if (!evs.length) return json({ ok: true });
+      const ua = clean(req.headers.get("user-agent"), 160), now = Date.now();
+      const byDay = {};
+      for (const e of evs) {
+        const t = Math.min(now, Math.max(now - 7 * 86400e3, Number(e && e.t) || now));
+        const rec = { t, u: me.id, p: clean(me.pseudo, 24), k: clean(e && e.k, 16), v: clean(e && e.v, 60), d: clean(typeof (e && e.d) === "string" ? e.d : JSON.stringify((e && e.d) || ""), 400), s: clean(body.s, 12), ver: clean(body.ver, 12), ua };
+        const day = new Date(t).toISOString().slice(0, 10); (byDay[day] = byDay[day] || []).push(JSON.stringify(rec));
+      }
+      for (const [day, list] of Object.entries(byDay)) await st.logPush("log/" + day, list);
+      return json({ ok: true });
+    }
+
     // ---- administration
     if (route.startsWith("admin/")) {
       if (!isAdmin(me, cfg)) return json({ error: "Réservé aux administrateurs." }, 403);
       const superMe = me.email === SUPER;
+      if (route === "admin/logs" && req.method === "GET") {
+        const day = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("day") || "") ? url.searchParams.get("day") : new Date().toISOString().slice(0, 10);
+        const n = Math.max(1, Math.min(5000, Number(url.searchParams.get("n")) || 2000));
+        const raw = (await st.logRange("log/" + day, n)) || [];
+        return json({ day, logs: raw.map((x) => { try { return JSON.parse(x); } catch (e) { return null; } }).filter(Boolean) });
+      }
       if (route === "admin/members" && req.method === "GET") {
         const all = await allProfiles(st);
         return json({ members: all.map((p) => ({ ...pub(p), email: p.email || null, name: p.name || "", blocked: !!p.blocked, admin: isAdmin(p, cfg), superAdmin: p.email === SUPER, createdAt: p.createdAt, lastLogin: p.lastLogin || null })), settings: cfg, superAdmin: superMe, superEmail: SUPER });
@@ -316,6 +367,8 @@ async function handler(req) {
           case "reset": t.stats = emptyStats(); t.resetAt = Date.now(); await st.setJSON("u/" + t.id, { v: 1, resetAt: t.resetAt }); break;
           case "block": t.blocked = true; break;
           case "unblock": t.blocked = false; break;
+          case "fire": t.onFire = true; t.fireAt = Date.now(); break; // mode « On Fire » activé par un administrateur
+          case "unfire": t.onFire = false; break;
           case "rename": { const ps = clean(body.pseudo, 24); if (ps.length < 2) return json({ error: "Pseudo trop court." }, 400); t.pseudo = await uniquePseudo(st, ps, t.id); break; }
           case "admin": case "unadmin":
             if (!superMe) return json({ error: "Seul le super administrateur gère les administrateurs." }, 403);
