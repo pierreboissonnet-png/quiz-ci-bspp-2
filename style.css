@@ -460,3 +460,6 @@ body.onfire .view{padding-bottom:90px}
 .sgtpill{background:linear-gradient(90deg,#7a1f0f,#ff6a00)}
 .firecard b .sgtic{width:20px;height:20px}
 .admfx{margin-bottom:4px}.admfx button{display:flex;align-items:center;justify-content:center;gap:5px}.admfx .flic{width:16px;height:16px}
+.vfprop{display:block;margin-top:12px;padding:10px 14px;border-radius:12px;background:var(--card2);border-left:4px solid var(--navy2,#0f1d36);font-size:.92em;font-weight:700}
+.vfprop small{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.recap .vfprop,.card b .vfprop{margin-top:6px;padding:6px 10px;font-size:13px}

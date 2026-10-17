@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.1.3";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.1.4";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 function alog(k,v,d){try{logBuf.push({t:Date.now(),k:String(k).slice(0,16),v:String(v==null?"":v).slice(0,60),d:d==null?"":(typeof d==="string"?d:JSON.stringify(d)).slice(0,400)});if(logBuf.length>400)logBuf=logBuf.slice(-400);store.set("logBuf",logBuf);
  clearTimeout(logT);logT=setTimeout(logFlush,logBuf.length>=50?500:20000)}catch(e){}}
@@ -72,9 +72,11 @@ function record(id,ok,bonus){alog("rep",id,ok?"juste":"faux");if(typeof syncSoon
 function fresh(list){const now=Date.now();return list.map(x=>{const t=histT[x._id]||0;return [t?t+Math.random()*Math.min((now-t)*.3,5*864e5):-1-Math.random(),x]}).sort((a,b)=>a[0]-b[0]).map(x=>x[1])}
 // mélange l'ordre des réponses d'un QCM (la bonne réponse ne reste pas toujours à la même place)
 function mixQ(q){if(!q||q._k!=="qcm"||!Array.isArray(q.choices))return q;const o=shuffle(q.choices.map((t,k)=>({t,k})));return {...q,choices:o.map(x=>x.t),answer:o.findIndex(x=>x.k===q.answer)}}
+// affichage d'une question ; pour un vrai/faux tiré d'un QCM : la question, puis la réponse proposée à juger
+function qHtml(q){return esc(q.q)+(q.prop?`<span class="vfprop"><small>Réponse proposée</small>${esc(q.prop)}</span>`:"")}
 // vrai/faux tirés des QCM : « question → réponse proposée » (bonne réponse ou piège), une variante par question
 function vfFromQcm(list){return list.filter(q=>q._k==="qcm").map(q=>{const good=Math.random()<.5;const k=good?q.answer:pick(q.choices.map((_,i)=>i).filter(i=>i!==q.answer));
- return {...q,_k:"vf",_der:1,q:`${q.q} → ${q.choices[k]}`,answer:good,explication:(good?"":`Non : la bonne réponse est « ${q.choices[q.answer]} ». `)+(q.explication||"")}})}
+ return {...q,_k:"vf",_der:1,prop:q.choices[k],answer:good,explication:(good?"":`Non : la bonne réponse est « ${q.choices[q.answer]} ». `)+(q.explication||"")}})}
 function setBest(mode,val){if(typeof best[mode]!=="number"||val>best[mode]){best[mode]=val;store.set("best",best)}}
 function known(id){const h=hist[id];if(!h||!h.length)return null;const l=h.slice(-2);return l.every(x=>x===1)||(h.length===1&&h[0]===1)}
 function streak(){let s=0;const set=new Set(days);let d=new Date();if(!set.has(today()))d.setDate(d.getDate()-1);
@@ -330,12 +332,12 @@ function runChrono(){
   const stop=()=>clearInterval(timer);
   const show=()=>{const q=qs[i%qs.length];
     cleanup=null; // ne pas arrêter le chrono en changeant de question
-    app.innerHTML=push("Vrai ou faux 60 s",`${score} pts`)+`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px"><span class="qtag">${esc(short(q._t))}</span><span class="timer" id="tm">${left()} s</span></div><p class="qtext">${esc(q.q)}</p><div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
+    app.innerHTML=push("Vrai ou faux 60 s",`${score} pts`)+`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px"><span class="qtag">${esc(short(q._t))}</span><span class="timer" id="tm">${left()} s</span></div><p class="qtext">${qHtml(q)}</p><div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
     cleanup=stop;bindBack();app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>answer(+b.dataset.k))};
   const answer=k=>{if(over)return;const q=qs[i%qs.length];const ok=(k===1)===q.answer;record(q._id,ok);if(ok)score++;else{errs++;deadline-=3000;missed.push(q)}if(navigator.vibrate)navigator.vibrate(ok?12:[30,40,30]);i++;left()>0?show():end()};
   const end=()=>{if(over)return;over=true;stop();cleanup=null;setBest("chrono",score);setTimeout(syncSoon,50);
     app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}</div><div class="grade">bonnes réponses en 60 s</div><p class="small">${errs} erreur(s) · chaque erreur coûte 3 s</p></div><div class="actions"><button class="btn full" id="again">Rejouer</button></div>
-     ${missed.length?`<div class="sect">Ce que tu as raté</div><div class="recap">${missed.map(q=>`<div class="card"><div class="qhead"><b>${esc(q.q)}</b>${markBtn(q._id,false)}</div><div class="a">${q.answer?"VRAI":"FAUX"}</div><div class="e">${esc(q.explication)}</div>${srcBtn(q)}</div>`).join("")}</div>`:""}`;
+     ${missed.length?`<div class="sect">Ce que tu as raté</div><div class="recap">${missed.map(q=>`<div class="card"><div class="qhead"><b>${qHtml(q)}</b>${markBtn(q._id,false)}</div><div class="a">${q.answer?"VRAI":"FAUX"}</div><div class="e">${esc(q.explication)}</div>${srcBtn(q)}</div>`).join("")}</div>`:""}`;
     bindBack();bindSrc();$("#again").onclick=runChrono};
   timer=setInterval(()=>{const t=left();const el=$("#tm");if(el)el.textContent=t+" s";if(t<=0)end()},250);
   show();
@@ -611,7 +613,7 @@ function runSimple(qs,title){if(!qs.length)return;qs=qs.map(mixQ);let i=0,score=
   const choices=q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`
    :`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
   app.innerHTML=push(title,`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
-   <div class="qhead"><span class="qtag">${esc(q._t.theme)}${q._k==="vf"?" · vrai ou faux":""}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span>${q._id.startsWith("doc:")?"":markBtn(q._id)}</div><p class="qtext">${esc(q.q)}</p>${choices}<div id="after"></div>`;
+   <div class="qhead"><span class="qtag">${esc(q._t.theme)}${q._k==="vf"?" · vrai ou faux":""}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span>${q._id.startsWith("doc:")?"":markBtn(q._id)}</div><p class="qtext">${qHtml(q)}</p>${choices}<div id="after"></div>`;
   bindBack(back);
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k;const correct=q._k==="qcm"?q.answer:(q.answer?1:0);const ok=k===correct;
    if(ok){score++;combo++;bestCombo=Math.max(bestCombo,combo)}else{combo=0;missed.push(q)}record(q._id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
@@ -627,7 +629,7 @@ function runSimple(qs,title){if(!qs.length)return;qs=qs.map(mixQ);let i=0,score=
     <p class="small">+${score*5} points${bestCombo>=3?` · meilleure série : ${bestCombo}`:""}</p></div>
    ${nw.length?`<div class="card"><b>Nouveaux documents découverts</b><div class="list" style="margin-top:8px">${nw.map(d=>`<button class="row" data-od="${d}"><span class="ic" style="background:var(--navy2)">${I.book}</span><span class="tx"><b>${esc(DOC[d].t)}</b><span>${DOC[d].n} page${DOC[d].n>1?"s":""} · ouvrir</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div></div>`:""}
    <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="home2">Accueil</button></div>
-   ${missed.length?`<div class="sect">À retenir</div><div class="recap">${missed.map(q=>`<div class="card"><b>${esc(q.q)}</b><div class="a">${esc(q._k==="qcm"?q.choices[q.answer]:(q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(q.explication)}</div></div>`).join("")}</div>`:""}`;
+   ${missed.length?`<div class="sect">À retenir</div><div class="recap">${missed.map(q=>`<div class="card"><b>${qHtml(q)}</b><div class="a">${esc(q._k==="qcm"?q.choices[q.answer]:(q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(q.explication)}</div></div>`).join("")}</div>`:""}`;
   bindBack(back);$("#again").onclick=()=>runSimple(title==="Devine le document"?docQuestions(qs.length):shuffle(qs),title);$("#home2").onclick=back;
   app.querySelectorAll("[data-od]").forEach(b=>b.onclick=()=>openDoc(b.dataset.od,1,[]));window.scrollTo(0,0)};
  show()}
