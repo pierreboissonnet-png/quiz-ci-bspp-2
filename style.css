@@ -323,3 +323,5 @@ body.booting #app{visibility:hidden}
 .gopts{display:grid;grid-template-columns:1fr 1fr;gap:10px}.gopts .opt{justify-content:center;padding:12px}.gopts .opt .gq{width:96px;height:83px}
 .gbig{width:180px;height:156px;border-radius:10px}
 .btn .grade{width:30px;height:26px;vertical-align:middle;margin-right:6px;border-radius:3px}
+.gqbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 6px}.gqbtns .btn{font-size:14px;padding:10px 8px;display:flex;align-items:center;justify-content:center;gap:4px}
+@media (max-width:360px){.gqbtns{grid-template-columns:1fr}}

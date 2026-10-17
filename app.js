@@ -77,7 +77,8 @@ const qhead=(q,extra="")=>`<div class="qhead"><span class="qtag">${esc(short(q._
 
 /* ============ Navigation ============ */
 const RADIO_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="12" height="13" rx="2.5"/><path d="M9 8 7 3"/><path d="M9.5 12h5M9.5 15h5"/></svg>',MAP_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>';
-const TABS=[["home","Accueil",I.home],["revise","Réviser",I.cards],["chat","Assistant",I.chat],["cri","Codes CRI",'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h4M7 13h10M7 17h6"/><circle cx="16.5" cy="9" r="1.5"/></svg>'],["radio","Messages radio",RADIO_IC_T],["carte","Carte des secteurs",MAP_IC_T],["docs","Documents",I.book],["profile","Profil",I.user]];
+const GRADE_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M7 10h10M7 14h10"/></svg>';
+const TABS=[["home","Accueil",I.home],["revise","Réviser",I.cards],["chat","Assistant",I.chat],["cri","Codes CRI",'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h4M7 13h10M7 17h6"/><circle cx="16.5" cy="9" r="1.5"/></svg>'],["radio","Messages radio",RADIO_IC_T],["carte","Carte des secteurs",MAP_IC_T],["grades","Grades",GRADE_IC_T],["docs","Documents",I.book],["profile","Profil",I.user]];
 let tab=store.get("tab","home");if(!TABS.some(t=>t[0]===tab))tab="home";
 let cleanup=null;
 const MENU_IC='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
@@ -92,7 +93,7 @@ function renderTabs(){const cur=TABS.find(t=>t[0]===tab);
     document.addEventListener("keydown",e=>{if(e.key==="Escape"){const p=$("#menuPanel");if(p)p.hidden=true}})}}
 let navStack=[];
 function go(t,fromBack){if(cleanup){cleanup();cleanup=null}if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
-  app.className="view";({home:viewHome,revise:viewRevise,chat:viewChat,cri:viewCri,radio:viewRadio,carte:viewCarte,docs:viewDocs,profile:viewProfile})[t]();bindTabBack();window.scrollTo(0,0)}
+  app.className="view";({home:viewHome,revise:viewRevise,chat:viewChat,cri:viewCri,radio:viewRadio,carte:viewCarte,grades:()=>viewGrades(level==="expert",true),docs:viewDocs,profile:viewProfile})[t]();bindTabBack();window.scrollTo(0,0)}
 function goBack(){const prev=navStack.pop();if(prev)go(prev,true);else go("home",true)}
 function backLink(){return tab!=="home"?`<button class="tback" id="tback">${I.back}${esc((TABS.find(x=>x[0]===(navStack[navStack.length-1]||"home"))||[])[1]||"Accueil")}</button>`:""}
 function bindTabBack(){const b=$("#tback");if(b)b.onclick=()=>goBack()}
@@ -175,8 +176,8 @@ function viewHome(){if(level==="simple")return viewHomeSimple();
     ${tile("cas",I.siren,"#e3051b","Cas pratiques","Situations d'intervention")}
     ${tile("exam",I.exam,"#34c759","Examen blanc","30 questions, corrigé à la fin"+b("exam"))}
     <button class="tile" data-m="radio"><span class="ic" style="background:#0f1d36">${RADIO_IC_T}</span><b>Messages radio</b><span>Constructeur et simulateur phonie</span></button>
-    <button class="tile wide" data-m="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><div><b>Les grades</b><br><span>Galons, abréviations, hiérarchie et services</span></div></button>
     <button class="tile" data-m="carte"><span class="ic" style="background:#1f9d55">${MAP_IC_T}</span><b>Carte des secteurs</b><span>CS, Golf, voisins, quiz carte</span></button>
+    <button class="tile wide" data-m="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><div><b>Les grades</b><br><span>Galons, abréviations, hiérarchie et services</span></div></button>
     <button class="tile wide" data-m="marks"><span class="ic" style="background:#5e5ce6">${FLAG}</span><div><b>Questions marquées (${Object.keys(marks).length})</b><br><span>Revois la réponse et le référentiel des points à éclaircir.</span></div></button>
     <button class="tile wide" data-m="review" ${review.size?"":"disabled"}><span class="ic" style="background:var(--warn)">${I.redo}</span><div><b>À revoir (${review.size})</b><br><span>Rejoue uniquement tes erreurs.</span></div></button>
    </div>
@@ -510,8 +511,8 @@ function viewHomeSimple(){
     <button class="tile" data-sm="doc"><span class="ic" style="background:#5e5ce6">${SEARCH_IC}</span><b>Devine le document</b><span>Quel document ouvrir pour…</span></button>
     <button class="tile" data-sm="mix"><span class="ic" style="background:#0a84ff">${I.cards}</span><b>Grand mélange</b><span>20 questions de tous les thèmes</span></button>
     <button class="tile" data-sm="radio"><span class="ic" style="background:#0f1d36">${RADIO_IC_T}</span><b>Messages radio</b><span>Construis tes messages pas à pas</span></button>
-    <button class="tile wide" data-sm="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><div><b>Les grades</b><br><span>Reconnais les galons, du sapeur au général</span></div></button>
     <button class="tile" data-sm="carte"><span class="ic" style="background:#1f9d55">${MAP_IC_T}</span><b>Carte des secteurs</b><span>Les CS, leurs adresses, leur Golf</span></button>
+    <button class="tile wide" data-sm="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><div><b>Les grades</b><br><span>Reconnais les galons, du sapeur au général</span></div></button>
    </div>
    <div class="sect">Thèmes du quiz</div><div class="chips">${Object.entries(Q.themes).map(([k,l])=>`<button class="chip" data-st="${k}" aria-pressed="${sSel.has(k)}">${esc(l)}</button>`).join("")}</div>
    <div class="sect">Cette semaine</div>
@@ -581,13 +582,13 @@ function gradeSvg(code,cls,serv){const g=GBY[code];const W=60,H=52;let inner="";
  else if(g[3].st){const n=g[3].st;const star=(cx,cy)=>{let p="";for(let k=0;k<10;k++){const r=k%2?3.4:8,a=Math.PI/2+k*Math.PI/5;p+=`${(cx+r*Math.cos(a)).toFixed(1)},${(cy-r*Math.sin(a)).toFixed(1)} `}return `<polygon points="${p}" fill="#c9ccd3"/>`};
   inner+=n===2?star(19,27)+star(41,27):star(30,17)+star(17,34)+star(43,34)}
  return `<svg class="${cls||""}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(serv?"":g[1])}"><rect width="${W}" height="${H}" rx="3" fill="#2b2b2b"/>${inner}</svg>`}
-function viewGrades(expert){app.innerHTML=push("Les grades")+`<p class="sub" style="margin-top:12px">Les galons portés par les sapeurs-pompiers de Paris. Touche un grade pour l'agrandir.</p>
-  <div class="actions" style="margin:0 0 6px"><button class="btn full" id="gQuiz">${gradeSvg(expert?"LTN":"1CL","grade")} Quiz des grades · niveau ${expert?"Lieutenant":"Sapeur"}</button></div>
+function viewGrades(expert,asTab){app.innerHTML=(asTab?`${backLink()}<h1 class="big">Grades</h1>`:push("Les grades"))+`<p class="sub" style="margin-top:12px">Les galons portés par les sapeurs-pompiers de Paris. Touche un grade pour l'agrandir.</p>
+  <div class="gqbtns"><button class="btn" data-gq="0">${gradeSvg("1CL","grade")} Quiz niveau Sapeur</button><button class="btn dark" data-gq="1">${gradeSvg("LTN","grade")} Quiz niveau Lieutenant</button></div>
   ${Object.entries(GRC).map(([k,l])=>`<div class="sect">${esc(l)}</div><div class="gplanche">${GR.filter(g=>g[2]===k).map(g=>`<button class="gcell" data-g="${g[0]}">${gradeSvg(g[0])}<b>${esc(g[1])}</b><span>${esc(GRA[g[0]]||g[0])}</span></button>`).join("")}</div>`).join("")}
   <div class="sect">Services (médecins, pharmaciens…)</div><p class="small" style="margin:0 4px 8px">La couleur du velours entre les galons indique le service ; le nombre de galons, le niveau (3 : grade de base, 4 : principal, 5 : en chef).</p>
   <div class="gplanche">${SERV.map(sv=>`<div class="gcell">${gradeSvg("CNE","",[sv[0],3])}<b>${esc(sv[1])}</b><span>velours ${esc({med:"bordeaux",ph:"vert",vet:"rose framboise",com:"marron",ing:"noir"}[sv[0]])}</span></div>`).join("")}</div>
   <p class="small" style="margin:14px 4px 0">Planche simplifiée d'après la planche des grades transmise par l'UL. En cas de doute, renseigne-toi auprès du PVO.</p>`;
- bindBack(()=>go("home"));$("#gQuiz").onclick=()=>runGradeQuiz(expert);
+ if(asTab)bindTabBack();else bindBack(()=>go("home"));app.querySelectorAll("[data-gq]").forEach(b=>b.onclick=()=>runGradeQuiz(b.dataset.gq==="1"));
  app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>{const g=GBY[b.dataset.g];sheet(`<div style="text-align:center">${gradeSvg(g[0],"gbig")}<h2 style="margin:12px 0 4px">${esc(g[1])}</h2><p class="small" style="margin:0">${esc(GRA[g[0]]||g[0])} · ${esc(GRC[g[2]])}</p></div><button class="btn sec full" style="margin-top:16px" onclick="closeSheet()">Fermer</button>`)})}
 function gradeQuestions(expert){const n=expert?4:3;const pickO=(good,pool)=>{const o=shuffle([good,...shuffle(pool.filter(x=>x!==good)).slice(0,n-1)]);return o};const Q=[];
  const base=GR.filter(g=>!g[0].endsWith("15")&&g[0]!=="SGTC");
@@ -614,14 +615,14 @@ function runGradeQuiz(expert){const qs=gradeQuestions(expert);let i=0,score=0,co
   app.innerHTML=push("Quiz des grades",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Grades · niveau ${expert?"Lieutenant":"Sapeur"}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span></div>
    ${q.img?`<div class="gqbox">${q.img}</div>`:""}<p class="qtext">${esc(q.q)}</p>
    <div class="opts ${q.imgChoices?"gopts":""}">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}">${q.imgChoices?q.imgChoices[k]:`<span class="k">${LETTERS[k]}</span>`}<span>${q.imgChoices?"":esc(c)}</span></button>`).join("")}</div><div id="after"></div>`;
-  bindBack(()=>viewGrades(expert));
+  bindBack(()=>tab==="grades"?go("grades"):viewGrades(expert));
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const ok=+b.dataset.k===q.answer;if(ok){score++;combo++}else combo=0;record(pre+q.id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
    app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===q.answer)o.classList.add("good");else if(o===b)o.classList.add("bad")});
    $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}</b>${esc(q.imgChoices?"Réponse : "+q.choices[q.answer]+". ":"")}${esc(q.e)}</div><div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
    const n=$("#next");n.onclick=()=>{i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})})};
  const end=()=>{setTimeout(syncSoon,50);app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${score>=9?"Tu reconnais les galons comme un chef !":grade(score*10)}${score<6?" Repasse par la planche des grades.":""}</div><p class="small">+${score*(expert?20:5)} points</p></div>
   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="planche">Planche des grades</button></div>`;
-  bindBack(()=>go("home"));$("#again").onclick=()=>runGradeQuiz(expert);$("#planche").onclick=()=>viewGrades(expert);window.scrollTo(0,0)};
+  bindBack(()=>go(tab==="grades"?"grades":"home"));$("#again").onclick=()=>runGradeQuiz(expert);$("#planche").onclick=()=>tab==="grades"?go("grades"):viewGrades(expert);window.scrollTo(0,0)};
  show()}
 
 /* ============ Messages radio ============ */
