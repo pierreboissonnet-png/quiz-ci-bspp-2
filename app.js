@@ -79,12 +79,17 @@ const qhead=(q,extra="")=>`<div class="qhead"><span class="qtag">${esc(short(q._
 const RADIO_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="12" height="13" rx="2.5"/><path d="M9 8 7 3"/><path d="M9.5 12h5M9.5 15h5"/></svg>',MAP_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>';
 const GRADE_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M7 10h10M7 14h10"/></svg>';
 const TABS=[["home","Accueil",I.home],["revise","Réviser",I.cards],["chat","Assistant",I.chat],["cri","Codes CRI",'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h4M7 13h10M7 17h6"/><circle cx="16.5" cy="9" r="1.5"/></svg>'],["radio","Messages radio",RADIO_IC_T],["carte","Carte des secteurs",MAP_IC_T],["grades","Grades",GRADE_IC_T],["docs","Documents",I.book],["profile","Profil",I.user]];
-let tab=store.get("tab","home");if(!TABS.some(t=>t[0]===tab))tab="home";
+// mode d'utilisation : « apprenti » (tout l'entraînement) ou « ci » (CI BSPP en poste : défi hebdo + outils de garde)
+let usageObj=store.get("usageObj",null)||{v:store.get("usage","apprenti"),t:0};let usage=usageObj.v;
+function setUsage(v){usage=v;usageObj={v,t:Date.now()};store.set("usageObj",usageObj);store.set("usage",v);if(typeof syncSoon==="function")syncSoon(1500)}
+const CI_TABS=["home","cri","radio","carte","grades","docs","profile"];
+const visTabs=()=>usage==="ci"?TABS.filter(t=>CI_TABS.includes(t[0])):TABS;
+let tab=store.get("tab","home");if(!visTabs().some(t=>t[0]===tab))tab="home";
 let cleanup=null;
 const MENU_IC='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
-function renderTabs(){const cur=TABS.find(t=>t[0]===tab);
+function renderTabs(){const cur=TABS.find(t=>t[0]===tab);const TABS_V=visTabs();
   $("#tabbar").innerHTML=`<button class="menubtn" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="menuPanel">${cur?cur[2]:""}<span>${cur?esc(cur[1]):""}</span>${MENU_IC}</button>
-   <div class="menupanel" id="menuPanel" hidden>${TABS.map(([k,l,ic])=>`<button data-tab="${k}" ${k===tab?'aria-current="page"':""}>${ic}<span>${l}</span></button>`).join("")}</div>`;
+   <div class="menupanel" id="menuPanel" hidden>${TABS_V.map(([k,l,ic])=>`<button data-tab="${k}" ${k===tab?'aria-current="page"':""}>${ic}<span>${l}</span></button>`).join("")}</div>`;
   const btn=$("#menuBtn"),pan=$("#menuPanel");
   const close=()=>{pan.hidden=true;btn.setAttribute("aria-expanded","false")};
   btn.onclick=e=>{e.stopPropagation();pan.hidden=!pan.hidden;btn.setAttribute("aria-expanded",String(!pan.hidden))};
@@ -92,7 +97,7 @@ function renderTabs(){const cur=TABS.find(t=>t[0]===tab);
   if(!renderTabs.bound){renderTabs.bound=true;document.addEventListener("click",e=>{const p=$("#menuPanel");if(p&&!p.hidden&&!e.target.closest("#tabbar")){p.hidden=true;const b=$("#menuBtn");if(b)b.setAttribute("aria-expanded","false")}});
     document.addEventListener("keydown",e=>{if(e.key==="Escape"){const p=$("#menuPanel");if(p)p.hidden=true}})}}
 let navStack=[];
-function go(t,fromBack){if(cleanup){cleanup();cleanup=null}if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
+function go(t,fromBack){if(cleanup){cleanup();cleanup=null}if(!visTabs().some(x=>x[0]===t))t="home";if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
   app.className="view";({home:viewHome,revise:viewRevise,chat:viewChat,cri:viewCri,radio:viewRadio,carte:viewCarte,grades:()=>viewGrades(level==="expert",true),docs:viewDocs,profile:viewProfile})[t]();bindTabBack();window.scrollTo(0,0)}
 function goBack(){const prev=navStack.pop();if(prev)go(prev,true);else go("home",true)}
 function backLink(){return tab!=="home"?`<button class="tback" id="tback">${I.back}${esc((TABS.find(x=>x[0]===(navStack[navStack.length-1]||"home"))||[])[1]||"Accueil")}</button>`:""}
@@ -147,7 +152,7 @@ const ST={ok:["Acquise","ok"],warn:["En cours","warn"],ko:["À travailler","ko"]
 function globalStats(){let n=0,ok=0;const by={ok:0,warn:0,ko:0,none:0};FICHES.forEach(f=>{const s=ficheStats(f.id);n+=s.n;ok+=s.ok;by[s.st]++});return{n,ok,by}}
 
 /* ============ Accueil ============ */
-function viewHome(){if(level==="simple")return viewHomeSimple();
+function viewHome(){document.title=usage==="ci"?"Assistant CI BSPP":"Quiz CI BSPP";if(usage==="ci")return viewHomeCI();if(level==="simple")return viewHomeSimple();
   const g=globalStats();const pct=g.n?Math.round(g.ok/g.n*100):0;const C=2*Math.PI*36;
   const w=isoWeek();const dd=defiDone[w];
   const todo=FICHES.map(f=>({f,s:ficheStats(f.id)})).filter(x=>x.s.st==="ko").sort((a,b)=>b.s.ko-a.s.ko)[0];
@@ -608,7 +613,7 @@ function gradeSvg(code,cls,serv){const g=GBY[code];const W=60,H=52;let inner="";
   inner+=n===2?star(19,27)+star(41,27):star(30,17)+star(17,34)+star(43,34)}
  return `<svg class="${cls||""}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(serv?"":g[1])}"><rect width="${W}" height="${H}" rx="3" fill="#2b2b2b"/>${inner}</svg>`}
 function viewGrades(expert,asTab){app.innerHTML=(asTab?`${backLink()}<h1 class="big">Grades</h1>`:push("Les grades"))+`<p class="sub" style="margin-top:12px">Les galons portés par les sapeurs-pompiers de Paris. Touche un grade pour l'agrandir.</p>
-  <div class="gqbtns"><button class="btn" data-gq="0">${gradeSvg("1CL","grade")} Quiz niveau Sapeur</button><button class="btn dark" data-gq="1">${gradeSvg("LTN","grade")} Quiz niveau Lieutenant</button></div>
+  ${usage==="ci"?"":`<div class="gqbtns"><button class="btn" data-gq="0">${gradeSvg("1CL","grade")} Quiz niveau Sapeur</button><button class="btn dark" data-gq="1">${gradeSvg("LTN","grade")} Quiz niveau Lieutenant</button></div>`}
   ${Object.entries(GRC).map(([k,l])=>`<div class="sect">${esc(l)}</div><div class="gplanche">${GR.filter(g=>g[2]===k).map(g=>`<button class="gcell" data-g="${g[0]}">${gradeSvg(g[0])}<b>${esc(g[1])}</b><span>${esc(GRA[g[0]]||g[0])}</span></button>`).join("")}</div>`).join("")}
   <div class="sect">Services (médecins, pharmaciens…)</div><p class="small" style="margin:0 4px 8px">La couleur du velours entre les galons indique le service ; le nombre de galons, le niveau (3 : grade de base, 4 : principal, 5 : en chef).</p>
   <div class="gplanche">${SERV.map(sv=>`<div class="gcell">${gradeSvg("CNE","",[sv[0],3])}<b>${esc(sv[1])}</b><span>velours ${esc({med:"bordeaux",ph:"vert",vet:"rose framboise",com:"marron",ing:"noir"}[sv[0]])}</span></div>`).join("")}</div>
@@ -649,6 +654,23 @@ function runGradeQuiz(expert){const qs=gradeQuestions(expert);let i=0,score=0,co
   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="planche">Planche des grades</button></div>`;
   bindBack(()=>go(tab==="grades"?"grades":"home"));$("#again").onclick=()=>runGradeQuiz(expert);$("#planche").onclick=()=>tab==="grades"?go("grades"):viewGrades(expert);window.scrollTo(0,0)};
  show()}
+
+/* ============ Accueil mode CI BSPP ============ */
+function viewHomeCI(){const w=isoWeek(),dd=defiDone[w];
+ const t=(k,ic,col,ti,su)=>`<button class="tile" data-ci="${k}"><span class="ic" style="background:${col}">${ic}</span><b>${ti}</b><span>${su}</span></button>`;
+ app.innerHTML=`<div class="hello">${LOGOS}</div><h1 class="big">Assistant CI BSPP</h1><p class="sub">Tes outils de garde.</p>
+  <div class="tiles">
+   ${t("radio",RADIO_IC_T,"#0f1d36","Messages radio","Construis ton message, statuts")}
+   ${t("cri",'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h4M7 13h10M7 17h6"/></svg>',"#e3051b","Codes CRI","Trouver le code retour")}
+   ${t("carte",MAP_IC_T,"#1f9d55","Carte des secteurs","CS, adresses, PVO, Golf")}
+   ${t("docs",I.book,"#5e5ce6","Documents","Tous les référentiels")}
+   <button class="tile wide" data-ci="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><div><b>Grades</b><br><span>La planche des galons BSPP</span></div></button>
+  </div>
+  <div class="defimini"><div><span class="wk">DÉFI ${w}</span><b>Défi de la semaine</b><span class="small">${dd?`Ton score : ${dd.score}/20`:"20 questions pour garder la main"}</span></div><button class="btn small" id="defiGo">${dd?"Rejouer":"Jouer"}</button></div>
+  <p class="small" style="margin:14px 4px 0">Envie de réviser ? Repasse en mode Apprenti depuis ton profil.</p>
+  <footer class="note" style="margin-top:10px"><b>Application non officielle.</b> Elle n'est ni éditée ni validée par la BSPP ni par la Croix-Rouge française et sert uniquement à s'entraîner et à réviser. Développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française.</footer>`;
+ $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
+ app.querySelectorAll("[data-ci]").forEach(b=>b.onclick=()=>go(b.dataset.ci))}
 
 /* ============ Messages radio ============ */
 const RADIO_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="12" height="13" rx="2.5"/><path d="M9 8 7 3"/><path d="M9.5 12h5M9.5 15h5"/><circle cx="12" cy="18.2" r=".6" fill="currentColor"/></svg>';
@@ -834,9 +856,9 @@ function indicSheet(after){sheet(`<h2>Mon indicatif radio</h2><p class="small">P
  loadSect().then(()=>{const ci=$("#ridC");if(!ci)return;const dl=document.createElement("datalist");dl.id="dlCS";dl.innerHTML=SECT.sect.map(s=>`<option value="${esc(s.name)}">`).join("");ci.after(dl);ci.setAttribute("list","dlCS");
    ci.addEventListener("input",()=>{const s=SECT.sect.find(x=>norm(x.name)===norm(ci.value.trim()));if(s)$("#ridG").value=s.golf})}).catch(()=>{});
  $("#ridF").onsubmit=e=>{e.preventDefault();saveRadioId({num:$("#ridN").value,cs:$("#ridC").value,golf:$("#ridG").value});closeSheet();(after||viewRadio)()}}
-function viewRadio(){
+function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
  const head=`${backLink()}<h1 class="big">Messages radio</h1><p class="sub">Construis tes messages phonie BSPP, entraîne-toi au dialogue avec le CSO et révise les statuts.</p>${indicCard()}
-  <div class="seg" style="margin:14px 0">${[["build","Construire"],["train","S'entraîner"],["statuts","Statuts"]].map(([k,l])=>`<button data-rt="${k}" aria-pressed="${k===radioTab}">${l}</button>`).join("")}</div>`;
+  <div class="seg" style="margin:14px 0">${[["build","Construire"],["train","S'entraîner"],["statuts","Statuts"]].filter(x=>usage!=="ci"||x[0]!=="train").map(([k,l])=>`<button data-rt="${k}" aria-pressed="${k===radioTab}">${l}</button>`).join("")}</div>`;
  let body="";
  if(radioTab==="build")body=`<div class="list">${Object.entries(RB).map(([k,b])=>`<button class="row" data-rb="${k}"><span class="ic" style="background:${b.c}">${k==="rentree"?I.doc:k==="danger"?I.siren:RADIO_IC}</span><span class="tx"><b>${esc(b.t)}</b><span>${esc(b.s)}</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div>
    <div class="card" style="margin-top:14px"><b>Règles d'or</b><ul class="rrules"><li>Fréquence <b>SGAP-OPS</b> du groupement où tu te trouves.</li><li>Vérifie qu'aucun échange n'est en cours avant de transmettre.</li><li>Appuie sur la pédale, attends environ <b>3 secondes</b> (relais) puis parle.</li><li>Interlocuteur principal : le CSO (« Golf »). Radio en panne : téléphone au CSO, à défaut au PVO.</li><li>La victime d'abord : mieux vaut un message imparfait qu'une victime délaissée.</li></ul><button class="srcbtn" data-gp="8">${I.doc}<span>Guide pratique CI, p. 8-16</span></button></div>`;
@@ -984,9 +1006,9 @@ function makeMap(el,opts={}){const L=window.L;const dark=window.matchMedia("(pre
  return{m,layers}}
 function styleSect(layers,fn){Object.entries(layers).forEach(([c,l])=>{const s=SECT.by[c];const col=GCOL[s.golf];l.setStyle(fn(s,col))})}
 
-function viewCarte(){
+function viewCarte(){if(usage==="ci"&&carteTab==="quiz")carteTab="map";
  const head=`${backLink()}<h1 class="big">Carte des secteurs</h1><p class="sub">Les ${SECT?SECT.sect.length:26} centres de secours et leurs secteurs, par groupement (Golf).</p>
-  <div class="seg" style="margin:0 0 12px">${[["map","Carte"],["list","Liste"],["quiz","Quiz"]].map(([k,l])=>`<button data-ct="${k}" aria-pressed="${k===carteTab}">${l}</button>`).join("")}</div>`;
+  <div class="seg" style="margin:0 0 12px">${[["map","Carte"],["list","Liste"],["quiz","Quiz"]].filter(x=>usage!=="ci"||x[0]!=="quiz").map(([k,l])=>`<button data-ct="${k}" aria-pressed="${k===carteTab}">${l}</button>`).join("")}</div>`;
  app.innerHTML=head+`<div id="cbody"><div class="loading">Chargement de la carte…</div></div>`;bindTabBack();
  app.querySelectorAll("[data-ct]").forEach(b=>b.onclick=()=>{carteTab=b.dataset.ct;store.set("carteTab",carteTab);if(cleanup){cleanup();cleanup=null}viewCarte()});
  const need=carteTab==="map"?Promise.all([loadSect(),loadLeaflet()]):loadSect();
@@ -1139,12 +1161,16 @@ function viewProfile(){
   if(profTab==="equipe"){app.innerHTML=head+`<div id="board"></div>`;bindProfTabs();renderBoard();return}
   viewMe(head)}
 function bindProfTabs(){bindTabBack();app.querySelectorAll("[data-pt]").forEach(b=>b.onclick=()=>{profTab=b.dataset.pt;store.set("profTab",profTab);viewProfile()})}
-function viewMe(head){
+function usageCard(){return `<div class="sect">Mode d'utilisation</div><div class="card">
+  <div class="seg usage"><button data-usage="apprenti" aria-pressed="${usage==="apprenti"}">${gradeSvg("1CL","grade")}<span>Apprenti</span></button><button data-usage="ci" aria-pressed="${usage==="ci"}">${gradeSvg("LTN","grade")}<span>CI BSPP</span></button></div>
+  <p class="small" style="margin:10px 0 0">${usage==="ci"?"<b>Mode CI BSPP</b> : l'appli garde le défi de la semaine et tes outils de garde (documents, codes CRI, messages radio, grades, carte des secteurs). L'entraînement est masqué, ta progression est conservée. Ce choix suit ton compte sur tous tes appareils.":"<b>Mode Apprenti</b> : tout l'entraînement (quiz, niveaux Sapeur et Lieutenant, révisions, évaluation par fiche) en plus des outils. Passe en mode CI BSPP une fois ta formation validée."}</p></div>`}
+function bindUsage(){app.querySelectorAll("[data-usage]").forEach(b=>b.onclick=()=>{if(usage===b.dataset.usage)return;setUsage(b.dataset.usage);renderTabs();viewProfile();toast(usage==="ci"?"Mode CI BSPP activé.":"Mode Apprenti activé.")})}
+function viewMe(head){if(usage==="ci"){app.innerHTML=head+`${meCard()}${usageCard()}${accountCard()}`;bindProfTabs();bindMe();bindUsage();return}
   const rows=FICHES.map(f=>({f,s:ficheStats(f.id)})).filter(x=>x.s.n>0);const g=globalStats();
   const order={ko:0,warn:1,none:2,ok:3};
   const shown=rows.filter(x=>profFilter==="all"||x.s.st===profFilter).sort((a,b)=>order[a.s.st]-order[b.s.st]||b.s.ko-a.s.ko||b.s.n-a.s.n);
   const answered=Object.keys(hist).filter(id=>BYID[id]).length;const correct=Object.values(hist).reduce((a,h)=>a+h.filter(Boolean).length,0),tot=Object.values(hist).reduce((a,h)=>a+h.length,0);
-  app.innerHTML=head+`${meCard()}<div class="sect">Mon évaluation</div>
+  app.innerHTML=head+`${meCard()}${usageCard()}<div class="sect">Mon évaluation</div>
    <div class="card"><div class="kpis"><div class="kpi"><b>${g.by.ok}</b><span>fiches acquises</span></div><div class="kpi"><b>${g.by.warn}</b><span>en cours</span></div><div class="kpi"><b>${g.by.ko}</b><span>à travailler</span></div></div>
     <div class="prog" style="height:10px;margin-top:14px"><i class="p1" style="width:${g.by.ok/rows.length*100}%"></i><i class="p2" style="width:${g.by.warn/rows.length*100}%"></i><i class="p3" style="width:${g.by.ko/rows.length*100}%"></i></div>
     <div class="legend"><span><i style="background:var(--ok)"></i>Acquise</span><span><i style="background:var(--warn)"></i>En cours</span><span><i style="background:var(--ko)"></i>À travailler</span><span><i style="background:var(--card2)"></i>Pas encore vue</span></div></div>
@@ -1158,7 +1184,7 @@ function viewMe(head){
    ${accountCard()}<div class="sect">Réinitialiser</div>
    <div class="card"><p style="margin:0 0 12px">Remet à zéro l'évaluation continue : fiches, questions à revoir, records, série et défis joués. Les thèmes choisis sont conservés.</p>
     ${confirmReset?`<div class="confirm"><b>Tout effacer ?</b><p class="small" style="margin:4px 0 12px">Cette action ne peut pas être annulée.</p><div class="actions" style="margin:0"><button class="btn" id="resetYes" style="background:var(--ko)">Oui, tout effacer</button><button class="btn sec" id="resetNo">Annuler</button></div></div>`:`<button class="btn sec full" id="resetBtn" style="color:var(--ko)">Réinitialiser mon évaluation</button>`}</div>`;
-  bindProfTabs();bindMe();app.querySelectorAll("[data-pf]").forEach(b=>b.onclick=()=>{profFilter=b.dataset.pf;viewProfile()});
+  bindProfTabs();bindMe();bindUsage();app.querySelectorAll("[data-pf]").forEach(b=>b.onclick=()=>{profFilter=b.dataset.pf;viewProfile()});
   app.querySelectorAll("[data-fiche]").forEach(b=>b.onclick=()=>ficheSheet(b.dataset.fiche));
   const rb=$("#resetBtn");if(rb)rb.onclick=()=>{confirmReset=true;viewProfile();$("#resetYes").scrollIntoView({block:"center"})};
   const ry=$("#resetYes");if(ry)ry.onclick=()=>{localReset();confirmReset=false;syncNow();viewProfile()};
@@ -1202,6 +1228,7 @@ function buildStats(){const g=globalStats();const w=isoWeek();
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
   const rdA = a.radio, rdB = b.radio; // l'indicatif radio survit aux remises à zéro
+  const usA = a.usage, usB = b.usage; // le mode d'utilisation aussi
   const ra = Number(a.resetAt) || 0, rb = Number(b.resetAt) || 0;
   if (rb > ra) a = { resetAt: rb }; else if (ra > rb) b = { resetAt: ra };
   const out = { v: 1, resetAt: Math.max(ra, rb), hist: {}, histT: {}, best: {}, days: [], defi: {}, cntDev: {}, marks: {} };
@@ -1230,13 +1257,15 @@ function mergeProgress(a, b) {
     if (pick) out.marks[id] = { on: !!pick.on, t: Number(pick.t) || 0 };
   }
   const rd = [rdA, rdB].filter((x) => x && typeof x === "object").sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
+  const us = [usA, usB].filter((x) => x && typeof x === "object" && (x.v === "ci" || x.v === "apprenti")).sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
+  if (us) out.usage = { v: us.v, t: Number(us.t) || 0 };
   if (rd) out.radio = { num: String(rd.num || "").slice(0, 6), cs: String(rd.cs || "").slice(0, 40), golf: String(rd.golf || "").slice(0, 3), t: Number(rd.t) || 0 };
   return out;
 }
 
-function localProgress(){return {v:1,resetAt:progReset,hist,histT,best,days,defi:defiDone,cntDev,marks:marksLog,radio:radioId}}
+function localProgress(){return {v:1,resetAt:progReset,hist,histT,best,days,defi:defiDone,cntDev,marks:marksLog,radio:radioId,usage:usageObj}}
 function applyProgress(p){hist=p.hist||{};histT=p.histT||{};best=p.best||{};days=p.days||[];defiDone=p.defi||{};cntDev=p.cntDev||{};if(!cntDev[DEV])cntDev[DEV]={points:0,answered:0,correct:0};cnt=cntDev[DEV];
-  marksLog=p.marks||{};rebuildMarks();progReset=p.resetAt||0;if(p.radio&&(+p.radio.t||0)>=(+radioId.t||0)){radioId=p.radio;store.set("radioId",radioId)}
+  marksLog=p.marks||{};rebuildMarks();progReset=p.resetAt||0;if(p.radio&&(+p.radio.t||0)>=(+radioId.t||0)){radioId=p.radio;store.set("radioId",radioId)}if(p.usage&&(+p.usage.t||0)>(+usageObj.t||0)){const ch=p.usage.v!==usage;usageObj=p.usage;usage=p.usage.v;store.set("usageObj",usageObj);store.set("usage",usage);if(ch&&typeof renderTabs==="function"){setTimeout(()=>{renderTabs();if(!visTabs().some(x=>x[0]===tab))go("home");else if(!document.body.classList.contains("pushed")&&!$("#sheet"))go(tab,true)},0)}}
   review=new Set(Object.entries(hist).filter(([id,h])=>h.length&&h[h.length-1]===0&&BYID[id]).map(([id])=>id));
   store.set("hist",hist);store.set("histT",histT);store.set("best",best);store.set("days",days);store.set("defi",defiDone);store.set("cntDev",cntDev);store.set("marksLog",marksLog);store.set("progReset",progReset);store.set("review",[...review])}
 function localReset(){applyProgress({resetAt:Date.now()})}

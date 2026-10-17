@@ -63,6 +63,7 @@ const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
   const rdA = a.radio, rdB = b.radio; // l'indicatif radio survit aux remises à zéro
+  const usA = a.usage, usB = b.usage; // le mode d'utilisation aussi
   const ra = Number(a.resetAt) || 0, rb = Number(b.resetAt) || 0;
   if (rb > ra) a = { resetAt: rb }; else if (ra > rb) b = { resetAt: ra };
   const out = { v: 1, resetAt: Math.max(ra, rb), hist: {}, histT: {}, best: {}, days: [], defi: {}, cntDev: {}, marks: {} };
@@ -91,6 +92,8 @@ function mergeProgress(a, b) {
     if (pick) out.marks[id] = { on: !!pick.on, t: Number(pick.t) || 0 };
   }
   const rd = [rdA, rdB].filter((x) => x && typeof x === "object").sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
+  const us = [usA, usB].filter((x) => x && typeof x === "object" && (x.v === "ci" || x.v === "apprenti")).sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
+  if (us) out.usage = { v: us.v, t: Number(us.t) || 0 };
   if (rd) out.radio = { num: String(rd.num || "").slice(0, 6), cs: String(rd.cs || "").slice(0, 40), golf: String(rd.golf || "").slice(0, 3), t: Number(rd.t) || 0 };
   return out;
 }

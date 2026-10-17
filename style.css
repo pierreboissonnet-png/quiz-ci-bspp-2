@@ -325,3 +325,10 @@ body.booting #app{visibility:hidden}
 .btn .grade{width:30px;height:26px;vertical-align:middle;margin-right:6px;border-radius:3px}
 .gqbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 6px}.gqbtns .btn{font-size:14px;padding:10px 8px;display:flex;align-items:center;justify-content:center;gap:4px}
 @media (max-width:360px){.gqbtns{grid-template-columns:1fr}}
+.seg.usage button{min-height:52px;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px}
+.seg.usage .grade{width:34px;height:30px;border-radius:4px}
+.seg.usage button[data-usage="apprenti"][aria-pressed="true"]{background:var(--ok);color:#fff}
+.seg.usage button[data-usage="ci"][aria-pressed="true"]{background:var(--navy2);color:#fff}
+.defimini{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-top:14px;padding:12px 14px;border-radius:16px;background:linear-gradient(160deg,var(--navy2),var(--navy));color:#fff}
+.defimini>div{display:flex;flex-direction:column;gap:1px;min-width:0}.defimini .wk{font:600 11px var(--mono);opacity:.7;letter-spacing:.04em}.defimini b{font-size:16px}.defimini .small{color:#fff;opacity:.75}
+.defimini .btn{flex:none}
