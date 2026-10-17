@@ -436,3 +436,8 @@ body.onfire .view{padding-bottom:90px}
 .rbp{padding:9px 12px;border-radius:12px;background:var(--card);font-size:15px;text-align:left;box-shadow:0 1px 2px rgba(0,0,0,.08);border:.5px solid var(--sep)}
 .rbp.in{background:var(--navy2);color:#fff;border-color:transparent}.rbp:disabled{opacity:1}
 .rbright{margin:6px 0 8px;padding:8px 10px;border-radius:10px;background:var(--card);font-weight:600}
+.firecard.on{background:linear-gradient(135deg,rgba(255,122,0,.10),rgba(227,5,27,.08))}
+.seg.firetog{display:flex}.seg.firetog button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px}
+.seg.firetog button svg{width:18px;height:18px}
+#forceUpd{display:flex;align-items:center;justify-content:center;gap:8px}#forceUpd svg{width:18px;height:18px}
+.seg.firetog button[data-fire="1"][aria-pressed="true"]{background:linear-gradient(135deg,#ff7a00,#e3051b);color:#fff}

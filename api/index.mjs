@@ -312,7 +312,7 @@ async function handler(req) {
       if (body.pseudo !== undefined) { const ps = clean(body.pseudo, 24); if (ps.length >= 2 && ps.toLowerCase() !== me.pseudo.toLowerCase()) { const all = await allProfiles(st); if (all.some((x) => x.id !== me.id && x.pseudo.toLowerCase() === ps.toLowerCase())) return json({ error: "Ce pseudo est déjà pris." }, 409); me.pseudo = ps; } }
       if (body.unite !== undefined) me.unite = clean(body.unite, 40);
       if (COLORS.includes(body.color)) me.color = body.color;
-      if (body.fire === false) me.onFire = false; // le membre peut éteindre lui-même le mode On Fire
+      if (typeof body.fire === "boolean") me.onFire = body.fire; // le membre allume / éteint lui-même le mode On Fire
       if (body.stats) {
         // un administrateur a remis les scores à zéro : l'appli doit d'abord appliquer la remise à zéro
         const s = sanitizeStats(body.stats); if (me.stats?.defi && s.defi && me.stats.defi.week === s.defi.week) s.defi = me.stats.defi; me.stats = s;
