@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="v50";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.0.0";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 function alog(k,v,d){try{logBuf.push({t:Date.now(),k:String(k).slice(0,16),v:String(v==null?"":v).slice(0,60),d:d==null?"":(typeof d==="string"?d:JSON.stringify(d)).slice(0,400)});if(logBuf.length>400)logBuf=logBuf.slice(-400);store.set("logBuf",logBuf);
  clearTimeout(logT);logT=setTimeout(logFlush,logBuf.length>=50?500:20000)}catch(e){}}
@@ -1364,7 +1364,7 @@ function fireCard(){return `<div class="card firecard${onFire?" on":""}"><b>${FL
 function bindFire(){document.querySelectorAll("[data-fire]").forEach(b=>b.onclick=async()=>{const v=b.dataset.fire==="1";if(v===onFire)return;document.querySelectorAll("[data-fire]").forEach(x=>x.disabled=true);
  try{await api("profile","PUT",{fire:v});setFire(v,true);alog("fire",v?"on":"off");toast(v?"Mode On Fire allumé. Garde-à-vous !":"Feu éteint. Pschhht !");viewProfile()}catch(e){document.querySelectorAll("[data-fire]").forEach(x=>x.disabled=false);toast(e.error||"Erreur.")}})}
 function updCard(){return `<div class="sect">Mise à jour</div><div class="card"><p class="small" style="margin:0 0 10px">Version installée : <b>${APP_VER}</b> · <span id="verOnline">en ligne : vérification…</span></p><button class="btn sec full" id="forceUpd">${I.refresh} Forcer la mise à jour de l'appli</button><p class="small" style="margin:8px 0 0">Recharge la dernière version mise en ligne (vide le cache de l'appli, garde tes documents téléchargés et ta progression).</p></div>`}
-async function checkOnline(){const el=$("#verOnline");if(!el)return;try{const t=await (await fetch("sw.js?t="+Date.now(),{cache:"no-store"})).text();const m=t.match(/quiz-ci-(v\d+)/);const v=m?m[1]:"?";el.innerHTML=v===APP_VER?"à jour ✓":`en ligne : <b>${v}</b> – mets à jour !`}catch(e){el.textContent="en ligne : hors connexion"}}
+async function checkOnline(){const el=$("#verOnline");if(!el)return;try{const t=await (await fetch("sw.js?t="+Date.now(),{cache:"no-store"})).text();const m=t.match(/quiz-ci-v?([\d.]+)/);const v=m?m[1]:"?";el.innerHTML=v===APP_VER?"à jour ✓":`en ligne : <b>${v}</b> – mets à jour !`}catch(e){el.textContent="en ligne : hors connexion"}}
 async function forceUpdate(){const b=$("#forceUpd");if(b){b.disabled=true;b.textContent="Mise à jour en cours…"}alog("maj","force",{ver:APP_VER});
  try{await Promise.race([syncNow(),new Promise(r=>setTimeout(r,2500))])}catch(e){}try{logFlush(true)}catch(e){}
  try{if("serviceWorker" in navigator){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()))}}catch(e){}
