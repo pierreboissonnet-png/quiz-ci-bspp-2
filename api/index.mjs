@@ -56,7 +56,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 function sanitizeStats(s = {}) {
   const out = { points: num(s.points, 1e7), total: num(s.total, 1e8), week: /^\d{4}-S\d{2}$/.test(s.week || "") ? s.week : null, answered: num(s.answered, 1e6), correct: num(s.correct, 1e6), fichesOk: num(s.fichesOk, 500), fichesTotal: num(s.fichesTotal, 500), seen: num(s.seen, 5000), streak: num(s.streak, 5000), bestExam: num(s.bestExam, 100), bestQcm: num(s.bestQcm, 100), bestChrono: num(s.bestChrono, 500), themes: {}, defi: null };
-  out.rank = num(s.rank, 16);
+  out.rank = num(s.rank, 16); out.dw = num(s.dw, 1e4); out.dl = num(s.dl, 1e4);
   if (out.correct > out.answered) out.correct = out.answered;
   if (s.themes && typeof s.themes === "object") for (const [k, v] of Object.entries(s.themes).slice(0, 12)) out.themes[clean(k, 12)] = num(v, 100);
   // historique pour les graphiques : 12 dernières semaines et 12 derniers mois
@@ -66,9 +66,39 @@ function sanitizeStats(s = {}) {
   return out;
 }
 const emptyStats = () => sanitizeStats({});
+// ---- Duels entre membres (asynchrones) ----
+const DUEL_TTL = 48 * 3600e3, DECO_TTL = 3600e3, DRAFT_TTL = 2 * 3600e3;
+async function duelIds(st, uid) { return (await st.get("dl/" + uid, { type: "json" })) || []; }
+async function duelLink(st, uid, id) { const l = (await duelIds(st, uid)).filter((x) => x !== id); l.unshift(id); await st.setJSON("dl/" + uid, l.slice(0, 40)); }
+async function setDeco(st, uid, deco) { const p = await st.get("p/" + uid, { type: "json" }); if (!p) return; p.deco = { ...deco, u: Date.now() + DECO_TTL }; await st.setJSON("p/" + uid, p); }
+// clôture : résultat, décorations (1 h) ; à appeler quand le duel change d'état
+async function duelSettle(st, d) {
+  const now = Date.now();
+  if (d.status === "draft" && now > d.created + DRAFT_TTL) { d.status = "abandoned"; await st.setJSON("duel/" + d.id, d); return d; }
+  if (d.status === "pending" && now > d.exp) {
+    d.status = "expired"; d.done = now; await st.setJSON("duel/" + d.id, d);
+    await setDeco(st, d.to, { t: "run", vs: d.fromN, th: d.themeN, why: "expired" });
+    return d;
+  }
+  if (d.status === "pending" && d.res[d.from] && d.res[d.to]) {
+    const a = d.res[d.from], b = d.res[d.to];
+    d.status = "done"; d.done = now;
+    d.winner = a.pts > b.pts ? d.from : b.pts > a.pts ? d.to : null;
+    await st.setJSON("duel/" + d.id, d);
+    if (d.winner) {
+      const loser = d.winner === d.from ? d.to : d.from, wN = d.winner === d.from ? d.fromN : d.toN, lN = d.winner === d.from ? d.toN : d.fromN;
+      const sc = `${d.res[d.winner].pts} à ${d.res[loser].pts}`;
+      await setDeco(st, d.winner, { t: "medal", vs: lN, th: d.themeN, sc });
+      await setDeco(st, loser, { t: "broom", vs: wN, th: d.themeN, sc });
+    }
+  }
+  return d;
+}
+const NICK_BAN = /(conn?a?r|con\b|pute|putain|salop|encul|p[ée]d[ée]|pd\b|n[eè]gr|bougnoul|youp|tarlouz|tapette|gouine|bite|couill|chatte|nique|ntm|batard|bâtard|merde|abruti|d[ée]bile|mongol|triso|attard|handicap|clochard|nazi|hitler)/i;
+const duelPub = (d, uid) => ({ id: d.id, from: d.from, to: d.to, fromN: d.fromN, toN: d.toN, theme: d.theme, themeN: d.themeN, level: d.level, created: d.created, exp: d.exp, status: d.status, done: d.done || null, winner: d.winner || null, qids: d.qids, nick: d.nick || null, mine: d.res[uid] || null, other: (d.status === "done" || d.status === "expired" || d.status === "declined") ? (d.res[d.from === uid ? d.to : d.from] || null) : (d.res[d.from === uid ? d.to : d.from] ? { played: true } : null) });
 const fxOf = (p) => (["off", "sgt", "fire"].includes(p.fxm) ? p.fxm : p.onFire ? "fire" : "off"); // mode d'ambiance : normal / sergent / On Fire
 const setFx = (p, m) => { p.fxm = m; p.onFire = m === "fire"; };
-const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: fxOf(p) === "fire", fx: fxOf(p) });
+const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: fxOf(p) === "fire", fx: fxOf(p), deco: p.deco && p.deco.u > Date.now() ? p.deco : null, nick: p.nick && p.nick.u > Date.now() ? p.nick : null });
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
   const rdA = a.radio, rdB = b.radio; // l'indicatif radio survit aux remises à zéro
@@ -130,6 +160,10 @@ function mergeProgress(a, b) {
     const rk = [a.rank, b.rank].filter((x) => x && typeof x === "object").sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
     const n = (v, m) => Math.max(0, Math.min(m, Math.floor(Number(v) || 0)));
     if (rk) out.rank = { g: n(rk.g, 16), ex: n(rk.ex, 999), bad: n(rk.bad, 10), wait: n(rk.wait, 20), t: Number(rk.t) || 0, h: (Array.isArray(rk.h) ? rk.h : []).slice(-30).map((x) => ({ g: n(x && x.g, 16), t: Number(x && x.t) || 0, d: x && x.d < 0 ? -1 : 1 })) };
+  }
+  {
+    const dc = {}; for (const src of [a.dcr, b.dcr]) if (src && typeof src === "object") for (const [k, v] of Object.entries(src)) if (/^[a-f0-9]{6,20}$/.test(k)) dc[k] = Math.max(dc[k] || 0, [1, 10, 15, 30].includes(v) ? v : 1);
+    const ks = Object.keys(dc).slice(-300); if (ks.length) { out.dcr = {}; for (const k of ks) out.dcr[k] = dc[k]; }
   }
   if (rd) out.radio = { num: String(rd.num || "").slice(0, 6), cs: String(rd.cs || "").slice(0, 40), golf: String(rd.golf || "").slice(0, 3), t: Number(rd.t) || 0 };
   return out;
@@ -267,6 +301,59 @@ async function handler(req) {
 
     if (route === "me") return withCookie(json({ profile: pub(me), email: me.email || null, admin: isAdmin(me, cfg), superAdmin: me.email === SUPER, resetAt: me.resetAt || null }), me.id);
 
+    // ---- duels
+    if (route === "duel/list" && req.method === "GET") {
+      const ids = await duelIds(st, me.id); const list = [];
+      for (const d of (await st.getMany(ids.map((i) => "duel/" + i), { type: "json" })).filter(Boolean)) {
+        const s2 = await duelSettle(st, d);
+        if (s2.status === "abandoned" || (s2.status === "draft" && s2.from !== me.id)) continue;
+        list.push(duelPub(s2, me.id));
+      }
+      return json({ duels: list, now: Date.now() });
+    }
+    if (route === "duel/new" && req.method === "POST") {
+      const to = clean(body.to, 40); if (!to || to === me.id) return json({ error: "Choisis un adversaire." }, 400);
+      const op = await st.get("p/" + to, { type: "json" }); if (!op || op.blocked) return json({ error: "Adversaire introuvable." }, 404);
+      const mine = (await st.getMany((await duelIds(st, me.id)).map((i) => "duel/" + i), { type: "json" })).filter(Boolean);
+      const open = mine.filter((d) => (d.status === "pending" || (d.status === "draft" && Date.now() < d.created + DRAFT_TTL)) && Date.now() < d.exp);
+      if (open.filter((d) => d.from === me.id).length >= 3) return json({ error: "Tu as déjà 3 défis en cours : attends leurs résultats." }, 429);
+      if (open.some((d) => (d.from === to || d.to === to))) return json({ error: `Un duel est déjà en cours avec ${op.pseudo}.` }, 409);
+      const cands = (Array.isArray(body.cands) ? body.cands : []).map((x) => clean(x, 60)).filter(Boolean).slice(0, 120);
+      if (cands.length < 10) return json({ error: "Pas assez de questions pour ce thème." }, 400);
+      const prog = (await st.get("u/" + to, { type: "json" })) || {}; const seen = prog.hist || {};
+      const qids = [...cands.filter((q) => !seen[q]), ...cands.filter((q) => seen[q])].slice(0, 10);
+      const d = { id: randomBytes(6).toString("hex"), from: me.id, to, fromN: me.pseudo, toN: op.pseudo, theme: clean(body.theme, 20), themeN: clean(body.themeN, 40), level: body.level === "simple" ? "simple" : "expert", qids, created: Date.now(), exp: Date.now() + DUEL_TTL, status: "draft", res: {} };
+      await st.setJSON("duel/" + d.id, d); await duelLink(st, me.id, d.id); await duelLink(st, to, d.id);
+      return json({ duel: duelPub(d, me.id) });
+    }
+    if (route === "duel/play" && req.method === "POST") {
+      const d = await st.get("duel/" + clean(body.did, 20), { type: "json" }); if (!d || (d.from !== me.id && d.to !== me.id)) return json({ error: "Duel introuvable." }, 404);
+      if (d.res[me.id]) return json({ error: "Tu as déjà joué ce duel." }, 409);
+      if (d.from === me.id ? d.status !== "draft" : d.status !== "pending") return json({ error: "Ce duel n'est plus jouable." }, 409);
+      const n = (v, m) => Math.max(0, Math.min(m, Math.round(Number(v) || 0)));
+      d.res[me.id] = { pts: n(body.pts, 1000), ok: n(body.ok, 10), ms: n(body.ms, 36e5), at: Date.now() };
+      if (d.from === me.id) { d.status = "pending"; d.exp = Date.now() + DUEL_TTL; }
+      await st.setJSON("duel/" + d.id, d);
+      return json({ duel: duelPub(await duelSettle(st, d), me.id) });
+    }
+    if (route === "duel/nick" && req.method === "POST") {
+      const d = await st.get("duel/" + clean(body.did, 20), { type: "json" }); if (!d || d.status !== "done" || d.winner !== me.id) return json({ error: "Seul le gagnant peut choisir un surnom." }, 403);
+      if (d.nick) return json({ error: "Le surnom a déjà été choisi." }, 409);
+      if (Date.now() > (d.done || 0) + DECO_TTL) return json({ error: "Trop tard : le surnom se choisit dans l'heure qui suit la victoire." }, 409);
+      const nick = clean(body.nick, 28).replace(/\s+/g, " ");
+      if (nick.length < 3) return json({ error: "Surnom trop court." }, 400);
+      if (NICK_BAN.test(nick)) return json({ error: "Surnom refusé : reste dans l'esprit pompier, sans grossièreté." }, 400);
+      const loser = d.winner === d.from ? d.to : d.from; d.nick = nick; await st.setJSON("duel/" + d.id, d);
+      const lp = await st.get("p/" + loser, { type: "json" }); if (lp) { lp.nick = { n: nick, by: me.pseudo, u: (d.done || Date.now()) + DECO_TTL }; await st.setJSON("p/" + loser, lp); }
+      return json({ ok: true, nick });
+    }
+    if (route === "duel/decline" && req.method === "POST") {
+      const d = await st.get("duel/" + clean(body.did, 20), { type: "json" }); if (!d || d.to !== me.id || d.status !== "pending") return json({ error: "Duel introuvable." }, 404);
+      d.status = "declined"; d.done = Date.now(); await st.setJSON("duel/" + d.id, d);
+      await setDeco(st, me.id, { t: "run", vs: d.fromN, th: d.themeN, why: "declined" });
+      return json({ duel: duelPub(d, me.id) });
+    }
+
     if (route === "board" && req.method === "GET") {
       const [profiles, teams] = await Promise.all([allProfiles(st), allTeams(st)]);
       const ids = new Set(teams.map((x) => x.id));
@@ -370,7 +457,7 @@ async function handler(req) {
       if (route === "admin/member" && req.method === "PUT") {
         const t = await st.get("p/" + clean(body.target, 40), { type: "json" });
         if (!t) return json({ error: "Membre introuvable." }, 404);
-        const fun = ["fire", "unfire", "sergent"].includes(body.action); // le mode On Fire peut viser tout le monde, super admin compris
+        const fun = ["fire", "unfire", "sergent", "unnick"].includes(body.action); // le mode On Fire peut viser tout le monde, super admin compris
         if (!fun && t.email === SUPER && body.action !== "reset") return json({ error: "Le super administrateur ne peut pas être modifié." }, 403);
         if (!fun && isAdmin(t, cfg) && !superMe && t.id !== me.id) return json({ error: "Seul le super administrateur peut modifier un administrateur." }, 403);
         switch (body.action) {
@@ -380,6 +467,7 @@ async function handler(req) {
           case "fire": setFx(t, "fire"); t.fireAt = Date.now(); break; // mode « On Fire » activé par un administrateur
           case "sergent": setFx(t, "sgt"); t.fireAt = Date.now(); break; // mode Braise : messages musclés sans thème visuel
           case "unfire": setFx(t, "off"); break;
+          case "unnick": t.nick = null; break; // retirer un surnom de duel jugé déplacé
           case "rename": { const ps = clean(body.pseudo, 24); if (ps.length < 2) return json({ error: "Pseudo trop court." }, 400); t.pseudo = await uniquePseudo(st, ps, t.id); break; }
           case "admin": case "unadmin":
             if (!superMe) return json({ error: "Seul le super administrateur gère les administrateurs." }, 403);
