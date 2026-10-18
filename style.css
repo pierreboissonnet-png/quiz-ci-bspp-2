@@ -465,3 +465,26 @@ body.onfire .view{padding-bottom:90px}
 .recap .vfprop,.card b .vfprop{margin-top:6px;padding:6px 10px;font-size:13px}
 .lvl .lhelm{width:34px;height:40px;flex:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25))}
 .lgc{color:var(--navy2,#0f1d36);font-weight:600}.lgd b{font-weight:700;color:var(--ink)}
+.tgr .lhelm{width:60px;height:70px;display:block;margin:auto}span.tgr{display:block}
+/* grade de progression */
+.rkcard{margin-top:12px}.rkrow{display:flex;gap:14px;align-items:center}.rkrow b{display:block}
+.rkbadge{width:64px;height:56px;flex:none;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.rkname{font-size:20px;font-weight:800;line-height:1.2}
+.rkbar{height:10px;border-radius:6px;background:var(--card2);overflow:hidden;margin-top:12px}.rkbar i{display:block;height:100%;background:linear-gradient(90deg,#ff9f0a,#e3051b);border-radius:6px}
+.rkcount{margin-top:4px}.rkwarn{color:var(--ko);font-weight:700}
+.rkhow{margin-top:10px;font-size:13px;color:var(--muted)}.rkhow summary{cursor:pointer;font-weight:600;color:var(--ink)}.rkhow ul{margin:6px 0 0;padding-left:18px}.rkhow li{margin:3px 0}
+.rkmini{width:22px;height:19px;border-radius:3px;vertical-align:-4px;margin-right:6px;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.rknote{margin-top:12px;display:grid;gap:10px}.rknote .rkrow span{display:block;margin-top:2px}.rknote .rkmini{width:44px;height:38px;margin:0}
+.rkpop{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,14,28,.82);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:rkfade .3s ease}
+.rkpop.down{background:rgba(20,20,24,.78)}
+.rkfx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.rkbox{position:relative;max-width:340px;width:100%;background:var(--card);border-radius:24px;padding:24px 22px 20px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:rkpopin .5s cubic-bezier(.2,1.4,.4,1)}
+.rkt{font-size:26px;font-weight:900;letter-spacing:.02em;background:linear-gradient(90deg,#ff9f0a,#e3051b);-webkit-background-clip:text;background-clip:text;color:transparent}
+.rkpop.down .rkt{background:none;color:var(--muted)}
+.rkimg{margin:16px auto 12px;width:150px;height:130px;animation:rkglow 1.6s ease-in-out infinite alternate}.rkpop.down .rkimg{animation:none;filter:grayscale(.4)}
+.rkbig{width:150px;height:130px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.rkn{font-size:15px}.rkn b{display:block;font-size:22px;margin-top:4px}
+.rkbox .small{margin:10px 0 16px}
+@keyframes rkfade{from{opacity:0}to{opacity:1}}@keyframes rkpopin{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+@keyframes rkglow{from{filter:drop-shadow(0 0 0 rgba(255,214,10,0))}to{filter:drop-shadow(0 0 18px rgba(255,214,10,.85))}}
+.tpair .tgr{max-width:26vw;height:auto;aspect-ratio:84/73}
