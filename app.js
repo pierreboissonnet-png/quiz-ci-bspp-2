@@ -232,12 +232,6 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
    <h1 class="big">Quiz CI BSPP</h1><p class="sub">Parcours Chef d'Intervention en réseau de secours BSPP.</p>${levelSwitch()}
    <div class="card summary"><div class="ring"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="36" fill="none" stroke="var(--card2)" stroke-width="9"/><circle cx="42" cy="42" r="36" fill="none" stroke="var(--ok)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct/100)}"/></svg><b>${pct}%</b></div>
      <div><div style="font-weight:600;margin-bottom:8px">Connaissances acquises</div><div class="kpis"><div class="kpi"><b>${streak()}</b><span>jours de suite</span></div><div class="kpi"><b>${g.by.ko}</b><span>fiches à travailler</span></div><div class="kpi"><b>${review.size}</b><span>à revoir</span></div></div></div></div>
-   <div class="sect">Cette semaine</div>
-   <div class="defi"><div class="wk">DÉFI ${w}</div><h2>Défi de la semaine</h2>
-     <p>Les mêmes 20 questions pour toute l'équipe. Joue, puis partage ton score dans le groupe.</p>
-     ${dd?`<p class="done">Ton premier essai : <b>${dd.score}/20</b> en ${fmtTime(dd.ms)}</p>`:""}
-     <div class="actions" style="margin-top:0"><button class="btn" id="defiGo">${dd?"Rejouer":"Relever le défi"}</button>${dd?`<button class="btn sec" id="defiShare">Partager</button>`:""}</div><p class="small" id="defiMsg" style="color:#fff;opacity:.8"></p></div>
-   ${homeBoard()}
    ${todo?`<div class="sect">Suggestion</div><div class="list"><button class="row" data-fiche="${esc(todo.f.id)}"><span class="ic" style="background:var(--ko)">${I.redo}</span><span class="tx"><b>${esc(todo.f.label)}</b><span>${todo.s.ko} question(s) ratée(s) · fiche à travailler</span></span><span class="chev">${I.chev}</span></button></div>`:""}
    <div class="sect">S'entraîner · thèmes</div>
    <div class="chips">${chips}</div>
@@ -256,6 +250,12 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
     <button class="tile wide" data-m="marks"><span class="ic" style="background:#5e5ce6">${FLAG}</span><div><b>Questions marquées (${Object.keys(marks).length})</b><br><span>Revois la réponse et le référentiel des points à éclaircir.</span></div></button>
     <button class="tile wide" data-m="review" ${review.size?"":"disabled"}><span class="ic" style="background:var(--warn)">${I.redo}</span><div><b>À revoir (${review.size})</b><br><span>Rejoue uniquement tes erreurs.</span></div></button>
    </div>
+   <div class="sect">Cette semaine</div>
+   <div class="defi"><div class="wk">DÉFI ${w}</div><h2>Défi de la semaine</h2>
+     <p>Les mêmes 20 questions pour toute l'équipe. Joue, puis partage ton score dans le groupe.</p>
+     ${dd?`<p class="done">Ton premier essai : <b>${dd.score}/20</b> en ${fmtTime(dd.ms)}</p>`:""}
+     <div class="actions" style="margin-top:0"><button class="btn" id="defiGo">${dd?"Rejouer":"Relever le défi"}</button>${dd?`<button class="btn sec" id="defiShare">Partager</button>`:""}</div><p class="small" id="defiMsg" style="color:#fff;opacity:.8"></p></div>
+   ${homeBoard()}
    <footer class="note">Questions tirées des référentiels du parcours CI BSPP (Guide pratique CI, BSP 112/115/118/200.2/200.20/300.16, MACA 2025-2026, eFiBi…) et, en bonus, du guide PSE CRF. En cas de doute, le référentiel en vigueur fait foi.</footer>
    <footer class="note" style="margin-top:10px"><b>Application non officielle.</b> Elle n'est ni éditée ni validée par la BSPP ni par la Croix-Rouge française et sert uniquement à s'entraîner et à réviser. Développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française.</footer>`;
   bindLevel();app.querySelectorAll(".chip[data-t]").forEach(c=>c.onclick=()=>{const id=c.dataset.t;selected.has(id)?selected.delete(id):selected.add(id);if(!selected.size)selected.add(id);store.set("themes",[...selected]);c.setAttribute("aria-pressed",selected.has(id))});
@@ -1555,7 +1555,7 @@ function runCarteTap(){const targets=shuffle(SECT.sect).slice(0,10);let i=0,scor
  const pickS=s=>{if(locked)return;locked=true;const t=targets[i];const ok=s.code===t.code;if(ok)score++;record("carte:tap:"+t.code,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
   layers[t.code].setStyle({color:"#1f9d55",weight:3,fillColor:"#1f9d55",fillOpacity:.45});if(!ok)layers[s.code].setStyle({color:"#d92d20",weight:3,fillColor:"#d92d20",fillOpacity:.35});
   $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}</b>${ok?"":`Tu as touché ${esc(s.name)}. `}${esc(t.name)} (${t.code}) · Golf ${t.golf}.</div><div class="actions"><button class="btn full" id="next">${i+1<10?"Secteur suivant":"Voir le score"}</button></div>`;
-  $("#next").onclick=()=>{i++;if(i<10)ask();else end()}};
+  $("#next").onclick=()=>{i++;if(i<10)ask();else end()};const nb=$("#next");const r=nb.getBoundingClientRect();if(r.bottom>innerHeight-8)nb.scrollIntoView({block:"end",behavior:"smooth"})};
  const end=()=>{const bq=store.get("carteBest",{});if(bq.tap==null||score>bq.tap){bq.tap=score;store.set("carteBest",bq)}setTimeout(syncSoon,50);if(cleanup){cleanup();cleanup=null}
   app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/10</div><div class="grade">${grade(score*10)}</div><p class="small">secteurs situés du premier coup</p></div><div class="actions"><button class="btn" id="again">Rejouer</button></div>`;
   bindBack(()=>go("carte"));$("#again").onclick=runCarteTap};
