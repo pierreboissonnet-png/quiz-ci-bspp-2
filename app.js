@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.2.3";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.2.4";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -778,18 +778,21 @@ function rankExamPool(target){const L=ALL.filter(x=>x._k==="qcm"||x._k==="vf");c
  return fresh(L).slice(0,RANK_Q)}
 function runRankExam(){if(!rankReady()){toast("L'examen n'est pas encore disponible.");return}const target=rankObj.g+1;
  loadSimple().catch(()=>null).then(()=>{const qs=rankExamPool(target).map(mixQ);if(qs.length<RANK_Q){toast("Pas assez de questions disponibles.");return}
-  let i=0,score=0;const T=`Examen de passage · ${rankName(target)}`;alog("grade","examen commencé",{vers:rankName(target)});
+  let i=0,score=0;const answers=[];const T=`Examen de passage · ${rankName(target)}`;alog("grade","examen commencé",{vers:rankName(target)});
   const show=()=>{const q=qs[i];
    app.innerHTML=push(T,`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
     <div class="qhead"><span class="qtag">Examen · ${RANK_PASS}/${RANK_Q} requis</span></div><p class="qtext">${esc(q.q)}</p>
     ${q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`:`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`}`;
    bindBack(()=>{alog("grade","examen abandonné",{vers:rankName(target),question:i+1});go("profile")});
-   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k;const ok=k===(q._k==="qcm"?q.answer:(q.answer?1:0));if(ok)score++;record(q._id,ok);i++;i<qs.length?show():end()})};
+   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k;const ok=k===(q._k==="qcm"?q.answer:(q.answer?1:0));if(ok)score++;answers.push({q,ok,k});record(q._id,ok);i++;i<qs.length?show():end()})};
   const end=()=>{const pass=score>=RANK_PASS;setTimeout(syncSoon,50);
    if(pass){const from=rankObj.g;rankObj.g=target;rankObj.ex=0;rankObj.bad=0;rankObj.wait=0;rankObj.h.push({g:target,t:Date.now(),d:1});rankSave();alog("grade","promotion",{de:rankName(from),vers:rankName(target),score:score+"/"+qs.length})}
    else{rankObj.wait=3;rankSave();alog("grade","examen raté",{vers:rankName(target),score:score+"/"+qs.length})}
    app.innerHTML=push("Résultat de l'examen")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${pass?`Reçu ! Te voilà ${esc(rankName(target))}.`:`Ajourné : il fallait ${RANK_PASS} bonnes réponses.`}</div><p class="small">${pass?"":"Nouvel essai après 3 exercices réussis. Relis tes erreurs, tu y es presque."}</p></div>
-    <div class="actions"><button class="btn" id="rkProf">Mon profil</button></div>`;bindBack(()=>go("profile"));$("#rkProf").onclick=()=>go("profile");window.scrollTo(0,0);
+    <div class="actions"><button class="btn" id="rkProf">Mon profil</button></div>
+    ${(()=>{const bad=answers.filter(a=>!a.ok);const mine=a=>a.q._k==="qcm"?(a.q.choices[a.k]||""):(a.k?"Vrai":"Faux");
+     return bad.length?`<div class="sect">Corrigé de tes erreurs (${bad.length})</div><div class="recap">${bad.map(a=>`<div class="card"><div class="qhead"><b>${esc(a.q.q)}</b>${markBtn(a.q._id,false)}</div><div class="small" style="margin:6px 0 2px">Ta réponse : ${esc(mine(a))}</div><div class="a">${esc(a.q._k==="qcm"?a.q.choices[a.q.answer]:(a.q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(a.q.explication||"")}</div>${srcBtn(a.q)}</div>`).join("")}</div>`:`<p class="sub" style="text-align:center">Sans faute, bravo.</p>`})()}`;
+   bindSrc();bindBack(()=>go("profile"));$("#rkProf").onclick=()=>go("profile");window.scrollTo(0,0);
    if(pass)setTimeout(()=>rankPopup("up",target),250)};
   show()})}
 // popup de promotion (feux d'artifice) ou de rétrogradation
