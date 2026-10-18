@@ -538,3 +538,18 @@ button.lbrow{width:100%;text-align:left}
 .rkteamh .chev{color:var(--muted)}
 .hbcard{cursor:pointer}
 .hbrow .nm .nick{display:block;margin:1px 0 0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+/* 3.3.1 : jeux adaptés à la hauteur de l'écran */
+body.pushed .actions:has(#next,#check,#rbOk),body.pushed #eval{position:sticky;bottom:0;z-index:6;margin-left:calc(-1 * var(--gut));margin-right:calc(-1 * var(--gut));padding:14px var(--gut) calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(to bottom,rgba(0,0,0,0),var(--bg) 40%)}
+body.onfire.pushed .actions:has(#next,#check,#rbOk),body.onfire.pushed #eval{background:linear-gradient(to bottom,rgba(0,0,0,0),var(--bg) 40%)}
+body.pushed .opt:disabled:not(.good):not(.bad):not(:has(.gq)){padding-top:7px;padding-bottom:7px;min-height:0;opacity:.6}
+body.pushed .fb{margin-top:12px;padding:12px 14px}
+.oitem{padding:6px 8px 6px 12px}.oitem .mv{grid-auto-flow:column}.oitem .mv button{width:36px;height:36px}
+@media (max-height:760px){
+ body.pushed .qtext{font-size:19px;margin:6px 0 12px}
+ body.pushed .opt{padding:11px 12px;min-height:46px}
+ body.pushed .opts,body.pushed .vf{gap:8px}
+ body.pushed .vf .opt{min-height:60px}
+ body.pushed .fb b{font-size:16px}
+ .oitem .t{font-size:14px}
+}
+body.pushed .opt:disabled:not(.good):not(.bad):not(:has(.gq)) > span:not(.k){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

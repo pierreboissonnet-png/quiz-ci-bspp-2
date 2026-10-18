@@ -165,6 +165,11 @@ function renderTabs(){const cur=TABS.find(t=>t[0]===tab);const TABS_V=visTabs();
 let navStack=[];
 function go(t,fromBack){if(cleanup){cleanup();cleanup=null}if(!visTabs().some(x=>x[0]===t))t="home";alog("nav",tabName(tab)+" → "+tabName(t),fromBack?"par le bouton Retour":"");if(curGame){if(curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame=null}lastEcran="";if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
   app.className="view";({home:viewHome,revise:viewRevise,chat:viewChat,cri:viewCri,radio:viewRadio,carte:viewCarte,grades:()=>viewGrades(level==="expert",true),lexique:()=>viewLexique(true),docs:viewDocs,stats:viewStatsTab,profile:viewProfile})[t]();bindTabBack();window.scrollTo(0,0)}
+/* 3.3.1 : après une réponse, faire apparaître la correction sans avoir à faire défiler (le bouton suivant reste collé en bas) */
+let lastFb=null;
+new MutationObserver(()=>{if(!document.body.classList.contains("pushed"))return;const fb=app.querySelector(".fb");if(!fb||fb===lastFb)return;lastFb=fb;
+ requestAnimationFrame(()=>{const nx=app.querySelector("#next");const bar=nx?nx.closest(".actions"):null;const barH=bar?bar.offsetHeight:0;const r=fb.getBoundingClientRect();const over=r.bottom-(innerHeight-barH);
+  if(over>0){const up=Math.min(over,Math.max(0,r.top-90));if(up>0)window.scrollBy({top:up,behavior:"smooth"})}})}).observe(app,{childList:true,subtree:true});
 function goBack(){const prev=navStack.pop();if(prev)go(prev,true);else go("home",true)}
 function backLink(){return tab!=="home"?`<button class="tback" id="tback">${I.back}${esc((TABS.find(x=>x[0]===(navStack[navStack.length-1]||"home"))||[])[1]||"Accueil")}</button>`:""}
 function bindTabBack(){const b=$("#tback");if(b)b.onclick=()=>goBack()}
