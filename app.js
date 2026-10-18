@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.3.0";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.3.1";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -887,7 +887,7 @@ async function duelSheet(toId,lvl,theme){if(!me||me.expired){toast("Connecte-toi
  const draw=()=>{const P=people().filter(p=>!q||norm(p.pseudo+" "+(p.unite||"")).includes(norm(q)));const tm=myTeamId();
   const sh=sheet(`<h2>Lancer un duel</h2><p class="small">10 questions chronométrées : plus tu réponds vite, plus tu marques. Ton adversaire a 48 h pour jouer les mêmes.</p>
    <div class="sect">Adversaire</div><input class="search" id="dlQ" type="search" placeholder="Chercher un membre" value="${esc(q)}">
-   <div class="list dlpeople">${P.slice(0,40).map(p=>`<button class="row ${p.id===to?"sel":""}" data-dto="${esc(p.id)}">${avatar(p,32)}<span class="tx"><b>${gradeSvg(rankCode((p.stats&&p.stats.rank)||0),"rkmini")}${esc(p.pseudo)}${decoHtml(p)}</b><span>${p.team&&p.team===tm?"Mon équipe":esc(p.unite||"")}</span></span>${p.id===to?'<span class="pill ok">Choisi</span>':""}</button>`).join("")||`<p class="small" style="padding:10px">Aucun membre trouvé.</p>`}</div>
+   <div class="list dlpeople">${P.slice(0,40).map(p=>`<button class="row ${p.id===to?"sel":""}" data-dto="${esc(p.id)}">${avatar(p,32)}<span class="tx"><b>${gradeSvg(rankCode((p.stats&&p.stats.rank)||0),"rkmini")}${esc(p.pseudo)}${decoHtml(p).replace(/^<button type="button"/,"<span").replace(/<\/button>$/,"</span>")}</b><span>${p.team&&p.team===tm?"Mon équipe":esc(p.unite||"")}</span></span>${p.id===to?'<span class="pill ok">Choisi</span>':""}</button>`).join("")||`<p class="small" style="padding:10px">Aucun membre trouvé.</p>`}</div>
    <div class="sect">Niveau</div><div class="seg"><button data-dl="simple" aria-pressed="${L==="simple"}">Sapeur</button><button data-dl="expert" aria-pressed="${L==="expert"}">Officier</button></div>
    <div class="sect">Thème</div><div class="chips wrap">${duelThemes(L).map(([k,l])=>`<button class="chip" data-dt="${esc(k)}" aria-pressed="${k===T}">${esc(l)}</button>`).join("")}</div>
    <button class="btn full" id="dlGo" style="margin-top:16px" ${to?"":"disabled"}>${to?`Défier ${esc(people().find(p=>p.id===to)?.pseudo||"")}`:"Choisis un adversaire"}</button><p class="small" id="dlMsg" style="margin:8px 0 0"></p>`);
@@ -2097,12 +2097,12 @@ function homeBoard(){if(!me||!board)return `<div id="homeBoard"></div>`;
   const rk=teamRanking();const ti=rk.findIndex(x=>x.t.id===tid);
   const rowT=([x,i])=>x?`<div class="hbrow ${x.t.id===tid?"mine":""}"><span class="rk ${i<3?"top"+(i+1):""}">${i+1}</span><span class="nm"><b>${esc(x.t.name)}</b><br><span class="small">${x.n} membre${x.n>1?"s":""}</span></span><span class="small"><b>${x.avg.toLocaleString("fr-FR")}</b> pts moy.</span></div>`:`<div class="hbgap">⋯</div>`;
   return `<div id="homeBoard"><div class="sect">${tm?"Mon équipe · "+esc(tm.name):"Classement général"}</div>
-   <button class="card hbcard" id="hbGo"><div class="hbhead"><b>${tm?"Mon équipe":"Tous les membres"}</b><span class="small">${members.length} membre${members.length>1?"s":""} ›</span></div>
+   <div class="card hbcard" id="hbGo" role="button" tabindex="0"><div class="hbhead"><b>${tm?"Mon équipe":"Tous les membres"}</b><span class="small">${members.length} membre${members.length>1?"s":""} ›</span></div>
     ${members.length?cut(members,p=>p.id===me.id).map(rowP).join(""):`<span class="small">Aucun membre pour l'instant.</span>`}
     ${tm&&members.length===1?`<p class="small" style="margin:8px 0 0">Tu es seul dans l'équipe : invite tes coéquipiers à la rejoindre depuis Profil › Équipe.</p>`:""}
-    ${tm?"":`<p class="small" style="margin:8px 0 0">Rejoins une équipe depuis Profil › Équipe pour te comparer à tes coéquipiers.</p>`}</button>
-   ${rk.length?`<button class="card hbcard" id="hbTeams" style="margin-top:10px"><div class="hbhead"><b>Équipes</b><span class="small">${ti>=0?`Ton équipe : ${ti+1}<sup>${ti?"e":"re"}</sup>/${rk.length}`:`${rk.length} équipe${rk.length>1?"s":""}`} ›</span></div>
-    ${cut(rk,x=>x.t.id===tid,5).map(rowT).join("")}<p class="small" style="margin:8px 0 0">Moyenne des points de la semaine par membre. Remise à zéro chaque lundi.</p></button>`:""}</div>`}
+    ${tm?"":`<p class="small" style="margin:8px 0 0">Rejoins une équipe depuis Profil › Équipe pour te comparer à tes coéquipiers.</p>`}</div>
+   ${rk.length?`<div class="card hbcard" id="hbTeams" role="button" tabindex="0" style="margin-top:10px"><div class="hbhead"><b>Équipes</b><span class="small">${ti>=0?`Ton équipe : ${ti+1}<sup>${ti?"e":"re"}</sup>/${rk.length}`:`${rk.length} équipe${rk.length>1?"s":""}`} ›</span></div>
+    ${cut(rk,x=>x.t.id===tid,5).map(rowT).join("")}<p class="small" style="margin:8px 0 0">Moyenne des points de la semaine par membre. Remise à zéro chaque lundi.</p></div>`:""}</div>`}
 const GLOGO='<svg viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 function noProfileCard(){
   const exp=me&&me.expired;
@@ -2206,7 +2206,8 @@ function memberSheet(m){const A=adminData;const canAdmin=A.superAdmin&&m.email&&
 
 /* ============ Démarrage ============ */
 const LOGOS=window.QLOGOS||"";
-app.addEventListener("click",e=>{if(e.target.closest("#hbTeams")){profTab="equipe";store.set("profTab",profTab);rkNav={v:"top"};go("profile");return}if(e.target.closest("#hbGo")){profTab="equipe";store.set("profTab",profTab);const t=myTeamId();rkNav=t&&teamOf(t)?{v:"team",team:t}:{v:"all"};go("profile")}});
+app.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&e.target.matches&&e.target.matches("#hbGo,#hbTeams")){e.preventDefault();e.target.click()}});
+app.addEventListener("click",e=>{if(e.target.closest("[data-deco],[data-nick],[data-duelp]"))return;if(e.target.closest("#hbTeams")){profTab="equipe";store.set("profTab",profTab);rkNav={v:"top"};go("profile");return}if(e.target.closest("#hbGo")){profTab="equipe";store.set("profTab",profTab);const t=myTeamId();rkNav=t&&teamOf(t)?{v:"team",team:t}:{v:"all"};go("profile")}});
 setTimeout(()=>loadSimple().then(()=>{if(tab==="revise"&&!document.body.classList.contains("pushed"))viewRevise()}).catch(()=>{}),1500);
 alog("demarrage",APP_VER,{chargement:Math.round(performance.now())+" ms",langue:navigator.language,ecran:screen.width+"x"+screen.height+" @"+devicePixelRatio,reseau:(navigator.connection&&navigator.connection.effectiveType)||"",sw:navigator.serviceWorker&&navigator.serviceWorker.controller?"actif":"aucun",stockage:(()=>{try{return Math.round(JSON.stringify(localStorage).length/1024)+" Ko"}catch(e){return ""}})(),w:innerWidth,h:innerHeight,app:(window.matchMedia("(display-mode: standalone)").matches||navigator.standalone===true)?"installée":"navigateur",mode:typeof usage!=="undefined"?usage:"",niveau:typeof level!=="undefined"?level:"",tab});
 if(me&&me.id){const o=store.get("progOwner",null);if(o&&o!==me.id)applyProgress({resetAt:0});store.set("progOwner",me.id)}

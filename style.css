@@ -536,3 +536,5 @@ button.lbrow{width:100%;text-align:left}
 .rkdeco{margin:10px 0 0}
 .sttile b small{display:inline;font-size:13px;opacity:.6;margin:0}
 .rkteamh .chev{color:var(--muted)}
+.hbcard{cursor:pointer}
+.hbrow .nm .nick{display:block;margin:1px 0 0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
