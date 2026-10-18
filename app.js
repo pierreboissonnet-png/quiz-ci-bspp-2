@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.2.2";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.2.3";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -965,7 +965,7 @@ function saveRadioId(v){radioId={num:String(v.num||"").trim().slice(0,6),cs:Stri
 const rMe=()=>`Croix-Rouge française ${radioId.num||"XXX"} de ${radioId.cs||"(centre de secours)"}`;
 const rGolf=()=>`Golf ${radioId.golf||"X"}`;
 const rPf=()=>`Poste fixe de ${radioId.cs||"(centre de secours)"}`;
-const rHour=()=>{const d=new Date();return d.getHours()+" h "+String(d.getMinutes()).padStart(2,"0")};
+const rHour=()=>{const d=new Date();return String(d.getHours()).padStart(2,"0")+String(d.getMinutes()).padStart(2,"0")}; // format BSPP : 1634
 const rv=(s,ph)=>String(s||"").trim()||ph;               // valeur saisie ou repère entre parenthèses
 const joinFr=a=>a.length<2?a.join(""):a.slice(0,-1).join(", ")+" et "+a[a.length-1];
 const cap=s=>s?s[0].toUpperCase()+s.slice(1):s;
@@ -1034,14 +1034,14 @@ const RB={
  pres:{t:"Présentation des moyens",s:"Refermer le tiroir ouvert par une demande",c:"#34c759",p:12,
   fields:[{k:"opt",t:"seg",l:"Option",o:[["1","1 · dès l'arrivée"],["2","2 · en fin d'intervention"]],d:"1"},
    {k:"who",t:"multi",l:"Moyens non BSPP",o:PRES.map(p=>[p[0],p[2]]),d:["pol"]},{k:"hosp",l:"Équipe médicale de",ph:"ex. Necker",show:f=>(f.who||[]).includes("em")},
-   ...PRES.map(p=>({k:"h_"+p[0],l:"Heure — "+p[2],ph:"ex. 14 h 05",show:f=>f.opt==="2"&&(f.who||[]).includes(p[0])}))],
+   ...PRES.map(p=>({k:"h_"+p[0],l:"Heure — "+p[2],ph:"ex. 1405",show:f=>f.opt==="2"&&(f.who||[]).includes(p[0])}))],
   build:f=>{const w=(f.who||[]);const items=PRES.filter(p=>w.includes(p[0])).map(p=>{const n=p[0]==="em"?`Équipe médicale ${rv(f.hosp,"(hôpital)")}`:p[1];
     return f.opt==="2"?`${n} présenté${p[3]==="f"?"e":""} à ${rv(f["h_"+p[0]],"(telle heure)")}`:`${n} se présente`});
    return{lines:[["CRF",`${rGolf()} ici la ${rMe()}, parlez.`],["CSO",`${rMe()} ici ${rGolf()}, parlez.`],["CRF",`De la ${rMe()} : ${items.length?items.join(". "):"(moyen) se présente"}. ${rGolf()} parlez.`]],
     notes:["Principe du « tiroir » : tout moyen demandé doit être présenté. Les engins BSPP se présentent eux-mêmes.","Option 1 : pratique quand tu n'attends qu'un seul moyen. Option 2 : mieux quand plusieurs moyens sont attendus."]}}},
  clot:{t:"Clôture du renseignement",s:"Dénombrement définitif, suite donnée, heures",c:"#30b0c7",p:14,
   fields:[{k:"nua",t:"num",l:"UA"},{k:"uaBy",l:"UA transportée(s) par",ph:"ex. équipe médicale"},{k:"nur",t:"num",l:"UR"},{k:"urBy",l:"UR transportée(s) par",ph:"ex. moyens de transport non médicalisés"},
-   {k:"who",t:"multi",l:"Moyens non BSPP présentés",o:PRES.map(p=>[p[0],p[2]]),d:["pol"]},...PRES.map(p=>({k:"h_"+p[0],l:"Heure — "+p[2],ph:"ex. 14 h 05",show:f=>(f.who||[]).includes(p[0])}))],
+   {k:"who",t:"multi",l:"Moyens non BSPP présentés",o:PRES.map(p=>[p[0],p[2]]),d:["pol"]},...PRES.map(p=>({k:"h_"+p[0],l:"Heure — "+p[2],ph:"ex. 1405",show:f=>(f.who||[]).includes(p[0])}))],
   build:f=>{const parts=[];const ua=+f.nua||0,ur=+f.nur||0;
    if(ua)parts.push(`${ua} urgence${ua>1?"s":""} absolue${ua>1?"s":""} transportée${ua>1?"s":""} par ${rv(f.uaBy,"(vecteur)")}`);
    if(ur)parts.push(`${ur} urgence${ur>1?"s":""} relative${ur>1?"s":""} transportée${ur>1?"s":""} par ${rv(f.urBy,"(vecteur)")}`);
@@ -1062,7 +1062,7 @@ const RB={
  corr:{t:"Annuler, corriger, additif",s:"Formules pour rectifier un message",c:"#5e5ce6",p:15,
   fields:[{k:"cas",t:"seg",l:"Cas",o:[["ann","Annuler"],["cor","Je me trompe"],["col","Le CSO se trompe"],["add","Additif"]],d:"cor"},
    {k:"faux",l:"Élément erroné",ph:"ex. 1 quai de la Rapée",show:f=>f.cas==="cor"},{k:"juste",l:"Élément correct",ph:"ex. 30 quai de la Rapée",show:f=>f.cas==="cor"||f.cas==="col"},
-   {k:"hm",l:"Heure du message concerné",ph:"ex. 14 h 12",show:f=>f.cas==="add"},{k:"add",l:"Ajout ou modification",ph:"ex. victime transportée par équipe médicale",show:f=>f.cas==="add"}],
+   {k:"hm",l:"Heure du message concerné",ph:"ex. 1412",show:f=>f.cas==="add"},{k:"add",l:"Ajout ou modification",ph:"ex. victime transportée par équipe médicale",show:f=>f.cas==="add"}],
   build:f=>{const h=rHour();
    if(f.cas==="ann")return{lines:[["CRF",`${rGolf()}, annulez la transmission.`]],notes:["Pour interrompre un message devenu inutile (ex. tu commences une demande police et la police se présente)."]};
    if(f.cas==="cor")return{lines:[["CRF",`De la ${rMe()}, je demande police, ${rv(f.faux,"(élément erroné)")}… Correction, lire ${rv(f.juste,"(élément correct)")}, pour (tel motif), ${rGolf()} parlez.`]],notes:["Corrige immédiatement avec « Correction, lire… »."]};
@@ -1208,7 +1208,11 @@ function criPicker(cb){let q="";sheet(`<h2>Code CRI</h2><input class="search" id
  draw();let to;$("#cpq").oninput=e=>{q=e.target.value;clearTimeout(to);to=setTimeout(draw,120)}}
 
 /* ---- Jeu « Construis le message » : remettre les morceaux d'un message radio dans l'ordre ---- */
-function buildScenarios(){const me_=rMe(),g=rGolf(),h=rHour(),num=radioId.num||"XXX";const A=pick(R_ADR),H=pick(R_HOP);
+// indicatif utilisé dans le jeu : le tien s'il est renseigné, sinon un indicatif d'exemple complet (jamais de « XXX »)
+function gameRid(){const ex=!radioId.num||!radioId.cs;let golf=radioId.golf;if(!golf&&radioId.cs&&typeof SECT!=="undefined"&&SECT){const s=SECT.sect.find(x=>norm(x.name)===norm(radioId.cs));if(s)golf=s.golf}
+ return ex?{num:radioId.num||"321",cs:radioId.cs||"Plaisance",golf:golf||(radioId.cs?"X":"3"),ex:true}:{num:radioId.num,cs:radioId.cs,golf:golf||"X",ex:false}}
+let rbAsked=false;
+function buildScenarios(){const R=gameRid();const me_=`Croix-Rouge française ${R.num} de ${R.cs}`,g=`Golf ${R.golf}`,h=rHour(),num=R.num;const A=pick(R_ADR),H=pick(R_HOP);
  return [
  {id:"appel",sit:`Tu veux appeler le CSO de ton groupement (${g}).`,parts:[g,`ici la ${me_},`,"parlez."],e:"On appelle d'abord son interlocuteur (le Golf), on s'annonce, puis « parlez » pour lui donner la parole.",p:10},
  {id:"depart",sit:`Mode dégradé : tu dois annoncer ton départ pour un malaise au ${A}.`,parts:[`${g},`,`la ${me_}`,"partie","pour malaise,",`${A}.`],e:"Statut 1 en phonie : Golf, indicatif, « partie », le motif puis l'adresse.",p:9},
@@ -1223,10 +1227,11 @@ function buildScenarios(){const me_=rMe(),g=rGolf(),h=rHour(),num=radioId.num||"
  {id:"rentree",sit:`Message de rentrée au PVO : bilan avec contact médecin, homme de 45 ans UR transporté au SAU ${H.replace(/^Hôpital /,"")}, pas de dégâts, maladie.`,parts:["1/ Bilan, contact médecin coordinateur",`2/ Un homme de 45 ans, UR, transporté par CRF ${num} vers SAU ${H.replace(/^Hôpital /,"")}`,"5/ Néant","CRI 320"],e:"Les points dans l'ordre (1 actions, 2 victimes, 5 dégâts), puis le CRI.",p:35},
  {id:"danger",sit:"Une personne seule devient agressive envers ton équipage : tu demandes la police.",parts:[`De la ${me_},`,"je demande Police,",`${A},`,"personne agressive envers les secours,",`${g} parlez.`],e:"Les mots choisis comptent : « personne agressive envers les secours » déclenche une patrouille.",p:15}]}
 function runRadioBuild(back){back=back||(()=>{radioTab="train";store.set("radioTab","train");go("radio")});
+ if((!radioId.num||!radioId.cs)&&!rbAsked){rbAsked=true;indicSheet(()=>runRadioBuild(back));const f=$("#ridF");if(f){const t=document.createElement("p");t.className="small";t.style.margin="4px 0 0";t.textContent="Renseigne ton indicatif : le jeu l'utilisera dans tous les messages.";f.prepend(t);const b=document.createElement("button");b.type="button";b.className="btn sec full";b.textContent="Plus tard : jouer avec l'indicatif d'exemple";b.onclick=()=>{closeSheet();runRadioBuild(back)};f.appendChild(b)}return}
  const all=buildScenarios();const qs=fresh(all.map(x=>({...x,_id:"s:rb:"+x.id}))).slice(0,8);let i=0,score=0;cleanup=stopSpeak;
  const show=()=>{const q=qs[i];const pool=shuffle(q.parts.map((t,k)=>({t,k})));const chosen=[];let done=false;
   const draw=()=>{app.innerHTML=push("Construis le message",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
-    <div class="qhead"><span class="qtag">Jeu radio${radioId.num?"":" · indicatif à renseigner"}</span></div><p class="qtext rbsit">${esc(q.sit)}</p>
+    <div class="qhead"><span class="qtag">Jeu radio${gameRid().ex?" · indicatif d'exemple":""}</span></div><p class="qtext rbsit">${esc(q.sit)}</p>
     <div class="sect" style="margin-top:6px">Ton message</div><div class="rbmsg ${done?(chosen.map(c=>c.t).join("|")===q.parts.join("|")?"good":"bad"):""}">${chosen.length?chosen.map((c,j)=>`<button class="rbp in" data-out="${j}" ${done?"disabled":""}>${esc(c.t)}</button>`).join(""):`<span class="small">Touche les morceaux ci-dessous dans le bon ordre.</span>`}</div>
     ${done?"":`<div class="sect">Morceaux</div><div class="rbpool">${pool.map((p,j)=>chosen.includes(p)?"":`<button class="rbp" data-in="${j}">${esc(p.t)}</button>`).join("")}</div>
     <div class="actions"><button class="btn sec" id="rbHint">Indice</button><button class="btn" id="rbOk" ${chosen.length===q.parts.length?"":"disabled"} style="flex:1">Valider</button></div>`}<div id="after"></div>`;
