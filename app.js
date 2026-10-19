@@ -201,7 +201,8 @@ function zReveal(){if(!zFaked)return;const by=(zState&&zState.by)||zBy||"un admi
  const el=document.createElement("div");el.className="dlpop";el.innerHTML=`<div class="dlbox"><div class="dltag">MODE Z · PIÈGE SECRET</div><h3>Tu t'es fait piéger !</h3><p>Pendant cette série, <b>toutes</b> tes réponses s'affichaient fausses : c'était un coup de <b>${esc(by)}</b>${/\.$/.test(by)?"":"."}</p><p class="small">Rassure-toi : rien n'a été faussé. Le score affiché derrière est ton vrai score, et ta progression est intacte.</p><div class="actions" style="margin:12px 0 0"><button class="btn full" data-zok>Bien joué… je me vengerai</button></div></div>`;
  document.body.appendChild(el);if(typeof confetti==="function")confetti(el);el.querySelector("[data-zok]").onclick=()=>el.remove()}
 // mode actif : vérification toutes les 30 s (une désactivation par un admin s'applique vite), sinon toutes les 2 min
-let zxLast=0;setInterval(()=>{const act=(zState&&zState.u>Date.now())||(xState&&xState.u>Date.now());if(Date.now()-zxLast<(act?30000:120000))return;
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&me&&!me.expired&&navigator.onLine!==false){zxLast=Date.now();api("me").then(zxSet).catch(()=>{})}});
+let zxLast=0;setInterval(()=>{const act=(zState&&zState.u>Date.now())||(xState&&xState.u>Date.now())||Object.values(typeof zmoState!=="undefined"?zmoState:{}).some(v=>v&&v.u>Date.now());if(Date.now()-zxLast<(act?15000:120000))return;
  if(me&&!me.expired&&!document.hidden&&navigator.onLine!==false){zxLast=Date.now();api("me").then(zxSet).catch(()=>{})}},10000);
 setTimeout(()=>{if(me&&!me.expired)api("me").then(zxSet).catch(()=>{})},4000);
 /* ============ 3.4.0 : Mort subite, Bilan express, Duel en direct ============ */
@@ -332,7 +333,9 @@ new MutationObserver(()=>{if(!document.body.classList.contains("pushed"))return;
 setTimeout(()=>{if(navigator.onLine===false)return;["simple.js","secteurs.json","search.json"].forEach(u=>fetch(u,{credentials:"same-origin"}).then(r=>{try{r.body&&r.body.cancel()}catch(e){}}).catch(()=>{}))},6000);
 function goBack(){const prev=navStack.pop();if(prev)go(prev,true);else go("home",true)}
 function backLink(){return tab!=="home"?`<button class="tback" id="tback">${I.back}${esc((TABS.find(x=>x[0]===(navStack[navStack.length-1]||"home"))||[])[1]||"Accueil")}</button>`:""}
-function bindTabBack(){const b=$("#tback");if(b)b.onclick=()=>goBack()}
+// 3.4.1 : le bouton retour des menus marche même si la page a été redessinée hors de go() (délégation globale)
+function bindTabBack(){}
+document.addEventListener("click",e=>{if(e.target.closest&&e.target.closest("#tback")){e.preventDefault();goBack()}});
 window.addEventListener("popstate",()=>{const v=$("#viewer");if(v){v.querySelector("#vclose").click();return}if($("#sheet")){closeSheet();return}const bk=$("#back");if(bk){bk.click();return}if(tab!=="home")goBack()});
 function gameLog(title){try{qShownAt=Date.now();if(title==="Résultat"){if(curGame&&curGame.n){const g=curGame;curGame=null;setTimeout(()=>{const ev=typeof rankOnGameEnd==="function"?rankOnGameEnd(g):null;if(ev){if(ev.type==="down")setTimeout(()=>rankPopup("down",ev.to),400);else rankResultNote(ev)}const sc=$(".result .score"),gr=$(".result .grade");alog("jeu","fin · "+g.title,{score:sc?sc.textContent.trim():"","réponses":g.n,justes:g.ok,"durée":Math.round((Date.now()-g.t0)/1000)+" s",commentaire:gr?gr.textContent.trim().slice(0,120):""})},30)}return}
  if(!curGame||curGame.title!==title){if(curGame&&curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame={title,t0:Date.now(),n:0,ok:0,nL:0,nS:0}}}catch(e){}}
@@ -825,7 +828,7 @@ function viewHomeSimple(){
    doc:()=>runSimple(docQuestions(10),"Devine le document"),mix:()=>runSimple(fresh(pool()).slice(0,16).concat(docQuestions(4)).sort(()=>Math.random()-.5),"Grand mélange"),
    sudden:()=>runSudden(),bilanx:()=>runBilanExpress(),radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(false),hosp:()=>runHospQuiz(false),rbuild:()=>runRadioBuild(()=>go("home"))})[b.dataset.sm]());
   $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
- }).catch(()=>{const b=$("#sbody");if(b)b.innerHTML=`<div class="card"><p style="margin:0">Impossible de charger les questions du niveau Sapeur. Vérifie ta connexion.</p><button class="btn sec full" style="margin-top:12px" id="sRetry">Réessayer</button></div>`;const r=$("#sRetry");if(r)r.onclick=viewHomeSimple})}
+ }).catch(e=>{if(e&&e.message)logErr("affichage",e.message,e.stack);const b=$("#sbody");if(b)b.innerHTML=`<div class="card"><p style="margin:0">${e&&e.message?"Un problème d'affichage est survenu (il a été signalé dans les journaux).":"Impossible de charger les questions du niveau Sapeur. Vérifie ta connexion."}</p><button class="btn sec full" style="margin-top:12px" id="sRetry">Réessayer</button></div>`;const r=$("#sRetry");if(r)r.onclick=viewHomeSimple})}
 function runSimple(qs,title){if(!qs.length)return;qs=qs.map(mixQ);let i=0,score=0,combo=0,bestCombo=0;const missed=[];const back=()=>go("home");const before=discovered();
  const show=()=>{const q=qs[i];
   const choices=q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`
@@ -1766,9 +1769,9 @@ const PHONE='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke=
 const telHtml=x=>x.tel?`<a class="cadr" href="tel:${x.tel.replace(/\s/g,"")}">${PHONE}<span>PVO ${esc(x.code)} · ${esc(x.tel)}<small>Appeler</small></span></a>`:"";
 const adrHtml=x=>x.adr?`<a class="cadr" href="${mapsUrl(x.adr)}" target="_blank" rel="noopener">${PIN}<span>${esc(x.adr)}<small>Itinéraire</small></span></a>`:"";
 function makeMap(el,opts={}){const L=window.L;const dark=window.matchMedia("(prefers-color-scheme: dark)").matches;
- const m=L.map(el,{zoomControl:false,attributionControl:true,minZoom:11,maxZoom:18}).setView([48.858,2.345],12);
+ const m=L.map(el,{zoomControl:false,attributionControl:true,minZoom:11,maxZoom:18}).setView([48.858,2.345],12);m.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
  // fonds de carte : OpenStreetMap, puis Esri si les tuiles ne se chargent pas (CARTO exige désormais une clé)
- const OSM='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+ const OSM='© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
  const BASES=[["https://tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:OSM,className:dark?"tiles-dark":""}],
   ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{attribution:"Fond © Esri",className:dark?"tiles-dark":""}]];
  let bi=Math.max(0,Math.min(BASES.length-1,+(store.get("mapBase2",0))||0)),base=null;
@@ -2406,11 +2409,12 @@ function teamCard(){const tid=myTeamId(),tm=teamOf(tid);
 function voteOf(uid){const tm=teamOf(myTeamId());return tm&&(tm.votes||[]).find(v=>v.uid===uid)||null}
 function voteLine(v){const n=(board.profiles||[]).find(x=>x.id===v.uid);return `<div class="vote"><div class="voteh"><b>Exclure ${esc(n?n.pseudo:"ce joueur")} ?</b><span class="small">proposé par ${esc(v.byN||"un membre")} · fin ${new Date(v.exp).toLocaleString("fr-FR",{weekday:"short",hour:"2-digit",minute:"2-digit"})}</span></div>
   <div class="votebar"><i style="width:${Math.min(100,v.yes/v.need*100)}%"></i></div><p class="small" style="margin:4px 0 8px">${v.yes} pour · ${v.no} contre · ${v.need} voix « pour » nécessaires (${v.el} votant${v.el>1?"s":""})</p>
-  <div class="seg"><button data-vote="${esc(v.uid)}" data-yes="1" aria-pressed="${v.mine==="yes"}">Pour l'exclusion</button><button data-vote="${esc(v.uid)}" data-yes="0" aria-pressed="${v.mine==="no"}">Contre</button></div></div>`}
+  <p class="small" style="margin:0 0 8px"><b>Ton vote :</b> ${v.mine==="yes"?"pour l'exclusion":v.mine==="no"?"contre l'exclusion":"pas encore voté"}. Si la majorité ne peut plus être atteinte, le vote est clos et le joueur reste.</p>
+  <div class="actions" style="margin:0">${v.mine==="yes"?"":`<button class="btn small" data-vote="${esc(v.uid)}" data-yes="1" style="flex:1">Voter pour</button>`}${v.mine==="no"?"":`<button class="btn sec small" data-vote="${esc(v.uid)}" data-yes="0" style="flex:1">Voter contre</button>`}</div></div>`}
 function voteBox(p){const v=voteOf(p.id);return `<div class="card" style="margin-top:12px">${v?voteLine(v):`<b>Exclusion de l'équipe</b><p class="small" style="margin:4px 0 10px">Tu peux proposer d'exclure ${esc(p.pseudo)}. Les autres membres votent pendant 48 h ; il faut la majorité d'entre eux. ${esc(p.pseudo)} ne voit pas le vote.</p><button class="btn sec full" data-votestart="${esc(p.id)}" style="color:var(--ko)">Proposer son exclusion</button>`}<p class="small" id="vMsg" style="margin:6px 0 0"></p></div>`}
 function bindVotes(){const tid=myTeamId();
  const go_=async(uid,yes,b)=>{b.disabled=true;try{const j=await api("teams/vote","POST",{teamId:tid,uid,yes});toast(j.result==="out"?"Majorité atteinte : le joueur est exclu de l'équipe.":j.result==="kept"?"Vote clos : le joueur reste dans l'équipe.":"Vote enregistré.");await loadBoard(true);renderBoard(true)}catch(e){const m=$("#vMsg")||$("#tgMsg");if(m)m.textContent=e.error||"Erreur.";b.disabled=false}};
- app.querySelectorAll("[data-vote]").forEach(b=>b.onclick=()=>go_(b.dataset.vote,b.dataset.yes==="1",b));
+ app.querySelectorAll("[data-vote]").forEach(b=>b.onclick=()=>{if(!b.dataset.c){b.dataset.c="1";b.textContent=b.dataset.yes==="1"?"Confirmer : pour":"Confirmer : contre";return}go_(b.dataset.vote,b.dataset.yes==="1",b)});
  app.querySelectorAll("[data-votestart]").forEach(b=>b.onclick=()=>{if(!b.dataset.c){b.dataset.c="1";b.textContent="Confirmer : lancer le vote";return}go_(b.dataset.votestart,true,b)})}
 // élimination : message au joueur exclu (flambeau éteint, dessin original)
 const TORCH='<svg viewBox="0 0 80 150" class="torch"><g class="tflame"><path d="M40 6c10 14 20 22 20 38 0 13-9 22-20 22S20 57 20 44c0-9 5-15 9-21 1 8 4 12 8 13-2-10 0-20 3-30z" fill="#ff8a00"/><path d="M40 30c6 8 10 13 10 21 0 7-4 11-10 11s-10-4-10-11c0-5 3-9 5-12 1 5 3 7 5 7-1-6-1-11 0-16z" fill="#ffd60a"/></g><path class="tsmoke" d="M40 60c-6-8 6-14 0-22s6-14 0-22" stroke="#9aa6b2" stroke-width="4" fill="none" stroke-linecap="round" opacity="0"/><path d="M26 64h28l-6 14H32z" fill="#8a5a2b"/><path d="M33 78h14l-4 66h-6z" fill="#b07a3e"/><path d="M33 90h14M34 104h12M35 118h10" stroke="#8a5a2b" stroke-width="3"/></svg>';
