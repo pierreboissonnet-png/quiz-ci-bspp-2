@@ -1,4 +1,4 @@
-const V="quiz-ci-3.4.0";const SHELL=["./","index.html","style.css","app.js","boot.js","logo-bspp.png","logo-crf.png","manifest.webmanifest","casque-180.png","casque-192.png","casque-512.png","pdfjs/pdf.min.js","pdfjs/pdf.worker.min.js","leaflet/leaflet.js","leaflet/leaflet.css"];
+const V="quiz-ci-3.4.1";const SHELL=["./","index.html","style.css","app.js","boot.js","logo-bspp.png","logo-crf.png","manifest.webmanifest","casque-180.png","casque-192.png","casque-512.png","pdfjs/pdf.min.js","pdfjs/pdf.worker.min.js","leaflet/leaflet.js","leaflet/leaflet.css"];
 // contenus protégés (après connexion) : récupérés à l'installation, sinon repris de l'ancienne version pour rester utilisable hors réseau
 const DATA=["data.js","simple.js","secteurs.json","search.json"];
 self.addEventListener("install",e=>{e.waitUntil((async()=>{const c=await caches.open(V);await c.addAll(SHELL);

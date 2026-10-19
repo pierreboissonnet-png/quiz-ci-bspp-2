@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.4.0";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.4.1";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -364,6 +364,8 @@ function bindInstall(){const b=$("#installBtn");if(!b)return;b.onclick=async()=>
 function sheet(html){closeSheet();const bg=document.createElement("div");bg.className="sheet-bg";bg.id="sheet";bg.innerHTML=`<div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div>`;
   bg.onclick=e=>{if(e.target===bg||e.target.closest("[data-close]"))closeSheet()};document.body.appendChild(bg);return bg}
 function closeSheet(){const s=$("#sheet");if(s)s.remove()}
+// 3.4.0 : mettre à jour une feuille déjà ouverte sans la refaire apparaître (pas de rebond), en gardant la position de défilement
+function sheetSwap(html){const bg=$("#sheet");if(!bg)return sheet(html);const sh=bg.querySelector(".sheet");const y=sh.scrollTop;sh.innerHTML=`<div class="grab"></div>${html}`;sh.scrollTop=y;return bg}
 
 /* ============ Défi de la semaine ============ */
 const NON_PSE=DATA.filter(t=>t.id!=="pse");
@@ -779,7 +781,7 @@ let sSel=new Set(store.get("sThemes",["guide","ssuap","acr","efibi","bsp"]));
 if(!store.get("sCultAdded",false)){sSel.add("culture");store.set("sThemes",[...sSel]);store.set("sCultAdded",true)}
 // documents découverts : une bonne réponse sur une question simple qui s'y rapporte
 function discovered(){const set=new Set();if(!SIMPLE)return set;Object.entries(hist).forEach(([id,h])=>{if(!h.includes(1))return;
-  if(id.startsWith("doc:"))set.add(id.split(":")[1]);else if(id.startsWith("s:")&&BYID[id])set.add(BYID[id].ref.d)});return set}
+  if(id.startsWith("doc:"))set.add(id.split(":")[1]);else if(id.startsWith("s:")&&BYID[id]&&BYID[id].ref)set.add(BYID[id].ref.d)});return set}
 function docQuestions(n){const Q=SIMPLE;const docs=DOCS.filter(d=>Q.fam[d.id]);
  return fresh(Q.docq.map(x=>({...x,_id:"doc:"+x.d}))).slice(0,n).map(x=>{const fam=Q.fam[x.d];const others=shuffle(docs.filter(d=>d.id!==x.d&&Q.fam[d.id]!==fam)).slice(0,2);
   const opts=shuffle([x.d,...others.map(d=>d.id)]);const D=DOC[x.d];
@@ -834,9 +836,9 @@ function runSimple(qs,title){if(!qs.length)return;qs=qs.map(mixQ);let i=0,score=
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k;const correct=q._k==="qcm"?q.answer:(q.answer?1:0);const ok=k===correct;
    if(ok){score++;combo++;bestCombo=Math.max(bestCombo,combo)}else{combo=0;missed.push(q)}record(q._id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
    app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===correct)o.classList.add("good");else if(o===b)o.classList.add("bad")});
-   const D=DOC[q.ref.d];
+   const D=q.ref?DOC[q.ref.d]:null;
    $("#after").innerHTML=`<div class="fb ${ok?"good":"bad"}"><b>${cheer(ok)}${ok&&combo>=3?` Série de ${combo} !`:""}</b>${esc(q.explication)}
-     ${D?`<button class="srcbtn" id="sSrc">${I.doc}<span>Voir dans le référentiel : ${esc(D.t)}, p. ${q.ref.p}</span></button>`:""}</div>
+     ${D?`<button class="srcbtn" id="sSrc">${I.doc}<span>Voir dans le référentiel : ${esc(D.t)}, p. ${q.ref.p}</span></button>`:q.source?`<span class="src">Source : ${esc(q.source)}</span>`:""}</div>
      <div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Question suivante":"Voir le score"}</button></div>`;
    const sb=$("#sSrc");if(sb)sb.onclick=()=>openDoc(q.ref.d,q.ref.p,tokens(q.q).slice(0,6));
    const n=$("#next");n.onclick=()=>{i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})})};
@@ -1072,16 +1074,16 @@ function confetti(host){if(matchMedia("(prefers-reduced-motion: reduce)").matche
 function duelThemes(lvl){return lvl==="simple"?[["all","Tous les thèmes"],...Object.entries((SIMPLE&&SIMPLE.themes)||{})]:[["all","Tous les thèmes"],...DATA.map(t=>[t.id,short(t)])]}
 async function duelSheet(toId,lvl,theme,live){if(!me||me.expired){toast("Connecte-toi pour défier un membre.");return}
  await loadSimple().catch(()=>null);if(!board)await loadBoard(true);
- let L=lvl||(level==="simple"?"simple":"expert"),T=theme||"all",to=toId||"",q="",W=live?"live":store.get("duelWhen","later");
+ let L=lvl||(level==="simple"?"simple":"expert"),T=theme||"all",to=toId||"",q="",W=live?"live":store.get("duelWhen","later");let dsFirst=true;
  const people=()=>(board&&board.profiles||[]).filter(p=>p.id!==me.id).sort((a,b)=>((b.team===myTeamId())-(a.team===myTeamId()))||a.pseudo.localeCompare(b.pseudo));
  const draw=()=>{const P=people().filter(p=>!q||norm(p.pseudo+" "+(p.unite||"")).includes(norm(q)));const tm=myTeamId();
-  const sh=sheet(`<h2>Lancer un duel</h2><p class="small">10 questions chronométrées : plus tu réponds vite, plus tu marques. ${W==="live"?"En direct : ton adversaire doit accepter dans la minute, puis vous jouez en même temps.":"Ton adversaire a 48 h pour jouer les mêmes."}</p><div class="seg" style="margin-top:10px"><button data-dw="later" aria-pressed="${W!=="live"}">Différé (48 h)</button><button data-dw="live" aria-pressed="${W==="live"}">⚔ En direct</button></div>
+  const sh=(dsFirst?sheet:sheetSwap)(`<h2>Lancer un duel</h2><p class="small">10 questions chronométrées : plus tu réponds vite, plus tu marques. ${W==="live"?"En direct : ton adversaire doit accepter dans la minute, puis vous jouez en même temps.":"Ton adversaire a 48 h pour jouer les mêmes."}</p><div class="seg" style="margin-top:10px"><button data-dw="later" aria-pressed="${W!=="live"}">Différé (48 h)</button><button data-dw="live" aria-pressed="${W==="live"}">⚔ En direct</button></div>
    <div class="sect">Adversaire</div><input class="search" id="dlQ" type="search" placeholder="Chercher un membre" value="${esc(q)}">
    <div class="list dlpeople">${P.slice(0,40).map(p=>`<button class="row ${p.id===to?"sel":""}" data-dto="${esc(p.id)}">${avatar(p,32)}<span class="tx"><b>${gradeSvg(rankCode((p.stats&&p.stats.rank)||0),"rkmini")}${esc(p.pseudo)}${decoHtml(p).replace(/<button type="button"/g,"<span").replace(/<\/button>/g,"</span>")}</b><span>${p.team&&p.team===tm?"Mon équipe":esc(p.unite||"")}</span></span>${p.id===to?'<span class="pill ok">Choisi</span>':""}</button>`).join("")||`<p class="small" style="padding:10px">Aucun membre trouvé.</p>`}</div>
    <div class="sect">Niveau</div><div class="seg"><button data-dl="simple" aria-pressed="${L==="simple"}">Sapeur</button><button data-dl="expert" aria-pressed="${L==="expert"}">Officier</button></div>
    <div class="sect">Thème</div><div class="chips wrap">${duelThemes(L).map(([k,l])=>`<button class="chip" data-dt="${esc(k)}" aria-pressed="${k===T}">${esc(l)}</button>`).join("")}</div>
    <button class="btn full" id="dlGo" style="margin-top:16px" ${to?"":"disabled"}>${to?`${W==="live"?"Défier en direct":"Défier"} ${esc(people().find(p=>p.id===to)?.pseudo||"")}`:"Choisis un adversaire"}</button><p class="small" id="dlMsg" style="margin:8px 0 0"></p>`);
-  const qi=sh.querySelector("#dlQ");qi.oninput=()=>{q=qi.value;clearTimeout(qi._t);qi._t=setTimeout(()=>{draw();const n=$("#dlQ");if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length)}},250)};
+  dsFirst=false;const qi=sh.querySelector("#dlQ");qi.oninput=()=>{q=qi.value;clearTimeout(qi._t);qi._t=setTimeout(()=>{draw();const n=$("#dlQ");if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length)}},250)};
   sh.querySelectorAll("[data-dto]").forEach(b=>b.onclick=()=>{to=b.dataset.dto;draw()});
   sh.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>{L=b.dataset.dl;T="all";draw()});
   sh.querySelectorAll("[data-dt]").forEach(b=>b.onclick=()=>{T=b.dataset.dt;draw()});
