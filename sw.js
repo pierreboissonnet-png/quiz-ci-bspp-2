@@ -1,5 +1,8 @@
-const V="quiz-ci-3.3.1";const SHELL=["./","index.html","style.css","app.js","boot.js","logo-bspp.png","logo-crf.png","manifest.webmanifest","casque-180.png","casque-192.png","casque-512.png","pdfjs/pdf.min.js","pdfjs/pdf.worker.min.js","leaflet/leaflet.js","leaflet/leaflet.css"];
-self.addEventListener("install",e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL)));self.skipWaiting()});
+const V="quiz-ci-3.3.2";const SHELL=["./","index.html","style.css","app.js","boot.js","logo-bspp.png","logo-crf.png","manifest.webmanifest","casque-180.png","casque-192.png","casque-512.png","pdfjs/pdf.min.js","pdfjs/pdf.worker.min.js","leaflet/leaflet.js","leaflet/leaflet.css"];
+// contenus protégés (après connexion) : récupérés à l'installation, sinon repris de l'ancienne version pour rester utilisable hors réseau
+const DATA=["data.js","simple.js","secteurs.json","search.json"];
+self.addEventListener("install",e=>{e.waitUntil((async()=>{const c=await caches.open(V);await c.addAll(SHELL);
+ for(const u of DATA){try{const r=await fetch(u,{credentials:"same-origin",cache:"no-store"});if(r.ok){await c.put(u,r);continue}try{await r.body.cancel()}catch(x){}}catch(err){}const m=await caches.match(u,{ignoreSearch:true});if(m)await c.put(u,m)}})());self.skipWaiting()});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==V&&x!=="quiz-ci-docs").map(x=>caches.delete(x)))));self.clients.claim()});
 self.addEventListener("fetch",e=>{const r=e.request;if(r.method!=="GET"||r.headers.has("range"))return;const u=new URL(r.url);if(u.origin!==location.origin||u.pathname.includes("/api/"))return;
  if(u.pathname.includes("/pdf/")){e.respondWith(caches.open("quiz-ci-docs").then(c=>c.match(r).then(m=>m||fetch(r))));return}

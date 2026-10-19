@@ -15,7 +15,9 @@
   function loadScript(src) {
     return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.body.appendChild(s); });
   }
-  async function dataOk() { try { const r = await fetch("data.js", { method: "HEAD", cache: "no-store", credentials: "same-origin" }); return r.ok; } catch (e) { return null; } }
+  // 3.3.2 : réseau faible ou absent → on n'attend jamais indéfiniment (l'appli démarre avec ce qu'elle a en cache)
+  function tfetch(url, opts, ms) { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms); return fetch(url, { ...(opts || {}), signal: c.signal }).finally(() => clearTimeout(t)); }
+  async function dataOk() { if (navigator.onLine === false) return null; try { const r = await tfetch("data.js", { method: "HEAD", cache: "no-store", credentials: "same-origin" }, 3000); return r.ok; } catch (e) { return null; } }
 
   async function start() {
     const me = LS.get("me", null);
@@ -25,7 +27,7 @@
     if (ok === false) {
       // pas de cookie d'accès sur cet appareil : on le redemande avec la session enregistrée
       try {
-        const r = await fetch("api/me", { headers: authHeaders(me), cache: "no-store", credentials: "same-origin" });
+        const r = await tfetch("api/me", { headers: authHeaders(me), cache: "no-store", credentials: "same-origin" }, 6000);
         if (r.status === 401) { me.expired = true; LS.set("me", me); return renderLogin("Ta session a expiré. Reconnecte-toi."); }
         ok = await dataOk();
       } catch (e) { ok = null; }
@@ -37,7 +39,7 @@
   }
 
   let cfg = LS.get("srvCfg", null), pollT = null;
-  async function loadCfg() { try { const r = await fetch("api/config", { cache: "no-store" }); if (r.ok) { cfg = await r.json(); LS.set("srvCfg", cfg); } } catch (e) {} return cfg; }
+  async function loadCfg() { try { const r = await tfetch("api/config", { cache: "no-store" }, 6000); if (r.ok) { cfg = await r.json(); LS.set("srvCfg", cfg); } } catch (e) {} return cfg; }
   const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
   const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 

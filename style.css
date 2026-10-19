@@ -382,9 +382,11 @@ body.onfire .big{background:linear-gradient(90deg,#d0021b,#ff6a00,#ffb300,#ff6a0
 body.onfire .btn:not(.sec):not(.dark){background:linear-gradient(135deg,#e3051b,#ff6a00);box-shadow:0 4px 14px rgba(255,90,0,.35)}
 body.onfire .menubtn{box-shadow:0 0 0 2px #ff7a00,0 6px 18px rgba(255,90,0,.35)}
 body.onfire .view{padding-bottom:90px}
-#firefx{position:fixed;inset:auto 0 0 0;height:100vh;pointer-events:none;z-index:18;overflow:hidden}
-#firefx .flames{position:absolute;left:0;right:0;bottom:-8px;height:44px}
-#firefx .fl{position:absolute;bottom:0;width:calc(30px*var(--s));height:calc(40px*var(--s));transform-origin:50% 100%;animation:flick 1.1s ease-in-out infinite alternate;animation-delay:var(--d);opacity:.8;filter:drop-shadow(0 0 5px rgba(255,120,0,.55))}
+#firefx{position:fixed;inset:auto 0 0 0;height:100vh;pointer-events:none;z-index:18;overflow:hidden;contain:strict;transform:translateZ(0);will-change:transform}
+#firefx .flames{position:absolute;left:0;right:0;bottom:-8px;height:44px;transition:opacity 1.2s}
+#firefx .flames::before{content:"";position:absolute;inset:-14px 0 0 0;background:radial-gradient(ellipse at 50% 100%,rgba(255,120,0,.35),transparent 70%)}
+body.doused #firefx .flames{opacity:.12}
+#firefx .fl{position:absolute;bottom:0;width:calc(30px*var(--s));height:calc(40px*var(--s));transform-origin:50% 100%;animation:flick 1.1s ease-in-out infinite alternate;animation-delay:var(--d);opacity:.85;will-change:transform}
 #firefx .fl .flic{width:100%;height:100%}
 #firefx .em{position:absolute;bottom:20px;width:5px;height:5px;border-radius:50%;background:#ffb02e;box-shadow:0 0 6px #ff7a00;opacity:0;animation:ember var(--t) linear infinite;animation-delay:var(--d)}
 #firefx .firetag{position:absolute;left:10px;bottom:calc(36px + env(safe-area-inset-bottom,0px));transform-origin:left center;scale:.85;display:flex;align-items:center;gap:4px;font:800 12px var(--mono);letter-spacing:.08em;color:#fff;background:linear-gradient(90deg,#d0021b,#ff6a00);padding:4px 9px 4px 6px;border-radius:999px;box-shadow:0 4px 12px rgba(255,80,0,.4);animation:wobble 2.6s ease-in-out infinite}
@@ -553,3 +555,23 @@ body.pushed .fb{margin-top:12px;padding:12px 14px}
  .oitem .t{font-size:14px}
 }
 body.pushed .opt:disabled:not(.good):not(.bad):not(:has(.gq)) > span:not(.k){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* 3.3.2 : nouveaux gags On Fire */
+.gag-fpt .veh{width:170px}
+.gag-lance .pomp{position:absolute;left:6px;bottom:calc(64px + env(safe-area-inset-bottom,0px));width:52px;height:70px;animation:pomp 6.2s ease-out forwards}
+.gag-lance .jet{position:absolute;left:52px;bottom:calc(100px + env(safe-area-inset-bottom,0px));width:calc(100vw - 60px);height:150px;opacity:0;animation:jetin 6.2s linear forwards}
+.gag-lance .jet path{stroke:#4fb3ff;stroke-width:5;fill:none;stroke-linecap:round;stroke-dasharray:7 11;animation:jet .45s linear infinite}
+.gag-lance .jet .j2{stroke:#9fd8ff;stroke-width:3;animation-duration:.6s}
+.gag-lance .bub{left:10px;top:auto;bottom:calc(146px + env(safe-area-inset-bottom,0px));background:#1f6fd1;animation:bubble 6.2s linear forwards}
+.gag-chat .lad{position:absolute;right:22px;bottom:-230px;width:44px;height:210px;animation:ladder 7s ease-in-out forwards}
+.gag-chat .lad>svg{width:100%;height:100%}
+.gag-chat .cat{position:absolute;top:-32px;left:2px;width:40px;height:36px;z-index:1;animation:hop-y .5s ease-in-out infinite alternate}
+.gag-chat .bub{right:10px;top:auto;bottom:292px;background:#ff7a00;animation:bubble 7s linear forwards}
+.gag-ronf .bub{left:50%;top:38vh;transform:translateX(-50%);font-size:18px;padding:8px 16px;animation:bubble 3.2s linear forwards}
+#app.shake{animation:shake .6s ease-in-out}
+@keyframes jet{to{stroke-dashoffset:-36}}
+@keyframes jetin{0%,12%{opacity:0}18%,82%{opacity:.9}100%{opacity:0}}
+@keyframes pomp{0%{transform:translateX(-70px)}12%,85%{transform:none}100%{transform:translateX(-70px)}}
+@keyframes ladder{0%{bottom:-230px}25%,75%{bottom:16px}100%{bottom:-230px}}
+@keyframes shake{0%,100%{transform:none}20%{transform:translateX(-5px) rotate(-.4deg)}40%{transform:translateX(5px) rotate(.4deg)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+@media (prefers-reduced-motion:reduce){#app.shake{animation:none}}
