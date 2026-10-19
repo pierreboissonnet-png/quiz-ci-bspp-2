@@ -98,6 +98,8 @@ const NICK_BAN = /(conn?a?r|con\b|pute|putain|salop|encul|p[ée]d[ée]|pd\b|n[e�
 const duelPub = (d, uid) => ({ id: d.id, from: d.from, to: d.to, fromN: d.fromN, toN: d.toN, theme: d.theme, themeN: d.themeN, level: d.level, created: d.created, exp: d.exp, status: d.status, done: d.done || null, winner: d.winner || null, qids: d.qids, nick: d.nick || null, mine: d.res[uid] || null, other: (d.status === "done" || d.status === "expired" || d.status === "declined") ? (d.res[d.from === uid ? d.to : d.from] || null) : (d.res[d.from === uid ? d.to : d.from] ? { played: true } : null) });
 const fxOf = (p) => (["off", "sgt", "fire"].includes(p.fxm) ? p.fxm : p.onFire ? "fire" : "off"); // mode d'ambiance : normal / sergent / On Fire
 const setFx = (p, m) => { p.fxm = m; p.onFire = m === "fire"; };
+const zOf = (p) => (p.zm && p.zm.u > Date.now() ? { u: p.zm.u, by: clean(p.zm.by, 24), at: p.zm.at || 0 } : null); // mode Z, jamais dans pub()
+const xOf = (p) => (p.xm && p.xm.u > Date.now() ? { u: p.xm.u, by: clean(p.xm.by, 24), at: p.xm.at || 0 } : null); // mode X
 const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: fxOf(p) === "fire", fx: fxOf(p), deco: p.deco && p.deco.u > Date.now() ? p.deco : null, nick: p.nick && p.nick.u > Date.now() ? p.nick : null });
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
@@ -299,7 +301,7 @@ async function handler(req) {
     const me = au.p;
     const cfg = await settings(st);
 
-    if (route === "me") return withCookie(json({ profile: pub(me), email: me.email || null, admin: isAdmin(me, cfg), superAdmin: me.email === SUPER, resetAt: me.resetAt || null }), me.id);
+    if (route === "me") return withCookie(json({ profile: pub(me), email: me.email || null, admin: isAdmin(me, cfg), superAdmin: me.email === SUPER, resetAt: me.resetAt || null, zz: zOf(me), xx: xOf(me) }), me.id);
 
     // ---- duels
     if (route === "duel/list" && req.method === "GET") {
@@ -414,9 +416,10 @@ async function handler(req) {
         const s = sanitizeStats(body.stats); if (me.stats?.defi && s.defi && me.stats.defi.week === s.defi.week) s.defi = me.stats.defi; me.stats = s;
       }
       me.updatedAt = Date.now(); await st.setJSON("p/" + me.id, me);
-      return withCookie(json({ profile: pub(me), resetAt: me.resetAt || null, admin: isAdmin(me, cfg) }), me.id);
+      return withCookie(json({ profile: pub(me), resetAt: me.resetAt || null, admin: isAdmin(me, cfg), zz: zOf(me), xx: xOf(me) }), me.id);
     }
     if (route === "logout" && req.method === "POST") { const h = sha(req.headers.get("x-token") || body?.token); await st.delete("s/" + h); if ((me.sessions || []).includes(h)) { me.sessions = me.sessions.filter((x) => x !== h); await st.setJSON("p/" + me.id, me); } return withCookie(json({ ok: true }), null); }
+    if (route === "z/seen" && req.method === "POST") { if (me.zm) { me.zm = null; await st.setJSON("p/" + me.id, me); } return json({ ok: true }); }
     if (route === "profile" && req.method === "DELETE") { if (me.email === SUPER) return json({ error: "Le super administrateur ne peut pas supprimer son profil." }, 400); await st.delete("p/" + me.id); await st.delete("u/" + me.id); if (me.sub) await st.delete("g/" + me.sub); return json({ ok: true }); }
 
     // ---- journal d'activité (pour analyser les bugs a posteriori)
@@ -446,7 +449,7 @@ async function handler(req) {
       }
       if (route === "admin/members" && req.method === "GET") {
         const all = await allProfiles(st);
-        return json({ members: all.map((p) => ({ ...pub(p), email: p.email || null, name: p.name || "", blocked: !!p.blocked, admin: isAdmin(p, cfg), superAdmin: p.email === SUPER, createdAt: p.createdAt, lastLogin: p.lastLogin || null })), settings: cfg, superAdmin: superMe, superEmail: SUPER });
+        return json({ members: all.map((p) => ({ ...pub(p), email: p.email || null, name: p.name || "", blocked: !!p.blocked, admin: isAdmin(p, cfg), superAdmin: p.email === SUPER, createdAt: p.createdAt, lastLogin: p.lastLogin || null, z: zOf(p), x: xOf(p) })), settings: cfg, superAdmin: superMe, superEmail: SUPER });
       }
       if (route === "admin/settings" && req.method === "PUT") {
         const list = (a, re) => [...new Set((Array.isArray(a) ? a : String(a || "").split(/[\s,;]+/)).map((x) => String(x).trim().toLowerCase().replace(/^@/, "")).filter((x) => re.test(x)))].slice(0, 300);
@@ -457,7 +460,7 @@ async function handler(req) {
       if (route === "admin/member" && req.method === "PUT") {
         const t = await st.get("p/" + clean(body.target, 40), { type: "json" });
         if (!t) return json({ error: "Membre introuvable." }, 404);
-        const fun = ["fire", "unfire", "sergent", "unnick"].includes(body.action); // le mode On Fire peut viser tout le monde, super admin compris
+        const fun = ["fire", "unfire", "sergent", "unnick", "zon", "zoff", "xon", "xoff"].includes(body.action); // le mode On Fire peut viser tout le monde, super admin compris
         if (!fun && t.email === SUPER && body.action !== "reset") return json({ error: "Le super administrateur ne peut pas être modifié." }, 403);
         if (!fun && isAdmin(t, cfg) && !superMe && t.id !== me.id) return json({ error: "Seul le super administrateur peut modifier un administrateur." }, 403);
         switch (body.action) {
@@ -467,6 +470,10 @@ async function handler(req) {
           case "fire": setFx(t, "fire"); t.fireAt = Date.now(); break; // mode « On Fire » activé par un administrateur
           case "sergent": setFx(t, "sgt"); t.fireAt = Date.now(); break; // mode Braise : messages musclés sans thème visuel
           case "unfire": setFx(t, "off"); break;
+          case "zon": t.zm = { u: Date.now() + 3600e3, by: me.pseudo || "un administrateur", at: Date.now() }; break; // mode Z : piège secret d'une heure
+          case "zoff": t.zm = null; break;
+          case "xon": t.xm = { u: Date.now() + 3600e3, by: me.pseudo || "un administrateur", at: Date.now() }; break; // mode X : blagues visibles pendant une heure
+          case "xoff": t.xm = null; break;
           case "unnick": t.nick = null; break; // retirer un surnom de duel jugé déplacé
           case "rename": { const ps = clean(body.pseudo, 24); if (ps.length < 2) return json({ error: "Pseudo trop court." }, 400); t.pseudo = await uniquePseudo(st, ps, t.id); break; }
           case "admin": case "unadmin":

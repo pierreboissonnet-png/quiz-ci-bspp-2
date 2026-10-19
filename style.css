@@ -575,3 +575,12 @@ body.pushed .opt:disabled:not(.good):not(.bad):not(:has(.gq)) > span:not(.k){dis
 @keyframes ladder{0%{bottom:-230px}25%,75%{bottom:16px}100%{bottom:-230px}}
 @keyframes shake{0%,100%{transform:none}20%{transform:translateX(-5px) rotate(-.4deg)}40%{transform:translateX(5px) rotate(.4deg)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
 @media (prefers-reduced-motion:reduce){#app.shake{animation:none}}
+
+/* 3.3.3 : modes Z et X */
+.zxrow{display:flex;gap:10px;align-items:flex-start;text-align:left;background:var(--card2);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.35;cursor:pointer}
+.zxrow input{width:20px;height:20px;flex:none;margin-top:1px;accent-color:var(--red)}
+.opt.xflee{animation:xflee .45s ease-out}
+.xflip{transform:rotate(180deg);transition:transform .5s ease}
+.opts,.qtext{transition:transform .5s ease}
+@keyframes xflee{0%{transform:translateX(0)}30%{transform:translateX(26px) rotate(3deg)}60%{transform:translateX(-14px)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){.xflip{transform:none}.opt.xflee{animation:none}}

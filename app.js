@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.3.2";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.3.3";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -165,6 +165,40 @@ function renderTabs(){const cur=TABS.find(t=>t[0]===tab);const TABS_V=visTabs();
 let navStack=[];
 function go(t,fromBack){if(cleanup){cleanup();cleanup=null}if(!visTabs().some(x=>x[0]===t))t="home";alog("nav",tabName(tab)+" → "+tabName(t),fromBack?"par le bouton Retour":"");if(curGame){if(curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame=null}lastEcran="";if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
   app.className="view";({home:viewHome,revise:viewRevise,chat:viewChat,cri:viewCri,radio:viewRadio,carte:viewCarte,grades:()=>viewGrades(level==="expert",true),lexique:()=>viewLexique(true),docs:viewDocs,stats:viewStatsTab,profile:viewProfile})[t]();bindTabBack();window.scrollTo(0,0)}
+/* ============ 3.3.3 : modes Z et X (activés par un administrateur, 1 h) ============
+   Mode Z : piège secret, toutes les réponses s'affichent « faux » ; les vrais résultats sont enregistrés normalement
+   et le piège est révélé à la fin de la série. Mode X : blagues visibles (réponses qui fuient, écran qui se retourne,
+   sergent qui commente chaque clic). Jamais pendant un examen, le défi de la semaine ou un duel. */
+let zState=store.get("zState",null),xState=store.get("xState",null),zFaked=0,zLastOpt=null,zBy=zState&&zState.by||"";
+const zxGame=()=>document.body.classList.contains("pushed")&&!/examen|défi|duel|résultat|administration|journaux/i.test(lastEcran||"");
+const zOn=()=>!!(zState&&zState.u>Date.now())&&zxGame();
+const xOn=()=>!!(xState&&xState.u>Date.now())&&zxGame();
+function zxSet(j){if(!j)return;const z=j.zz&&j.zz.u>Date.now()?j.zz:null,x=j.xx&&j.xx.u>Date.now()?j.xx:null;
+ if(zState&&zState.by)zBy=zState.by;zState=z;store.set("zState",z);if(z)zBy=z.by;
+ const wasX=xState&&xState.u>Date.now();xState=x;store.set("xState",x);
+ if(x&&!wasX&&store.get("xSeen",0)!==x.at){store.set("xSeen",x.at);setTimeout(()=>toast(`${x.by} t'a mis en Mode Z (blagues visibles) pendant 1 h. Accroche-toi !`),500)}}
+const Z_LINES=["Faux ! Et on ne discute pas.","FAUX. Le sergent a parlé.","Faux… Tu étais sûr de toi ? Pas moi.","Négatif ! Recommence.","Faux. Même le chat de l'échelle le savait.","Faux ! Corvée de plonge.","Faux, faux et archi-faux !","Hmm… non. Faux."];
+const X_LINES=["Tu cliques ou tu caresses l'écran ?","Plus vite, le ronfleur a sonné !","Mouais… on verra.","Sûr ? Le sergent hausse un sourcil.","Doigt mouillé, réponse mouillée.","Allez, on ne tremble pas !","Celui-là, je l'aurais pas pris.","Clic validé. Courage validé ? À voir."];
+function zxSwap(a,b){const ph=document.createElement("span");a.before(ph);b.before(a);ph.replaceWith(b)}
+document.addEventListener("click",e=>{const o=e.target.closest&&e.target.closest(".opt");if(!o||o.disabled)return;
+ if(zOn())zLastOpt=o;
+ if(!xOn())return;const box=o.parentElement;
+ if(box&&!box.dataset.xf&&Math.random()<.35){const sib=[...box.querySelectorAll(":scope > .opt")].filter(x=>x!==o);if(sib.length){box.dataset.xf="1";e.preventDefault();e.stopImmediatePropagation();zxSwap(o,pick(sib));o.classList.add("xflee");setTimeout(()=>o.classList.remove("xflee"),500);toast(pick(["Raté, elle a bougé !","Trop lent !","Elle t'a esquivé…","On ne vise pas, on anticipe."]));return}}
+ if(Math.random()<.7)toast(pick(X_LINES))},true);
+new MutationObserver(()=>{if(!document.body.classList.contains("pushed"))return;
+ const q=app.querySelector(".qtext");if(q&&!q.dataset.xd&&xOn()){q.dataset.xd="1";if(Math.random()<.22){const t=app.querySelector(".opts")||q;t.classList.add("xflip");setTimeout(()=>t.classList.remove("xflip"),2600);setTimeout(()=>toast("Oups, VPSP retourné !"),150)}}
+ const fb=app.querySelector(".fb");if(!fb||fb.dataset.z||!zOn())return;fb.dataset.z="1";
+ fb.classList.remove("good");fb.classList.add("bad");const b=fb.querySelector("b");if(b)b.textContent=pick(Z_LINES);
+ if(zLastOpt&&zLastOpt.classList.contains("good")){zLastOpt.classList.remove("good");zLastOpt.classList.add("bad")}
+ app.querySelectorAll(".oitem.good").forEach(x=>{x.classList.remove("good");x.classList.add("bad")});const rb=app.querySelector(".rbmsg.good");if(rb){rb.classList.remove("good");rb.classList.add("bad")}
+ zFaked++}).observe(app,{childList:true,subtree:true});
+function zReveal(){if(!zFaked)return;const by=(zState&&zState.by)||zBy||"un administrateur";zFaked=0;zState=null;store.set("zState",null);api("z/seen","POST",{}).catch(()=>{});alog("modez","révélé");
+ const el=document.createElement("div");el.className="dlpop";el.innerHTML=`<div class="dlbox"><div class="dltag">MODE Z · PIÈGE SECRET</div><h3>Tu t'es fait piéger !</h3><p>Pendant cette série, <b>toutes</b> tes réponses s'affichaient fausses : c'était un coup de <b>${esc(by)}</b>${/\.$/.test(by)?"":"."}</p><p class="small">Rassure-toi : rien n'a été faussé. Le score affiché derrière est ton vrai score, et ta progression est intacte.</p><div class="actions" style="margin:12px 0 0"><button class="btn full" data-zok>Bien joué… je me vengerai</button></div></div>`;
+ document.body.appendChild(el);if(typeof confetti==="function")confetti(el);el.querySelector("[data-zok]").onclick=()=>el.remove()}
+// mode actif : vérification toutes les 30 s (une désactivation par un admin s'applique vite), sinon toutes les 2 min
+let zxLast=0;setInterval(()=>{const act=(zState&&zState.u>Date.now())||(xState&&xState.u>Date.now());if(Date.now()-zxLast<(act?30000:120000))return;
+ if(me&&!me.expired&&!document.hidden&&navigator.onLine!==false){zxLast=Date.now();api("me").then(zxSet).catch(()=>{})}},10000);
+setTimeout(()=>{if(me&&!me.expired)api("me").then(zxSet).catch(()=>{})},4000);
 /* 3.3.2 : chaque nouvelle question repart du haut de l'écran */
 document.addEventListener("click",e=>{if(e.target.closest&&e.target.closest("#next"))window.scrollTo({top:0,left:0,behavior:"instant"})},true);
 /* 3.3.1 : après une réponse, faire apparaître la correction sans avoir à faire défiler (le bouton suivant reste collé en bas) */
@@ -181,7 +215,7 @@ window.addEventListener("popstate",()=>{const v=$("#viewer");if(v){v.querySelect
 function gameLog(title){try{qShownAt=Date.now();if(title==="Résultat"){if(curGame&&curGame.n){const g=curGame;curGame=null;setTimeout(()=>{const ev=typeof rankOnGameEnd==="function"?rankOnGameEnd(g):null;if(ev){if(ev.type==="down")setTimeout(()=>rankPopup("down",ev.to),400);else rankResultNote(ev)}const sc=$(".result .score"),gr=$(".result .grade");alog("jeu","fin · "+g.title,{score:sc?sc.textContent.trim():"","réponses":g.n,justes:g.ok,"durée":Math.round((Date.now()-g.t0)/1000)+" s",commentaire:gr?gr.textContent.trim().slice(0,120):""})},30)}return}
  if(!curGame||curGame.title!==title){if(curGame&&curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame={title,t0:Date.now(),n:0,ok:0,nL:0,nS:0}}}catch(e){}}
 try{history.scrollRestoration="manual"}catch(e){}
-function push(title,right,onBack){if(title!==lastEcran){alog("ecran",title,right||"");lastEcran=title;window.scrollTo({top:0,left:0,behavior:"instant"})}gameLog(title);if(!document.body.classList.contains("pushed"))history.pushState({app:1},"");if(cleanup){cleanup();cleanup=null}document.body.classList.add("pushed");$("#composer").hidden=true;app.className="view push";
+function push(title,right,onBack){if(title!==lastEcran){alog("ecran",title,right||"");lastEcran=title;window.scrollTo({top:0,left:0,behavior:"instant"});if(title==="Résultat"&&typeof zFaked!=="undefined"&&zFaked)setTimeout(zReveal,450)}gameLog(title);if(!document.body.classList.contains("pushed"))history.pushState({app:1},"");if(cleanup){cleanup();cleanup=null}document.body.classList.add("pushed");$("#composer").hidden=true;app.className="view push";
   return `<div class="nav"><button class="back" id="back">${I.back}Retour</button><div class="ttl">${esc(title)}</div><div class="right" id="navr">${right||""}</div></div>`}
 function bindBack(fn){const b=$("#back");if(b)b.onclick=()=>{if(cleanup){cleanup();cleanup=null}fn?fn():go(tab)}}
 function setRight(t){const r=$("#navr");if(r)r.textContent=t}
@@ -2083,7 +2117,7 @@ async function syncNow(){if(!me||me.expired||syncing)return;syncing=true;dirty=f
   try{const before=JSON.stringify(localProgress());
     const pr=await api("progress","PUT",{progress:localProgress()});
     if(pr&&pr.progress){applyProgress(pr.progress);progLoaded=true;if(JSON.stringify(localProgress())!==before)refreshLocalViews()}
-    let j=await api("profile","PUT",{stats:buildStats()});if(j&&j.profile)setFx(fxFrom(j.profile));
+    let j=await api("profile","PUT",{stats:buildStats()});if(j&&j.profile)setFx(fxFrom(j.profile));if(typeof zxSet==="function")zxSet(j);
     if(typeof j.admin==="boolean"&&j.admin!==me.admin){me.admin=j.admin;saveMe()}
     store.set("lastSync",Date.now());await loadBoard(true);alog("sync","ok",{duree:Date.now()-sT0+" ms",points:typeof cntTotal==="function"?cntTotal().points:""})}
   catch(e){dirty=true;alog("sync","échec",{erreur:String(e&&(e.error||e.message)||e).slice(0,160),duree:Date.now()-sT0+" ms"})}finally{syncing=false}}
@@ -2312,6 +2346,8 @@ function memberSheet(m){const A=adminData;const canAdmin=A.superAdmin&&m.email&&
    <div class="actions" style="flex-direction:column">
     <button class="btn sec full" data-act="reset">Remettre ses scores à zéro</button>
     <div class="small" style="margin:2px 0 -2px">Ambiance (actuelle : ${FXLBL[fxFrom(m)]})</div><div class="seg firetog admfx">${[["unfire","off","Normal",""],["sergent","sgt","Braise",SGT_IC],["fire","fire","On Fire",FLAME_IC]].map(([a,k,l,ic])=>`<button data-act="${a}" aria-pressed="${fxFrom(m)===k}">${ic}${l}</button>`).join("")}</div>
+    <label class="zxrow"><input type="checkbox" data-zx="z" ${m.z?"checked":""}><span><b>Mode Z (piège secret)</b> · 1 h : toutes ses réponses s'affichent fausses, révélé en fin de série${m.z?` (par ${esc(m.z.by)}, jusqu'à ${new Date(m.z.u).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})})`:""}</span></label>
+    <label class="zxrow"><input type="checkbox" data-zx="x" ${m.x?"checked":""}><span><b>Mode Z (blagues visibles)</b> · 1 h : réponses qui fuient, écran qui se retourne, sergent bavard${m.x?` (par ${esc(m.x.by)}, jusqu'à ${new Date(m.x.u).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})})`:""}</span></label>
     ${m.nick&&m.nick.u>Date.now()?`<button class="btn sec full" data-act="unnick">Retirer le surnom « ${esc(m.nick.n)} »</button>`:""}
     ${m.superAdmin?"":`<button class="btn sec full" data-act="${m.blocked?"unblock":"block"}">${m.blocked?"Débloquer le compte":"Bloquer le compte"}</button>`}
     ${canAdmin?`<button class="btn sec full" data-act="${m.admin?"unadmin":"admin"}">${m.admin?"Retirer les droits d'administrateur":"Nommer administrateur"}</button>`:""}
@@ -2319,6 +2355,7 @@ function memberSheet(m){const A=adminData;const canAdmin=A.superAdmin&&m.email&&
     <button class="btn full" data-close>Fermer</button></div><p class="small" id="mMsg"></p>`);
   const act=async(action,extra)=>{const msg=sh.querySelector("#mMsg");msg.textContent="…";try{await api("admin/member","PUT",{target:m.id,action,...extra});closeSheet();toast("Modification enregistrée.");adminData=await api("admin/members");drawAdmin();loadBoard(true)}catch(e){msg.textContent=e.error||"Erreur."}};
   sh.querySelector("#rnf").onsubmit=e=>{e.preventDefault();act("rename",{pseudo:sh.querySelector("#rnP").value})};
+  sh.querySelectorAll("[data-zx]").forEach(c=>c.onchange=()=>act((c.dataset.zx)+(c.checked?"on":"off")));
   sh.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{const a=b.dataset.act;if((a==="delete"||a==="reset"||a==="block")&&!b.dataset.c){b.dataset.c="1";b.textContent="Confirmer : "+b.textContent.toLowerCase();return}act(a)});
 }
 
