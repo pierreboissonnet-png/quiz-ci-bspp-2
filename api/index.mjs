@@ -67,11 +67,11 @@ function sanitizeStats(s = {}) {
 }
 const emptyStats = () => sanitizeStats({});
 // ---- Duels entre membres (asynchrones) ----
-const DUEL_TTL = 48 * 3600e3, DECO_TTL = 3600e3, DRAFT_TTL = 2 * 3600e3;
+const DUEL_TTL = 48 * 3600e3, DECO_TTL = 24 * 3600e3, NICK_PICK = 3600e3, DRAFT_TTL = 2 * 3600e3;
 async function duelIds(st, uid) { return (await st.get("dl/" + uid, { type: "json" })) || []; }
 async function duelLink(st, uid, id) { const l = (await duelIds(st, uid)).filter((x) => x !== id); l.unshift(id); await st.setJSON("dl/" + uid, l.slice(0, 40)); }
 async function setDeco(st, uid, deco) { const p = await st.get("p/" + uid, { type: "json" }); if (!p) return; p.deco = { ...deco, u: Date.now() + DECO_TTL }; await st.setJSON("p/" + uid, p); }
-// clôture : résultat, décorations (1 h) ; à appeler quand le duel change d'état
+// clôture : résultat, décorations (24 h) ; à appeler quand le duel change d'état
 async function duelSettle(st, d) {
   const now = Date.now();
   if (d.status === "draft" && now > d.created + DRAFT_TTL) { d.status = "abandoned"; await st.setJSON("duel/" + d.id, d); return d; }
@@ -339,12 +339,12 @@ async function handler(req) {
     if (route === "duel/nick" && req.method === "POST") {
       const d = await st.get("duel/" + clean(body.did, 20), { type: "json" }); if (!d || d.status !== "done" || d.winner !== me.id) return json({ error: "Seul le gagnant peut choisir un surnom." }, 403);
       if (d.nick) return json({ error: "Le surnom a déjà été choisi." }, 409);
-      if (Date.now() > (d.done || 0) + DECO_TTL) return json({ error: "Trop tard : le surnom se choisit dans l'heure qui suit la victoire." }, 409);
+      if (Date.now() > (d.done || 0) + NICK_PICK) return json({ error: "Trop tard : le surnom se choisit dans l'heure qui suit la victoire." }, 409);
       const nick = clean(body.nick, 28).replace(/\s+/g, " ");
       if (nick.length < 3) return json({ error: "Surnom trop court." }, 400);
       if (NICK_BAN.test(nick)) return json({ error: "Surnom refusé : reste dans l'esprit pompier, sans grossièreté." }, 400);
       const loser = d.winner === d.from ? d.to : d.from; d.nick = nick; await st.setJSON("duel/" + d.id, d);
-      const lp = await st.get("p/" + loser, { type: "json" }); if (lp) { lp.nick = { n: nick, by: me.pseudo, u: (d.done || Date.now()) + DECO_TTL }; await st.setJSON("p/" + loser, lp); }
+      const lp = await st.get("p/" + loser, { type: "json" }); if (lp) { lp.nick = { n: nick, by: me.pseudo, u: Date.now() + DECO_TTL }; await st.setJSON("p/" + loser, lp); }
       return json({ ok: true, nick });
     }
     if (route === "duel/decline" && req.method === "POST") {
