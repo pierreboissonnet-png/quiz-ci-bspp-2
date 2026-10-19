@@ -6,7 +6,7 @@
 //   TEAM_CODE         (facultatif) code d'équipe, utilisé seulement si la connexion Google n'est pas configurée
 //   KV_REST_API_URL / KV_REST_API_TOKEN (ou UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN) : ajoutés
 //   automatiquement quand on connecte une base « Upstash for Redis » au projet.
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual, generateKeyPairSync, createECDH, createPrivateKey, createCipheriv, hkdfSync, sign as cSign } from "node:crypto";
 
 // ---- stockage clé/valeur (Redis via l'API REST d'Upstash, sans dépendance)
 const R_URL = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "").trim().replace(/\/$/, "");
@@ -56,7 +56,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 function sanitizeStats(s = {}) {
   const out = { points: num(s.points, 1e7), total: num(s.total, 1e8), week: /^\d{4}-S\d{2}$/.test(s.week || "") ? s.week : null, answered: num(s.answered, 1e6), correct: num(s.correct, 1e6), fichesOk: num(s.fichesOk, 500), fichesTotal: num(s.fichesTotal, 500), seen: num(s.seen, 5000), streak: num(s.streak, 5000), bestExam: num(s.bestExam, 100), bestQcm: num(s.bestQcm, 100), bestChrono: num(s.bestChrono, 500), themes: {}, defi: null };
-  out.rank = num(s.rank, 16); out.dw = num(s.dw, 1e4); out.dl = num(s.dl, 1e4);
+  out.rank = num(s.rank, 16); out.dw = num(s.dw, 1e4); out.dl = num(s.dl, 1e4); out.sudden = num(s.sudden, 1e4);
   if (out.correct > out.answered) out.correct = out.answered;
   if (s.themes && typeof s.themes === "object") for (const [k, v] of Object.entries(s.themes).slice(0, 12)) out.themes[clean(k, 12)] = num(v, 100);
   // historique pour les graphiques : 12 dernières semaines et 12 derniers mois
@@ -95,12 +95,62 @@ async function duelSettle(st, d) {
   return d;
 }
 const NICK_BAN = /(conn?a?r|con\b|pute|putain|salop|encul|p[ée]d[ée]|pd\b|n[eè]gr|bougnoul|youp|tarlouz|tapette|gouine|bite|couill|chatte|nique|ntm|batard|bâtard|merde|abruti|d[ée]bile|mongol|triso|attard|handicap|clochard|nazi|hitler)/i;
-const duelPub = (d, uid) => ({ id: d.id, from: d.from, to: d.to, fromN: d.fromN, toN: d.toN, theme: d.theme, themeN: d.themeN, level: d.level, created: d.created, exp: d.exp, status: d.status, done: d.done || null, winner: d.winner || null, qids: d.qids, nick: d.nick || null, mine: d.res[uid] || null, other: (d.status === "done" || d.status === "expired" || d.status === "declined") ? (d.res[d.from === uid ? d.to : d.from] || null) : (d.res[d.from === uid ? d.to : d.from] ? { played: true } : null) });
+const duelPub = (d, uid) => ({ id: d.id, from: d.from, to: d.to, fromN: d.fromN, toN: d.toN, theme: d.theme, themeN: d.themeN, level: d.level, created: d.created, exp: d.exp, status: d.status, done: d.done || null, winner: d.winner || null, qids: d.qids, nick: d.nick || null, zg: d.zg || null, mine: d.res[uid] || null, other: (d.status === "done" || d.status === "expired" || d.status === "declined") ? (d.res[d.from === uid ? d.to : d.from] || null) : (d.res[d.from === uid ? d.to : d.from] ? { played: true } : null) });
 const fxOf = (p) => (["off", "sgt", "fire"].includes(p.fxm) ? p.fxm : p.onFire ? "fire" : "off"); // mode d'ambiance : normal / sergent / On Fire
 const setFx = (p, m) => { p.fxm = m; p.onFire = m === "fire"; };
+
+// ---- 3.4.0 : notifications push (Web Push, sans dépendance). Uniquement « untel t'a défié ».
+const b64u = (b) => Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const ub64 = (s) => Buffer.from(String(s).replace(/-/g, "+").replace(/_/g, "/"), "base64");
+async function vapid(st) {
+  let v = await st.get("cfg/vapid", { type: "json" });
+  if (!v) { const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" }); const jwk = privateKey.export({ format: "jwk" }); v = { jwk, pub: b64u(Buffer.concat([Buffer.from([4]), ub64(jwk.x), ub64(jwk.y)])) }; await st.setJSON("cfg/vapid", v); }
+  return v;
+}
+function vapidAuth(v, endpoint) {
+  const aud = new URL(endpoint).origin; const head = b64u(JSON.stringify({ typ: "JWT", alg: "ES256" }));
+  const body = b64u(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: "mailto:" + SUPER }));
+  const sig = cSign("sha256", Buffer.from(head + "." + body), { key: createPrivateKey({ key: v.jwk, format: "jwk" }), dsaEncoding: "ieee-p1363" });
+  return `vapid t=${head}.${body}.${b64u(sig)}, k=${v.pub}`;
+}
+function pushEncrypt(sub, text) {
+  const uaPub = ub64(sub.keys.p256dh), auth = ub64(sub.keys.auth);
+  const ecdh = createECDH("prime256v1"); ecdh.generateKeys(); const asPub = ecdh.getPublicKey(); const shared = ecdh.computeSecret(uaPub);
+  const ikm = Buffer.from(hkdfSync("sha256", shared, auth, Buffer.concat([Buffer.from("WebPush: info\0"), uaPub, asPub]), 32));
+  const salt = randomBytes(16);
+  const cek = Buffer.from(hkdfSync("sha256", ikm, salt, Buffer.from("Content-Encoding: aes128gcm\0"), 16));
+  const nonce = Buffer.from(hkdfSync("sha256", ikm, salt, Buffer.from("Content-Encoding: nonce\0"), 12));
+  const c = createCipheriv("aes-128-gcm", cek, nonce); const enc = Buffer.concat([c.update(Buffer.concat([Buffer.from(text), Buffer.from([2])])), c.final(), c.getAuthTag()]);
+  const rs = Buffer.alloc(4); rs.writeUInt32BE(4096);
+  return Buffer.concat([salt, rs, Buffer.from([asPub.length]), asPub, enc]);
+}
+async function pushTo(st, uid, msg) {
+  try {
+    const p = await st.get("p/" + uid, { type: "json" }); if (!p || !Array.isArray(p.push) || !p.push.length) return;
+    const v = await vapid(st); const keep = [];
+    for (const s of p.push) {
+      try {
+        const r = await fetch(s.endpoint, { method: "POST", headers: { TTL: "3600", Urgency: "high", "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", Authorization: vapidAuth(v, s.endpoint) }, body: pushEncrypt(s, JSON.stringify(msg)) });
+        if (r.status !== 404 && r.status !== 410) keep.push(s);
+      } catch (e) { keep.push(s); }
+    }
+    if (keep.length !== p.push.length) { p.push = keep; await st.setJSON("p/" + uid, p); }
+  } catch (e) {}
+}
+// 3.3.4 : vote d'exclusion d'un membre (seuls les autres membres déclenchent et votent ; majorité absolue ; 48 h)
+const VOTE_TTL = 48 * 3600e3;
+function voteState(tm, profiles, uid) {
+  const v = (tm.votes || {})[uid]; if (!v) return null;
+  const mem = profiles.filter((p) => p.team === tm.id && !p.blocked).map((p) => p.id);
+  const el = mem.filter((id) => id !== uid); const need = Math.floor(el.length / 2) + 1;
+  const yes = (v.yes || []).filter((id) => el.includes(id)).length, no = (v.no || []).filter((id) => el.includes(id)).length;
+  return { v, el, need, yes, no, inTeam: mem.includes(uid), done: yes >= need ? "out" : no > el.length - need ? "kept" : Date.now() > v.exp ? "expired" : null };
+}
+async function dropRequest(st, p) { if (!p.askTeam) return; const o = await st.get("t/" + p.askTeam, { type: "json" }); if (o && o.pending) { o.pending = o.pending.filter((q) => q.id !== p.id); await st.setJSON("t/" + o.id, o); } p.askTeam = null; }
 const zOf = (p) => (p.zm && p.zm.u > Date.now() ? { u: p.zm.u, by: clean(p.zm.by, 24), at: p.zm.at || 0 } : null); // mode Z, jamais dans pub()
+const zmoOf = (p) => { const o = {}; for (const [k, v] of Object.entries(p.zmo || {})) if (v && v.u > Date.now()) o[k] = { u: v.u, by: clean(v.by, 24), at: v.at || 0 }; return Object.keys(o).length ? o : null; };
 const xOf = (p) => (p.xm && p.xm.u > Date.now() ? { u: p.xm.u, by: clean(p.xm.by, 24), at: p.xm.at || 0 } : null); // mode X
-const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: fxOf(p) === "fire", fx: fxOf(p), deco: p.deco && p.deco.u > Date.now() ? p.deco : null, nick: p.nick && p.nick.u > Date.now() ? p.nick : null });
+const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: fxOf(p) === "fire", fx: fxOf(p), deco: p.deco && p.deco.u > Date.now() ? p.deco : null, nick: p.nick && p.nick.u > Date.now() ? p.nick : null, sdf: p.sdf && p.sdf > Date.now() ? p.sdf : null });
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
   const rdA = a.radio, rdB = b.radio; // l'indicatif radio survit aux remises à zéro
@@ -230,11 +280,20 @@ async function verifyGoogle(idToken) {
   return t;
 }
 
+// 3.4.0 : notification « nouvelle version disponible » envoyée une seule fois par version (verrou Redis SET NX)
+const APP_VERSION = "3.4.0"; let announced = false;
+async function announceVersion(st) {
+  try {
+    const r = await redis(["SET", NS + "ver/announced/" + APP_VERSION, "1", "NX"]); if (r !== "OK") return;
+    for (const p of await allProfiles(st)) if (Array.isArray(p.push) && p.push.length && !p.blocked) await pushTo(st, p.id, { title: "Quiz CI BSPP", body: `La version ${APP_VERSION} est disponible : ouvre l'appli pour en profiter.`, tag: "update" });
+  } catch (e) {}
+}
 async function handler(req) {
   const url = new URL(req.url);
   // vercel.json réécrit /api/<route> vers /api?route=<route>
   const route = (url.searchParams.get("route") ?? url.pathname.replace(/^\/api\/?/, "")).replace(/^\/+|\/+$/g, "");
   const st = store();
+  if (!announced) { announced = true; const job = announceVersion(st); try { const { waitUntil } = await import("@vercel/functions"); waitUntil(job); } catch (e) {} }
   try {
     // ---- configuration publique
     if (route === "config") return json({ google: !!CLIENT_ID, clientId: CLIENT_ID || null, teamCode: !CLIENT_ID && !!process.env.TEAM_CODE });
@@ -301,7 +360,7 @@ async function handler(req) {
     const me = au.p;
     const cfg = await settings(st);
 
-    if (route === "me") return withCookie(json({ profile: pub(me), email: me.email || null, admin: isAdmin(me, cfg), superAdmin: me.email === SUPER, resetAt: me.resetAt || null, zz: zOf(me), xx: xOf(me) }), me.id);
+    if (route === "me") return withCookie(json({ profile: pub(me), email: me.email || null, admin: isAdmin(me, cfg), superAdmin: me.email === SUPER, resetAt: me.resetAt || null, zz: zOf(me), xx: xOf(me), zmo: zmoOf(me), kk: me.kicked || null }), me.id);
 
     // ---- duels
     if (route === "duel/list" && req.method === "GET") {
@@ -328,13 +387,23 @@ async function handler(req) {
       await st.setJSON("duel/" + d.id, d); await duelLink(st, me.id, d.id); await duelLink(st, to, d.id);
       return json({ duel: duelPub(d, me.id) });
     }
+    if (route === "duel/gage" && req.method === "POST") { // 3.4.0 : le gagnant inflige un gage (mode Z) d'une heure au perdant
+      const d = await st.get("duel/" + clean(body.did, 20), { type: "json" }); if (!d || d.winner !== me.id || d.status !== "done") return json({ error: "Seul le gagnant peut choisir un gage." }, 403);
+      if (d.zg) return json({ error: "Un gage a déjà été choisi pour ce duel." }, 409);
+      if (Date.now() > (d.done || 0) + NICK_PICK) return json({ error: "Trop tard : le gage se choisit dans l'heure qui suit la victoire." }, 409);
+      const m = clean(body.mode, 20); if (!["piege", "blague", "miroir", "escargot", "radio", "fuite"].includes(m)) return json({ error: "Gage inconnu." }, 400);
+      const loser = d.from === me.id ? d.to : d.from; const l = await st.get("p/" + loser, { type: "json" }); if (!l) return json({ error: "Perdant introuvable." }, 404);
+      const g = { u: Date.now() + 3600e3, by: me.pseudo, at: Date.now() };
+      if (m === "piege") l.zm = g; else if (m === "blague") l.xm = g; else { l.zmo = l.zmo || {}; l.zmo[m] = g; }
+      await st.setJSON("p/" + loser, l); d.zg = m; await st.setJSON("duel/" + d.id, d); return json({ ok: true, duel: duelPub(d, me.id) });
+    }
     if (route === "duel/play" && req.method === "POST") {
       const d = await st.get("duel/" + clean(body.did, 20), { type: "json" }); if (!d || (d.from !== me.id && d.to !== me.id)) return json({ error: "Duel introuvable." }, 404);
       if (d.res[me.id]) return json({ error: "Tu as déjà joué ce duel." }, 409);
       if (d.from === me.id ? d.status !== "draft" : d.status !== "pending") return json({ error: "Ce duel n'est plus jouable." }, 409);
       const n = (v, m) => Math.max(0, Math.min(m, Math.round(Number(v) || 0)));
       d.res[me.id] = { pts: n(body.pts, 1000), ok: n(body.ok, 10), ms: n(body.ms, 36e5), at: Date.now() };
-      if (d.from === me.id) { d.status = "pending"; d.exp = Date.now() + DUEL_TTL; }
+      if (d.from === me.id) { d.status = "pending"; d.exp = Date.now() + DUEL_TTL; await pushTo(st, d.to, { title: "⚔ Nouveau duel", body: `${d.fromN} t'a défié en duel${d.themeN ? " (" + d.themeN + ")" : ""}.`, tag: "duel-" + d.id }); }
       await st.setJSON("duel/" + d.id, d);
       return json({ duel: duelPub(await duelSettle(st, d), me.id) });
     }
@@ -359,7 +428,7 @@ async function handler(req) {
     if (route === "board" && req.method === "GET") {
       const [profiles, teams] = await Promise.all([allProfiles(st), allTeams(st)]);
       const ids = new Set(teams.map((x) => x.id));
-      return json({ profiles: profiles.filter((p) => !p.blocked).map((p) => ({ ...pub(p), team: ids.has(p.team) ? p.team : null })), teams: teams.map((x) => ({ id: x.id, name: x.name, ownerId: x.ownerId, createdAt: x.createdAt })), now: Date.now() });
+      return json({ profiles: profiles.filter((p) => !p.blocked).map((p) => ({ ...pub(p), team: ids.has(p.team) ? p.team : null })), teams: teams.map((x) => ({ id: x.id, name: x.name, ownerId: x.ownerId, createdAt: x.createdAt, max: x.max || null, pendingN: (x.pending || []).length, pending: me.team === x.id ? (x.pending || []) : undefined, votes: me.team === x.id ? Object.keys(x.votes || {}).filter((uid) => uid !== me.id).map((uid) => { const s = voteState(x, profiles, uid); if (!s || s.done || !s.inTeam) return null; return { uid, byN: s.v.byN, at: s.v.at, exp: s.v.exp, yes: s.yes, no: s.no, need: s.need, el: s.el.length, mine: (s.v.yes || []).includes(me.id) ? "yes" : (s.v.no || []).includes(me.id) ? "no" : null }; }).filter(Boolean) : undefined })), now: Date.now() });
     }
 
     // ---- progression complète (réponses, records, marqueurs…) : sauvegardée par utilisateur et fusionnée entre appareils
@@ -376,7 +445,7 @@ async function handler(req) {
     if (route === "teams" && req.method === "GET") {
       const [profiles, teams] = await Promise.all([allProfiles(st), allTeams(st)]);
       const byId = Object.fromEntries(profiles.map((p) => [p.id, p]));
-      return json({ teams: teams.map((x) => ({ id: x.id, name: x.name, ownerId: x.ownerId, owner: byId[x.ownerId]?.pseudo || "—", members: profiles.filter((p) => p.team === x.id && !p.blocked).length, createdAt: x.createdAt })).sort((a, b) => a.name.localeCompare(b.name)), myTeam: me.team || null });
+      return json({ teams: teams.map((x) => ({ id: x.id, name: x.name, ownerId: x.ownerId, owner: byId[x.ownerId]?.pseudo || "—", members: profiles.filter((p) => p.team === x.id && !p.blocked).length, createdAt: x.createdAt, max: x.max || null, asked: (x.pending || []).some((q) => q.id === me.id) })).sort((a, b) => a.name.localeCompare(b.name)), myTeam: me.team || null });
     }
     if (route === "teams" && req.method === "POST") {
       const name = clean(body.name, 40);
@@ -386,14 +455,116 @@ async function handler(req) {
       if (teams.some((x) => x.name.toLowerCase() === name.toLowerCase())) return json({ error: "Une équipe porte déjà ce nom." }, 409);
       const id = randomBytes(6).toString("hex");
       await st.setJSON("t/" + id, { id, name, ownerId: me.id, createdAt: Date.now() });
-      me.team = id; me.updatedAt = Date.now(); await st.setJSON("p/" + me.id, me);
+      await dropRequest(st, me); me.team = id; me.updatedAt = Date.now(); await st.setJSON("p/" + me.id, me);
       return json({ team: { id, name, ownerId: me.id } });
     }
     if (route === "teams/join" && req.method === "POST") {
       const tm = await st.get("t/" + clean(body.teamId, 20), { type: "json" });
       if (!tm) return json({ error: "Cette équipe n'existe plus." }, 404);
-      me.team = tm.id; me.updatedAt = Date.now(); await st.setJSON("p/" + me.id, me);
-      return json({ team: { id: tm.id, name: tm.name, ownerId: tm.ownerId } });
+      if (me.team === tm.id) return json({ team: { id: tm.id, name: tm.name, ownerId: tm.ownerId } });
+      const mem = (await allProfiles(st)).filter((p) => p.team === tm.id && !p.blocked);
+      if (tm.max && mem.length >= tm.max) return json({ error: `L'équipe « ${tm.name} » est complète (${mem.length}/${tm.max}).` }, 409);
+      if (!mem.length) { // équipe vide : on la rejoint directement
+        me.team = tm.id; me.updatedAt = Date.now(); await st.setJSON("p/" + me.id, me);
+        return json({ team: { id: tm.id, name: tm.name, ownerId: tm.ownerId } });
+      }
+      await dropRequest(st, me); // une seule demande à la fois
+      tm.pending = (tm.pending || []).filter((q) => q.id !== me.id).concat([{ id: me.id, pseudo: me.pseudo, at: Date.now() }]).slice(-30);
+      await st.setJSON("t/" + tm.id, tm); me.askTeam = tm.id; await st.setJSON("p/" + me.id, me);
+      return json({ pending: true, team: { id: tm.id, name: tm.name } });
+    }
+    if (route === "teams/cancel" && req.method === "POST") { await dropRequest(st, me); await st.setJSON("p/" + me.id, me); return json({ ok: true }); }
+    if (route === "teams/decide" && req.method === "POST") { // un membre de l'équipe (ou un admin) accepte ou refuse une demande
+      const tm = await st.get("t/" + clean(body.teamId, 20), { type: "json" });
+      if (!tm) return json({ error: "Cette équipe n'existe plus." }, 404);
+      if (me.team !== tm.id && !isAdmin(me, cfg)) return json({ error: "Seuls les membres de l'équipe peuvent valider les demandes." }, 403);
+      const uid = clean(body.uid, 40); const q = (tm.pending || []).find((x) => x.id === uid);
+      tm.pending = (tm.pending || []).filter((x) => x.id !== uid);
+      const t2 = await st.get("p/" + uid, { type: "json" });
+      if (q && t2 && body.ok) {
+        const n = (await allProfiles(st)).filter((p) => p.team === tm.id && !p.blocked).length;
+        if (tm.max && n >= tm.max) { await st.setJSON("t/" + tm.id, { ...tm, pending: [q, ...tm.pending] }); return json({ error: `Équipe complète (${n}/${tm.max}) : augmente le maximum pour accepter.` }, 409); }
+        t2.team = tm.id; t2.askTeam = null; t2.updatedAt = Date.now(); await st.setJSON("p/" + t2.id, t2);
+      } else if (t2 && t2.askTeam === tm.id) { t2.askTeam = null; await st.setJSON("p/" + t2.id, t2); }
+      await st.setJSON("t/" + tm.id, tm); return json({ ok: true });
+    }
+    if (route === "push/key" && req.method === "GET") { const v = await vapid(st); return json({ key: v.pub }); }
+    if (route === "push/sub" && req.method === "POST") {
+      const s = body.sub || {}; const ep = clean(s.endpoint, 600);
+      if (!/^https:\/\//.test(ep) || !s.keys || !s.keys.p256dh || !s.keys.auth) return json({ error: "Abonnement invalide." }, 400);
+      me.push = (me.push || []).filter((x) => x.endpoint !== ep).concat([{ endpoint: ep, keys: { p256dh: clean(s.keys.p256dh, 200), auth: clean(s.keys.auth, 60) }, at: Date.now() }]).slice(-5);
+      await st.setJSON("p/" + me.id, me); return json({ ok: true });
+    }
+    if (route === "push/unsub" && req.method === "POST") { const ep = clean(body.endpoint, 600); me.push = (me.push || []).filter((x) => ep && x.endpoint !== ep); await st.setJSON("p/" + me.id, me); return json({ ok: true }); }
+    // 3.4.0 : médaille « Soldat du feu » (10 bonnes réponses d'affilée en On Fire), affichée 4 h
+    if (route === "badge/sdf" && req.method === "POST") { if (fxOf(me) !== "fire") return json({ error: "Réservé au mode On Fire." }, 403); me.sdf = Date.now() + 4 * 3600e3; await st.setJSON("p/" + me.id, me); return json({ ok: true, sdf: me.sdf }); }
+    // 3.4.0 : duel en direct (salle partagée, progression de chaque joueur dans sa propre clé)
+    if (route === "live/new" && req.method === "POST") {
+      const to = clean(body.to, 40); const op = to && to !== me.id ? await st.get("p/" + to, { type: "json" }) : null;
+      if (!op || op.blocked) return json({ error: "Adversaire introuvable." }, 404);
+      const qids = (Array.isArray(body.qids) ? body.qids : []).map((x) => clean(x, 60)).filter(Boolean).slice(0, 10);
+      if (qids.length < 5) return json({ error: "Pas assez de questions." }, 400);
+      const r = { id: randomBytes(6).toString("hex"), a: me.id, aN: me.pseudo, b: to, bN: op.pseudo, qids, level: body.level === "simple" ? "simple" : "expert", themeN: clean(body.themeN, 40), status: "wait", created: Date.now() };
+      await st.setJSON("live/" + r.id, r, 900); await st.setJSON("livein/" + to, { id: r.id, at: r.created }, 120);
+      await pushTo(st, to, { title: "⚔ Duel en direct", body: `${me.pseudo} te défie maintenant ! Tu as une minute pour accepter.`, tag: "live-" + r.id });
+      return json({ room: r });
+    }
+    if (route === "live/inbox" && req.method === "GET") {
+      const x = await st.get("livein/" + me.id, { type: "json" }); if (!x || Date.now() - x.at > 60000) return json({ room: null });
+      const r = await st.get("live/" + x.id, { type: "json" }); return json({ room: r && r.b === me.id && r.status === "wait" ? r : null });
+    }
+    if (route === "live/get" && req.method === "GET") {
+      const id = clean(url.searchParams.get("id"), 20); const r = await st.get("live/" + id, { type: "json" });
+      if (!r || (r.a !== me.id && r.b !== me.id)) return json({ error: "Duel introuvable." }, 404);
+      if (r.status === "wait" && Date.now() - r.created > 60000) { r.status = "timeout"; await st.setJSON("live/" + r.id, r, 900); }
+      const [pa, pb] = await st.getMany(["livep/" + r.id + "/" + r.a, "livep/" + r.id + "/" + r.b], { type: "json" });
+      return json({ room: r, prog: { [r.a]: pa || null, [r.b]: pb || null }, now: Date.now() });
+    }
+    if (route === "live/answer" && req.method === "POST") {
+      const r = await st.get("live/" + clean(body.rid, 20), { type: "json" }); if (!r || r.b !== me.id) return json({ error: "Duel introuvable." }, 404);
+      if (r.status !== "wait") return json({ error: "Ce défi n'est plus disponible." }, 409);
+      if (body.accept) { r.status = "go"; r.start = Date.now() + 4000; } else r.status = "no";
+      await st.setJSON("live/" + r.id, r, 900); await st.delete("livein/" + me.id); return json({ room: r });
+    }
+    if (route === "live/cancel" && req.method === "POST") {
+      const r = await st.get("live/" + clean(body.rid, 20), { type: "json" }); if (!r || r.a !== me.id) return json({ ok: true });
+      if (r.status === "wait") { r.status = "cancel"; await st.setJSON("live/" + r.id, r, 900); await st.delete("livein/" + r.b); } return json({ ok: true });
+    }
+    if (route === "live/prog" && req.method === "POST") {
+      const r = await st.get("live/" + clean(body.rid, 20), { type: "json" }); if (!r || (r.a !== me.id && r.b !== me.id)) return json({ error: "Duel introuvable." }, 404);
+      const n = (v, m) => Math.max(0, Math.min(m, Math.round(Number(v) || 0)));
+      await st.setJSON("livep/" + r.id + "/" + me.id, { i: n(body.i, 10), pts: n(body.pts, 1000), ok: n(body.ok, 10), done: !!body.done, at: Date.now() }, 900);
+      return json({ ok: true });
+    }
+    if (route === "teams/vote" && req.method === "POST") {
+      const tm = await st.get("t/" + clean(body.teamId, 20), { type: "json" });
+      if (!tm) return json({ error: "Cette équipe n'existe plus." }, 404);
+      const uid = clean(body.uid, 40);
+      if (me.team !== tm.id) return json({ error: "Seuls les membres de l'équipe peuvent voter." }, 403);
+      if (uid === me.id) return json({ error: "Tu ne peux pas voter sur ta propre exclusion." }, 403);
+      const profiles = await allProfiles(st); const t2 = profiles.find((p) => p.id === uid);
+      if (!t2 || t2.team !== tm.id) { if (tm.votes) delete tm.votes[uid]; await st.setJSON("t/" + tm.id, tm); return json({ error: "Ce joueur n'est plus dans l'équipe." }, 404); }
+      tm.votes = tm.votes || {}; let v = tm.votes[uid];
+      if (v && Date.now() > v.exp) v = null;
+      if (!v) { if (body.yes === false) return json({ error: "Aucun vote en cours." }, 400); v = tm.votes[uid] = { by: me.id, byN: me.pseudo, at: Date.now(), exp: Date.now() + VOTE_TTL, yes: [], no: [] }; }
+      v.yes = (v.yes || []).filter((id) => id !== me.id); v.no = (v.no || []).filter((id) => id !== me.id);
+      (body.yes === false ? v.no : v.yes).push(me.id);
+      const s = voteState(tm, profiles, uid); let result = null;
+      if (s.done) {
+        result = s.done; delete tm.votes[uid];
+        if (s.done === "out") { t2.team = null; t2.kicked = { team: tm.name, at: Date.now() }; t2.updatedAt = Date.now(); await st.setJSON("p/" + t2.id, t2); if (tm.ownerId === t2.id) tm.ownerId = v.by || me.id; }
+      }
+      await st.setJSON("t/" + tm.id, tm); return json({ ok: true, result, yes: s.yes, no: s.no, need: s.need });
+    }
+    if (route === "teams/max" && req.method === "PUT") { // les membres fixent le nombre maximum de joueurs
+      const tm = await st.get("t/" + clean(body.teamId, 20), { type: "json" });
+      if (!tm) return json({ error: "Cette équipe n'existe plus." }, 404);
+      if (me.team !== tm.id && !isAdmin(me, cfg)) return json({ error: "Seuls les membres de l'équipe peuvent changer ce réglage." }, 403);
+      const m = Math.round(Number(body.max) || 0);
+      const n = (await allProfiles(st)).filter((p) => p.team === tm.id && !p.blocked).length;
+      if (m && (m < 2 || m > 99)) return json({ error: "Choisis un maximum entre 2 et 99 (ou aucun)." }, 400);
+      if (m && m < n) return json({ error: `L'équipe compte déjà ${n} membres : le maximum ne peut pas être plus bas.` }, 400);
+      tm.max = m || null; await st.setJSON("t/" + tm.id, tm); return json({ ok: true, max: tm.max });
     }
     if (route === "teams/leave" && req.method === "POST") { me.team = null; me.updatedAt = Date.now(); await st.setJSON("p/" + me.id, me); return json({ ok: true }); }
     if (route === "teams" && req.method === "DELETE") {
@@ -416,9 +587,10 @@ async function handler(req) {
         const s = sanitizeStats(body.stats); if (me.stats?.defi && s.defi && me.stats.defi.week === s.defi.week) s.defi = me.stats.defi; me.stats = s;
       }
       me.updatedAt = Date.now(); await st.setJSON("p/" + me.id, me);
-      return withCookie(json({ profile: pub(me), resetAt: me.resetAt || null, admin: isAdmin(me, cfg), zz: zOf(me), xx: xOf(me) }), me.id);
+      return withCookie(json({ profile: pub(me), resetAt: me.resetAt || null, admin: isAdmin(me, cfg), zz: zOf(me), xx: xOf(me), zmo: zmoOf(me), kk: me.kicked || null }), me.id);
     }
     if (route === "logout" && req.method === "POST") { const h = sha(req.headers.get("x-token") || body?.token); await st.delete("s/" + h); if ((me.sessions || []).includes(h)) { me.sessions = me.sessions.filter((x) => x !== h); await st.setJSON("p/" + me.id, me); } return withCookie(json({ ok: true }), null); }
+    if (route === "kick/seen" && req.method === "POST") { if (me.kicked) { me.kicked = null; await st.setJSON("p/" + me.id, me); } return json({ ok: true }); }
     if (route === "z/seen" && req.method === "POST") { if (me.zm) { me.zm = null; await st.setJSON("p/" + me.id, me); } return json({ ok: true }); }
     if (route === "profile" && req.method === "DELETE") { if (me.email === SUPER) return json({ error: "Le super administrateur ne peut pas supprimer son profil." }, 400); await st.delete("p/" + me.id); await st.delete("u/" + me.id); if (me.sub) await st.delete("g/" + me.sub); return json({ ok: true }); }
 
@@ -449,7 +621,7 @@ async function handler(req) {
       }
       if (route === "admin/members" && req.method === "GET") {
         const all = await allProfiles(st);
-        return json({ members: all.map((p) => ({ ...pub(p), email: p.email || null, name: p.name || "", blocked: !!p.blocked, admin: isAdmin(p, cfg), superAdmin: p.email === SUPER, createdAt: p.createdAt, lastLogin: p.lastLogin || null, z: zOf(p), x: xOf(p) })), settings: cfg, superAdmin: superMe, superEmail: SUPER });
+        return json({ members: all.map((p) => ({ ...pub(p), email: p.email || null, name: p.name || "", blocked: !!p.blocked, admin: isAdmin(p, cfg), superAdmin: p.email === SUPER, createdAt: p.createdAt, lastLogin: p.lastLogin || null, z: zOf(p), x: xOf(p), zmo: zmoOf(p) })), settings: cfg, superAdmin: superMe, superEmail: SUPER });
       }
       if (route === "admin/settings" && req.method === "PUT") {
         const list = (a, re) => [...new Set((Array.isArray(a) ? a : String(a || "").split(/[\s,;]+/)).map((x) => String(x).trim().toLowerCase().replace(/^@/, "")).filter((x) => re.test(x)))].slice(0, 300);
@@ -460,7 +632,7 @@ async function handler(req) {
       if (route === "admin/member" && req.method === "PUT") {
         const t = await st.get("p/" + clean(body.target, 40), { type: "json" });
         if (!t) return json({ error: "Membre introuvable." }, 404);
-        const fun = ["fire", "unfire", "sergent", "unnick", "zon", "zoff", "xon", "xoff"].includes(body.action); // le mode On Fire peut viser tout le monde, super admin compris
+        const fun = ["fire", "unfire", "sergent", "unnick", "zon", "zoff", "xon", "xoff"].includes(body.action) || /^zmo-(miroir|escargot|radio|fuite|ponpon)-(on|off)$/.test(body.action || ""); // le mode On Fire peut viser tout le monde, super admin compris
         if (!fun && t.email === SUPER && body.action !== "reset") return json({ error: "Le super administrateur ne peut pas être modifié." }, 403);
         if (!fun && isAdmin(t, cfg) && !superMe && t.id !== me.id) return json({ error: "Seul le super administrateur peut modifier un administrateur." }, 403);
         switch (body.action) {
@@ -472,6 +644,7 @@ async function handler(req) {
           case "unfire": setFx(t, "off"); break;
           case "zon": t.zm = { u: Date.now() + 3600e3, by: me.pseudo || "un administrateur", at: Date.now() }; break; // mode Z : piège secret d'une heure
           case "zoff": t.zm = null; break;
+          default: { const m = /^zmo-(miroir|escargot|radio|fuite|ponpon)-(on|off)$/.exec(body.action || ""); if (!m) return json({ error: "Action inconnue." }, 400); t.zmo = t.zmo || {}; if (m[2] === "on") t.zmo[m[1]] = { u: Date.now() + 3600e3, by: me.pseudo || "un administrateur", at: Date.now() }; else delete t.zmo[m[1]]; break; }
           case "xon": t.xm = { u: Date.now() + 3600e3, by: me.pseudo || "un administrateur", at: Date.now() }; break; // mode X : blagues visibles pendant une heure
           case "xoff": t.xm = null; break;
           case "unnick": t.nick = null; break; // retirer un surnom de duel jugé déplacé
@@ -482,7 +655,6 @@ async function handler(req) {
             cfg.admins = (cfg.admins || []).filter((e) => e !== t.email); if (body.action === "admin") cfg.admins.push(t.email);
             await st.setJSON("cfg/settings", cfg); return json({ ok: true });
           case "delete": await st.delete("u/" + t.id); await st.delete("p/" + t.id); if (t.sub) await st.delete("g/" + t.sub); return json({ ok: true });
-          default: return json({ error: "Action inconnue." }, 400);
         }
         t.updatedAt = Date.now(); await st.setJSON("p/" + t.id, t); return json({ ok: true });
       }

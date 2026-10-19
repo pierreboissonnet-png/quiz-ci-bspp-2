@@ -584,3 +584,65 @@ body.pushed .opt:disabled:not(.good):not(.bad):not(:has(.gq)) > span:not(.k){dis
 .opts,.qtext{transition:transform .5s ease}
 @keyframes xflee{0%{transform:translateX(0)}30%{transform:translateX(26px) rotate(3deg)}60%{transform:translateX(-14px)}100%{transform:none}}
 @media (prefers-reduced-motion:reduce){.xflip{transform:none}.opt.xflee{animation:none}}
+
+/* 3.3.4 : 5 dernières secondes des jeux d'une minute */
+#lastfive{position:fixed;inset:0;pointer-events:none;z-index:30;animation:gflash .4s steps(2) infinite}
+#tmax{height:40px;border-radius:10px;border:1px solid var(--sep);background:var(--card);padding:0 10px;font:inherit;color:var(--ink);width:100%}
+
+/* 3.3.4 : votes d'exclusion et élimination */
+.vote{padding:10px 0;border-top:.5px solid var(--sep)}.vote:first-of-type{border-top:0}
+.voteh{display:flex;flex-direction:column;gap:2px}
+.votebar{height:8px;border-radius:4px;background:var(--card2);overflow:hidden;margin-top:8px}.votebar i{display:block;height:100%;background:var(--ko)}
+.kickbox{background:linear-gradient(180deg,#1b2433,#0d131d);color:#fff}.kickbox h3{color:#fff}.kickbox .small{color:#c5ccd6}
+.kickbox .dltag{color:#ffb02e}
+.kickbox .torch{width:70px;height:130px;margin:6px auto 0;display:block}
+.kickbox .tflame{transform-origin:40px 60px;animation:flick 1s ease-in-out infinite alternate}
+.kickpop.out .tflame{animation:snuff .9s ease-in forwards}.kickpop.out .tsmoke{animation:smoke 1.4s .5s ease-out forwards}
+.kickpop.out .dlbox{animation:fadeaway 1.9s ease-in forwards}
+@keyframes snuff{to{transform:scale(.05,.2);opacity:0}}
+@keyframes smoke{0%{opacity:0;transform:translateY(0)}30%{opacity:.8}100%{opacity:0;transform:translateY(-30px)}}
+@keyframes fadeaway{0%,60%{opacity:1}100%{opacity:0}}
+
+/* 3.4.0 */
+.sdhud{display:flex;align-items:center;gap:10px;margin-top:14px}.sdhud .qtag{flex:1}.sdn{font-size:13px;color:var(--muted)}.sdn b{font-size:18px;color:var(--ink)}
+.bxlist{display:flex;flex-direction:column;gap:6px}
+.bxp{display:flex;gap:8px;align-items:flex-start;text-align:left;padding:9px 12px;border-radius:12px;background:var(--card);font-size:14.5px;box-shadow:0 1px 2px rgba(0,0,0,.08);border:.5px solid var(--sep)}
+.bxp.in{background:var(--navy2);color:#fff;border-color:transparent}.bxp i{font-style:normal;font-weight:800;opacity:.7;min-width:1.2em}
+.bxans{margin:0;padding-left:22px;display:grid;gap:6px}.bxans li.ok::marker{color:var(--ok)}.bxans li.ko{color:var(--ko)}
+.lvhud{display:flex;align-items:center;gap:10px;margin-top:12px;background:var(--card);border-radius:14px;padding:10px 12px}
+.lvhud>div{flex:1;display:flex;flex-direction:column}.lvhud>div:last-child{text-align:right}.lvhud span{font-size:13px;color:var(--muted)}.lvvs{flex:none!important;font:900 16px var(--display);color:var(--red)}
+body.zmir .qtext,body.zmir .opt>span:last-child,body.zmir .vf .opt{transform:scaleX(-1)}
+.opt.zfuite{position:fixed;z-index:40;transition:left .25s ease,top .25s ease;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.deco.sdf{display:inline-flex;width:18px;height:22px;vertical-align:-4px;margin-left:4px}.deco.sdf svg{width:100%;height:100%}
+.sdfbig svg{width:70px;height:88px}
+.gag-lance .jet1{bottom:calc(220px + env(safe-area-inset-bottom,0px))}.gag-lance .jet2{bottom:calc(340px + env(safe-area-inset-bottom,0px))}
+.gag-alarme{animation:alarmb .5s steps(2) 8}
+.gag-alarme .smoke{position:absolute;left:0;right:0;bottom:-40px;height:60vh;background:radial-gradient(ellipse at 20% 100%,rgba(120,120,120,.55),transparent 60%),radial-gradient(ellipse at 70% 100%,rgba(90,90,90,.5),transparent 55%),radial-gradient(ellipse at 45% 100%,rgba(150,150,150,.45),transparent 65%);animation:smokeup 4.2s ease-out forwards}
+.gag-alarme .bub{left:50%;top:40vh;transform:translateX(-50%);font-size:18px;padding:8px 16px;background:#b00012;animation:bubble 4.2s linear forwards}
+.gag-vsav.rtl .veh{transform:none;right:-170px;animation:drive-l 6s linear forwards}
+.gag-perche .pole{position:absolute;right:46px;top:0;bottom:0;width:6px;background:linear-gradient(90deg,#d8dde4,#8a95a3);animation:polein 4.2s ease forwards}
+.gag-perche .slider{position:absolute;right:18px;top:-100px;width:60px;height:90px;animation:slide 4.2s cubic-bezier(.5,0,.8,1) forwards}
+.gag-perche .bub{right:12px;top:16vh;background:#1d2b4a;animation:bubble 4.2s linear forwards}
+.gag-dae .daebox{position:absolute;left:50%;top:44vh;width:90px;height:76px;transform:translateX(-50%);animation:rkpopin .4s ease}
+.gag-dae .zap{position:absolute;inset:0;background:#fff;opacity:0;animation:zap 3.6s linear forwards}
+.gag-dae .bub{left:50%;top:calc(44vh - 44px);transform:translateX(-50%);background:#1f9d55;animation:bubble 3.6s linear forwards}
+@keyframes alarmb{0%{box-shadow:inset 0 0 0 10px rgba(227,5,27,.7)}100%{box-shadow:inset 0 0 0 0 rgba(227,5,27,0)}}
+@keyframes smokeup{0%{opacity:0;transform:translateY(40px)}25%{opacity:1}100%{opacity:0;transform:translateY(-60vh)}}
+@keyframes polein{0%{opacity:0}10%,85%{opacity:1}100%{opacity:0}}
+@keyframes slide{0%{top:-100px}15%{top:-100px}70%{top:calc(100vh - 170px)}85%{top:calc(100vh - 170px);opacity:1}100%{opacity:0;top:calc(100vh - 170px)}}
+@keyframes zap{0%,40%{opacity:0}42%{opacity:.95}50%{opacity:0}52%{opacity:.6}60%,100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){body.zmir .qtext{transform:none}}
+
+.oitem .grip{flex:none;display:grid;place-items:center;width:30px;height:44px;margin:-6px 0 -6px -6px;color:var(--muted);touch-action:none;cursor:grab;fill:currentColor}
+.oitem.drag{position:fixed;z-index:50;margin:0;box-shadow:0 12px 30px rgba(0,0,0,.25);transform:scale(1.02);opacity:.97;pointer-events:none}
+.oitem.ph{background:transparent;border:2px dashed var(--sep);box-shadow:none}
+.chip.feuchip svg{width:14px;height:14px;vertical-align:-2px}
+
+.ponpon{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 70px) var(--gut) 40px;animation:rkpopin .3s ease}
+.ponpon.out{opacity:0;transition:opacity .3s}
+.ponbox{max-width:760px;margin:0 auto}
+.ponseq{min-height:52px;border:2px dashed var(--sep);border-radius:14px;padding:12px;font:700 18px var(--display);margin-bottom:12px}
+.ponpool{display:flex;gap:8px}
+
+.updbar{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:10px;background:var(--navy2);color:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;animation:rkpopin .4s ease}
+.updbar span{flex:1}.updbar .updx{color:#fff;opacity:.7;font-size:16px;padding:4px 6px}

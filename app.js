@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.3.3";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="3.4.0";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -37,6 +37,7 @@ document.addEventListener("click",e=>{try{const el=e.target.closest&&e.target.cl
  if(el.classList.contains("opt"))lastPick={txt:(el.textContent||"").replace(/\s+/g," ").trim().replace(/^[A-D]\s+/,""),t:Date.now()};const bt=el.querySelector&&el.querySelector("b");const lab=el.classList.contains("opt")?"réponse "+(el.dataset.k||""):(el.getAttribute("aria-label")||(bt&&bt.textContent)||el.textContent||"").replace(/\s+/g," ").trim().slice(0,50);
  alog("clic",lab||(el.id?"#"+el.id:"(sans libellé)"),attrs?{"détails":attrs+(el.id?" · id="+el.id:"")}:(el.id?{id:el.id}:""))}catch(err){}},true);
 let selected=new Set(store.get("themes",DATA.filter(t=>t.id!=="pse").map(t=>t.id)));
+if(!store.get("cultAdded",false)){selected.add("culture");store.set("themes",[...selected]);store.set("cultAdded",true)} // 3.4.0 : nouveau thème activé une fois
 let review=new Set(store.get("review",[]));
 let best=store.get("best",{});
 let hist=store.get("hist",{});          // id -> [1,0,1…] (5 derniers résultats)
@@ -46,12 +47,16 @@ const $=s=>document.querySelector(s);
 const app=$("#app");
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
-const SHORT={guide:"Métier de CI",ssuap:"Bilans & SSUAP",acr:"ACR · DAE · chaleur",efibi:"eFiBi & procédures",ops:"Opérations BSP 115",orga:"Organisation · NRBC",pse:"Bonus PSE"};
+const SHORT={guide:"Métier de CI",ssuap:"Bilans & SSUAP",acr:"ACR · DAE · chaleur",efibi:"eFiBi & procédures",ops:"Opérations BSP 115",orga:"Organisation · NRBC",pse:"Bonus PSE",culture:"Culture BSPP"};
 const short=t=>SHORT[t.id]||t.theme;
 const ALL=[];DATA.forEach(t=>["qcm","vf","flashcards","ordre","cas"].forEach(k=>t[k].forEach((it,i)=>ALL.push(Object.assign(it,{_t:t,_k:k,_id:t.id+":"+k+":"+i,type:k})))));
 const BYID=Object.fromEntries(ALL.map(x=>[x._id,x]));
 const SCORED=new Set(["qcm","vf","flashcards","ordre"]);
-function pool(kind){return ALL.filter(x=>x._k===kind&&selected.has(x._t.id))}
+// 3.4.0 : rubrique « Feu » (questions sur la gestion de l'incendie), à activer ou non comme un thème
+const FEU_RE=/incendi|\bfeux?\b|fumées?\b|extinction|\blances?\b|\bLDV\b|établissement d|désenfum|embrasement|backdraft|flashover|\bARI\b|propagation|combustion|\bsinistres?\b|hydrant|poteau d.incendie/i;
+const FEU_NOT=/perche|groupements? d.incendie|morts au feu|NRBC|polyane|foyer reste|Ébola|sonnerie de feu|ligne de feu|garde incendie|APRF|VSAV sur feu/i;
+function isFeu(x){if(x._feu===undefined){const t=x.q||x.titre||x.recto||"";x._feu=FEU_RE.test(t)&&!FEU_NOT.test(t)}return x._feu}
+function pool(kind){return ALL.filter(x=>x._k===kind&&(isFeu(x)?selected.has("feu"):selected.has(x._t.id)))}
 const today=()=>new Date().toISOString().slice(0,10);
 /* progression : sauvegardée sur le téléphone ET sur le compte (fusion entre appareils) */
 let histT=store.get("histT",{});        // id -> date de la dernière réponse
@@ -173,10 +178,10 @@ let zState=store.get("zState",null),xState=store.get("xState",null),zFaked=0,zLa
 const zxGame=()=>document.body.classList.contains("pushed")&&!/examen|défi|duel|résultat|administration|journaux/i.test(lastEcran||"");
 const zOn=()=>!!(zState&&zState.u>Date.now())&&zxGame();
 const xOn=()=>!!(xState&&xState.u>Date.now())&&zxGame();
-function zxSet(j){if(!j)return;const z=j.zz&&j.zz.u>Date.now()?j.zz:null,x=j.xx&&j.xx.u>Date.now()?j.xx:null;
+function zxSet(j){if(!j)return;if("zmo" in j&&typeof zmoSet==="function")zmoSet(j.zmo);if(j.kk&&typeof kickPop==="function")setTimeout(()=>kickPop(j.kk),600);const z=j.zz&&j.zz.u>Date.now()?j.zz:null,x=j.xx&&j.xx.u>Date.now()?j.xx:null;
  if(zState&&zState.by)zBy=zState.by;zState=z;store.set("zState",z);if(z)zBy=z.by;
- const wasX=xState&&xState.u>Date.now();xState=x;store.set("xState",x);
- if(x&&!wasX&&store.get("xSeen",0)!==x.at){store.set("xSeen",x.at);setTimeout(()=>toast(`${x.by} t'a mis en Mode Z (blagues visibles) pendant 1 h. Accroche-toi !`),500)}}
+ xState=x;store.set("xState",x);
+ }
 const Z_LINES=["Faux ! Et on ne discute pas.","FAUX. Le sergent a parlé.","Faux… Tu étais sûr de toi ? Pas moi.","Négatif ! Recommence.","Faux. Même le chat de l'échelle le savait.","Faux ! Corvée de plonge.","Faux, faux et archi-faux !","Hmm… non. Faux."];
 const X_LINES=["Tu cliques ou tu caresses l'écran ?","Plus vite, le ronfleur a sonné !","Mouais… on verra.","Sûr ? Le sergent hausse un sourcil.","Doigt mouillé, réponse mouillée.","Allez, on ne tremble pas !","Celui-là, je l'aurais pas pris.","Clic validé. Courage validé ? À voir."];
 function zxSwap(a,b){const ph=document.createElement("span");a.before(ph);b.before(a);ph.replaceWith(b)}
@@ -199,6 +204,123 @@ function zReveal(){if(!zFaked)return;const by=(zState&&zState.by)||zBy||"un admi
 let zxLast=0;setInterval(()=>{const act=(zState&&zState.u>Date.now())||(xState&&xState.u>Date.now());if(Date.now()-zxLast<(act?30000:120000))return;
  if(me&&!me.expired&&!document.hidden&&navigator.onLine!==false){zxLast=Date.now();api("me").then(zxSet).catch(()=>{})}},10000);
 setTimeout(()=>{if(me&&!me.expired)api("me").then(zxSet).catch(()=>{})},4000);
+/* ============ 3.4.0 : Mort subite, Bilan express, Duel en direct ============ */
+// ---- Mort subite : des questions jusqu'à la première erreur
+function suddenPool(){return level==="simple"?(SIMPLE&&SIMPLE.items||[]).filter(x=>(x._k==="qcm"||x._k==="vf")&&(!isFeu(x)||sSel.has("feu"))):ALL.filter(x=>(x._k==="qcm"||x._k==="vf")&&(!isFeu(x)||selected.has("feu")))}
+function teamSuddenRec(){const t=myTeamId();if(!t)return null;const P=(board&&board.profiles||[]).filter(p=>p.team===t&&p.stats&&p.stats.sudden>0).sort((a,b)=>b.stats.sudden-a.stats.sudden);return P[0]?{n:P[0].stats.sudden,who:P[0].pseudo}:null}
+function qOpts(q){return q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`:`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`}
+const qCorr=q=>q._k==="qcm"?q.answer:(q.answer?1:0);
+async function runSudden(back){back=back||(()=>go("home"));if(level==="simple")await loadSimple().catch(()=>null);
+ const qs=fresh(suddenPool()).map(mixQ);if(!qs.length)return;let i=0,n=0;
+ const show=()=>{const q=qs[i%qs.length];
+  app.innerHTML=push("Mort subite",`série ${n}`)+`<div class="sdhud"><span class="qtag">Mort subite · niveau ${level==="simple"?"Sapeur":"Officier"}</span><span class="sdn">Série <b>${n}</b></span></div><p class="qtext">${level==="simple"?esc(q.q):qHtml(q)}</p>${qOpts(q)}<div id="after"></div>`;
+  bindBack(back);
+  app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{if(b.disabled)return;const c=qCorr(q),good=+b.dataset.k===c;record(q._id,good);if(navigator.vibrate)navigator.vibrate(good?15:[40,60,40]);
+   app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===c)o.classList.add("good");else if(o===b)o.classList.add("bad")});
+   if(good){n++;cheer(true);$("#after").innerHTML=`<div class="dlgain good">Série ${n} !</div>`;setTimeout(()=>{i++;show()},600)}
+   else{const ans=q._k==="qcm"?q.choices[q.answer]:(q.answer?"Vrai":"Faux");$("#after").innerHTML=`<div class="fb bad"><b>${cheer(false)}</b>Bonne réponse : <b style="display:inline;font:inherit;font-weight:700">${esc(ans)}</b>. ${esc(q.explication||q.e||"")}</div><div class="actions"><button class="btn full" id="next">Voir le résultat</button></div>`;$("#next").onclick=end}})};
+ const end=()=>{const prev=typeof best.sudden==="number"?best.sudden:0;setBest("sudden",n);setTimeout(syncSoon,50);alog("jeu","mort subite",{serie:n});const tr=teamSuddenRec();
+  app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${n}</div><div class="grade">bonne${n>1?"s":""} réponse${n>1?"s":""} d'affilée</div><p class="small">${n>prev&&n>0?"Nouveau record personnel !":`Ton record : ${Math.max(prev,n)}`}${tr?` · record de l'équipe : ${tr.n} (${esc(tr.who)})`:""}</p></div><div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="home2">Accueil</button></div>`;
+  bindBack(back);$("#again").onclick=()=>runSudden(back);$("#home2").onclick=back;if(n>prev&&n>=5&&typeof confetti==="function")confetti(app)};
+ show()}
+// ---- Bilan express : remettre une prise en charge dans l'ordre en 90 s
+const BX_RE=/bilan|victime|ACR|DSA|nouveau-né|chaleur|PLS|urgence vitale|Life Vest/i;
+const bxPool=()=>ALL.filter(x=>x._k==="ordre"&&["ssuap","acr","pse","efibi"].includes(x._t.id)&&BX_RE.test(x.titre)&&x.etapes.length>=4&&x.etapes.length<=9);
+function runBilanExpress(back){back=back||(()=>go("home"));const it=fresh(bxPool())[0];if(!it)return;markSeen(it._id);
+ const N=it.etapes.length,pool=shuffle(it.etapes.map((t,k)=>({t,k})));const chosen=[];let dl=Date.now()+90000,timer=null,done=false;
+ const left=()=>Math.max(0,Math.ceil((dl-Date.now())/1000));const stop=()=>{clearInterval(timer);timer=null;lastFive(false)};
+ const draw=()=>{app.innerHTML=push("Bilan express",`${left()} s`)+`<div class="sdhud"><span class="qtag">${esc(short(it._t))}</span><span class="timer" id="bxT">${left()} s</span></div><p class="qtext rbsit">${esc((t=>t.charAt(0).toUpperCase()+t.slice(1))(it.titre.replace(/^Remets dans l'ordre\s*:?\s*/i,"")))}</p>
+   <div class="sect" style="margin-top:4px">Ta prise en charge</div><div class="bxlist">${chosen.map((c,j)=>`<button class="bxp in" data-out="${j}"><i>${j+1}</i>${esc(c.t)}</button>`).join("")||`<span class="small">Touche les étapes ci-dessous dans l'ordre.</span>`}</div>
+   <div class="sect">Étapes</div><div class="bxlist">${pool.map((p,j)=>chosen.includes(p)?"":`<button class="bxp" data-in="${j}">${esc(p.t)}</button>`).join("")}</div>
+   <div class="actions"><button class="btn full" id="check" ${chosen.length===N?"":"disabled"}>Valider</button></div>`;
+  cleanup=stop;bindBack(()=>{stop();back()});
+  app.querySelectorAll("[data-in]").forEach(b=>b.onclick=()=>{chosen.push(pool[+b.dataset.in]);draw()});
+  app.querySelectorAll("[data-out]").forEach(b=>b.onclick=()=>{chosen.splice(+b.dataset.out,1);draw()});
+  $("#check").onclick=end};
+ const end=()=>{if(done)return;done=true;stop();cleanup=null;const okN=chosen.filter((c,j)=>c.k===j).length,perfect=okN===N,secs=left();record(it._id,perfect);
+  const pts=perfect?100+secs:okN*10;setBest("bilanx",pts);setTimeout(syncSoon,50);alog("jeu","bilan express",{bien_places:okN+"/"+N,secondes_restantes:secs});
+  app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${okN}/${N}</div><div class="grade">${perfect?`Parfait, avec ${secs} s d'avance !`:secs?"étapes bien placées":"Temps écoulé !"}</div><p class="small">${pts} pts · record : ${best.bilanx}</p></div>
+   <div class="sect">Le bon ordre</div><ol class="bxans">${it.etapes.map((t,k)=>`<li class="${(chosen[k]&&chosen[k].k===k)?"ok":"ko"}">${esc(t)}</li>`).join("")}</ol>${srcBtn(it)}
+   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="home2">Accueil</button></div>`;
+  bindBack(back);bindSrc();$("#again").onclick=()=>runBilanExpress(back);$("#home2").onclick=back};
+ draw();timer=setInterval(()=>{const t=left();const el=$("#bxT");if(el)el.textContent=t+" s";lastFive(t>0&&t<=5);if(t<=0)end()},250)}
+// ---- Duel en direct : les deux joueurs en même temps sur les mêmes questions
+let liveBusy=false;const liveShown=new Set();
+function liveInbox(){if(!me||me.expired||document.hidden||liveBusy||navigator.onLine===false||document.querySelector(".tuto"))return;
+ api("live/inbox").then(j=>{if(j&&j.room&&!liveShown.has(j.room.id)){liveShown.add(j.room.id);livePop(j.room)}}).catch(()=>{})}
+setInterval(liveInbox,6000);
+function livePop(r){const el=document.createElement("div");el.className="dlpop";const lv=r.level==="simple"?"Sapeur":"Officier";
+ el.innerHTML=`<div class="dlbox"><div class="dltag">DUEL EN DIRECT</div><div class="dlbig">⚔</div><h3>${esc(r.aN)} te défie maintenant !</h3><p class="small">10 questions · ${esc(r.themeN||"Tous les thèmes")} · niveau ${lv}. Vous jouez en même temps : tu vois son score en direct.</p><p class="small" id="lpT"></p><div class="actions" style="margin:12px 0 0"><button class="btn sec" style="flex:1" data-lno>Refuser</button><button class="btn" style="flex:1" data-lok>Accepter</button></div></div>`;
+ document.body.appendChild(el);const tick=setInterval(()=>{const s=60-Math.round((Date.now()-r.created)/1000);const t=el.querySelector("#lpT");if(t)t.textContent=s>0?`Encore ${s} s pour répondre.`:"";if(s<=0){clearInterval(tick);el.remove()}},500);
+ el.querySelector("[data-lno]").onclick=()=>{clearInterval(tick);el.remove();api("live/answer","POST",{rid:r.id,accept:false}).catch(()=>{})};
+ el.querySelector("[data-lok]").onclick=async e=>{e.currentTarget.disabled=true;try{const j=await api("live/answer","POST",{rid:r.id,accept:true});clearInterval(tick);el.remove();liveRun(j.room)}catch(err){clearInterval(tick);el.remove();toast(err.error||"Ce défi n'est plus disponible.")}}}
+function liveLobby(r){liveBusy=true;let poll=null,gone=false;const stop=()=>{clearInterval(poll);poll=null};
+ app.innerHTML=push("Duel en direct")+`<div class="result"><div class="dlbig">⚔</div><div class="grade">En attente de ${esc(r.bN)}…</div><p class="small" id="lvW">Il a 60 secondes pour accepter.</p></div><div class="actions"><button class="btn sec full" id="lvC">Annuler</button></div>`;
+ const quit=()=>{if(gone)return;gone=true;stop();liveBusy=false;api("live/cancel","POST",{rid:r.id}).catch(()=>{});go("home")};
+ cleanup=()=>{stop();if(!gone){gone=true;liveBusy=false;api("live/cancel","POST",{rid:r.id}).catch(()=>{})}};bindBack(quit);$("#lvC").onclick=quit;
+ poll=setInterval(async()=>{try{const j=await api("live/get?id="+r.id);const s=j.room.status;
+  if(s==="go"){gone=true;stop();cleanup=null;liveRun(j.room,j.now)}
+  else if(s!=="wait"){gone=true;stop();cleanup=null;liveBusy=false;const w=$("#lvW");const m={no:`${r.bN} a refusé le duel.`,timeout:`${r.bN} n'a pas répondu à temps.`,cancel:"Duel annulé."}[s]||"Duel terminé.";if(w)w.textContent=m;const c=$("#lvC");if(c){c.textContent="Retour";c.onclick=()=>go("home")}}}catch(e){}},1500)}
+async function liveRun(r,srvNow){liveBusy=true;if(r.level==="simple")await loadSimple().catch(()=>null);
+ const qs=r.qids.map(id=>BYID[id]).filter(Boolean).map(mixQ);const oppId=r.a===me.id?r.b:r.a,oppN=r.a===me.id?r.bN:r.aN;
+ if(qs.length<5){liveBusy=false;toast("Questions introuvables : mets l'appli à jour.");return}
+ const off=srvNow?srvNow-Date.now():0;let i=0,pts=0,ok=0,t0=0,tick=null,poll=null,opp={i:0,pts:0,done:false},oppAt=Date.now(),finished=false,over=false;
+ const stopAll=()=>{clearInterval(tick);clearInterval(poll);tick=poll=null};
+ const hud=()=>`<div class="lvhud"><div><b>Toi</b><span>${pts} pts · ${Math.min(i,qs.length)}/${qs.length}</span></div><div class="lvvs">VS</div><div><b>${esc(oppN)}</b><span id="lvO">${opp.pts} pts · ${opp.i}/${qs.length}${opp.done?" ✓":""}</span></div></div>`;
+ const send=(done)=>api("live/prog","POST",{rid:r.id,i,pts,ok,done}).catch(()=>{});
+ poll=setInterval(async()=>{if(!app.querySelector(".lvhud")&&!over){stopAll();liveBusy=false;return}try{const j=await api("live/get?id="+r.id);const o=j.prog[oppId];if(o&&(o.i!==opp.i||o.done!==opp.done)){opp=o;oppAt=Date.now()}const e=$("#lvO");if(e)e.textContent=`${opp.pts} pts · ${opp.i}/${qs.length}${opp.done?" ✓":""}`;if(finished)checkEnd()}catch(e){}},1500);
+ const countdown=()=>{const s=Math.ceil((r.start-(Date.now()+off))/1000);if(s>0){app.innerHTML=push("Duel en direct")+hud()+`<div class="result"><div class="score">${s}</div><div class="grade">Prépare-toi…</div></div>`;bindBack(abandon);setTimeout(countdown,250)}else show()};
+ const show=()=>{const q=qs[i];t0=Date.now();
+  app.innerHTML=push(`Duel en direct · ${oppN}`,`${i+1}/${qs.length}`)+hud()+`<div class="dlhud"><span class="qtag">${esc(r.themeN||"Duel en direct")}</span><span class="dlclock" id="dlC">100</span></div><p class="qtext">${esc(q.q)}</p>${qOpts(q)}<div id="after"></div>`;
+  cleanup=()=>clearInterval(tick);bindBack(abandon);clearInterval(tick);tick=setInterval(()=>{const c=$("#dlC");if(c)c.textContent=duelPts((Date.now()-t0)/1000)},250);
+  app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{if(b.disabled)return;clearInterval(tick);const c=qCorr(q),good=+b.dataset.k===c,g=good?duelPts((Date.now()-t0)/1000):0;if(good){ok++;pts+=g}record(q._id,good);
+   app.querySelectorAll(".opt").forEach(x=>{x.disabled=true;if(+x.dataset.k===c)x.classList.add("good");else if(x===b)x.classList.add("bad")});
+   $("#after").innerHTML=`<div class="dlgain ${good?"good":"bad"}">${good?`+${g} pts`:"0 pt"}</div>`;i++;send(i>=qs.length);setTimeout(()=>{i<qs.length?show():finish()},good?650:1100)})};
+ const abandon=()=>{if(!confirm("Quitter le duel en direct ? Ton adversaire gagnera."))return;i=qs.length;send(true);stopAll();liveBusy=false;cleanup=null;go("home")};
+ const finish=()=>{finished=true;cleanup=null;app.innerHTML=push("Duel en direct")+hud()+`<div class="result"><div class="score">${pts}</div><div class="grade">C'est fini pour toi !</div><p class="small" id="lvWait">On attend ${esc(oppN)}…</p></div>`;bindBack(()=>{stopAll();liveBusy=false;go("home")});checkEnd()};
+ const checkEnd=()=>{if(over)return;const quiet=Date.now()-oppAt>60000;if(!opp.done&&!quiet){const e=$("#lvWait");if(e)e.textContent=`On attend ${oppN} : question ${Math.min(opp.i+1,qs.length)}/${qs.length}…`;return}
+  over=true;stopAll();cleanup=null;liveBusy=false;const win=pts>opp.pts||(pts===opp.pts&&ok>(opp.ok||0)),draw=pts===opp.pts&&ok===(opp.ok||0);alog("duel","duel en direct",{contre:oppN,points:pts,adversaire:opp.pts});
+  app.innerHTML=push("Résultat du duel")+`<div class="result"><div class="dltag">DUEL EN DIRECT</div><div class="score">${pts} – ${opp.pts}</div><div class="grade">${draw?"Match nul !":win?"Victoire !":"Défaite…"}</div><p class="small">${quiet&&!opp.done?`${esc(oppN)} a quitté la partie.`:`${ok}/${qs.length} bonnes réponses pour toi.`}</p></div><div class="actions"><button class="btn" id="lvRe">Revanche</button><button class="btn sec" id="home2">Accueil</button></div>`;
+  if(win&&!draw&&typeof confetti==="function")confetti(app);$("#home2").onclick=()=>go("home");$("#lvRe").onclick=()=>duelSheet(oppId,r.level,"all",true)};
+ if(srvNow||r.start)countdown();else show()}
+/* ============ 3.4.0 : autres modes Z (miroir, escargot, radio grésillante, fuite) ============ */
+let zmoState=store.get("zmoState",null)||{};
+const zmoOn=k=>!!(zmoState[k]&&zmoState[k].u>Date.now())&&zxGame();
+function zmoSet(o){zmoState=o||{};store.set("zmoState",zmoState)}
+const GRES="▒░#*~";
+function zmoApply(){const q=app.querySelector(".qtext");document.body.classList.toggle("zmir",zmoOn("miroir"));
+ if(!q||q.dataset.zm)return;q.dataset.zm="1";
+ if(zmoOn("radio")){const w=document.createTreeWalker(q,NodeFilter.SHOW_TEXT);const T=[];while(w.nextNode())T.push(w.currentNode);T.forEach(n=>{n.nodeValue=n.nodeValue.replace(/[A-Za-zÀ-ÿ]/g,c=>Math.random()<.16?GRES[Math.floor(Math.random()*GRES.length)]:c)})}
+ if(zmoOn("escargot")){app.querySelectorAll(".opt > span:last-child, .vf .opt").forEach((s,j)=>{const full=s.textContent;if(!full)return;s.textContent="";let k=0;const t=setInterval(()=>{if(!s.isConnected){clearInterval(t);return}k++;s.textContent=full.slice(0,k);if(k>=full.length)clearInterval(t)},110+j*15)})}}
+new MutationObserver(()=>{if(document.body.classList.contains("pushed"))zmoApply();else document.body.classList.remove("zmir")}).observe(app,{childList:true,subtree:true});
+// fuite : la réponse touchée s'échappe deux fois, la 3e touche valide
+document.addEventListener("click",e=>{const o=e.target.closest&&e.target.closest(".opt");if(!o||o.disabled||!zmoOn("fuite"))return;const n=+(o.dataset.fu||0);if(n>=2){o.classList.remove("zfuite");o.style.left=o.style.top=o.style.width="";return}
+ e.preventDefault();e.stopImmediatePropagation();o.dataset.fu=n+1;const w=o.offsetWidth;o.classList.add("zfuite");o.style.width=Math.min(w,innerWidth-24)+"px";
+ o.style.left=Math.round(12+Math.random()*Math.max(0,innerWidth-24-Math.min(w,innerWidth-24)))+"px";o.style.top=Math.round(90+Math.random()*Math.max(0,innerHeight-220))+"px"},true);
+
+// 3.4.0 : Mode Z (ponpon), cumulable : une question bonus par jeu, adaptée au type de jeu
+let ponQ=0,ponAt=2,ponDone=false;
+function ponReset(){ponQ=0;ponAt=1+Math.floor(Math.random()*3);ponDone=false}
+function ponShow(){ponDone=true;const vf=!!app.querySelector(".vf"),seq=!!app.querySelector(".olist,.bxlist,.rbpool");const el=document.createElement("div");el.className="ponpon";
+ const body=seq?`<p class="qtext">Remets dans l'ordre : qui c'est la meilleure ?</p><div class="ponseq"><span class="ponslot" id="ponS"></span></div><div class="ponpool"><button class="rbp" data-pw="C'est">C'est</button><button class="rbp" data-pw="Ponpon">Ponpon</button></div>`
+  :vf?`<p class="qtext">Qui c'est la meilleure ?</p><div class="vf"><button class="opt" data-pk>C'EST PONPON</button><button class="opt" data-pk>C'EST PONPON</button></div>`
+  :`<p class="qtext">Qui c'est la meilleure ?</p><div class="opts">${["A","B","C","D"].map(k=>`<button class="opt" data-pk><span class="k">${k}</span><span>C'est Ponpon</span></button>`).join("")}</div>`;
+ el.innerHTML=`<div class="ponbox"><div class="qhead"><span class="qtag">Question bonus</span></div>${body}<div id="ponA"></div></div>`;document.body.appendChild(el);
+ const win=()=>{el.querySelectorAll("[data-pk],[data-pw]").forEach(b=>{b.disabled=true;if(b.matches(".opt"))b.classList.add("good")});el.querySelector("#ponA").innerHTML=`<div class="fb good"><b>${pick(["Évidemment !","Bonne réponse, comme toujours.","Personne n'en doutait.","100 % de réussite sur cette question."])}</b>C'est Ponpon la meilleure. On reprend !</div>`;setTimeout(()=>{el.classList.add("out");setTimeout(()=>el.remove(),350)},1600)};
+ el.querySelectorAll("[data-pk]").forEach(b=>b.onclick=win);
+ const got=[];el.querySelectorAll("[data-pw]").forEach(b=>b.onclick=()=>{got.push(b.dataset.pw);b.remove();el.querySelector("#ponS").textContent=got.join(" ");if(got.length===2){el.querySelector("#ponS").textContent="C'est Ponpon";win()}})}
+new MutationObserver(()=>{if(!document.body.classList.contains("pushed")||ponDone||!zmoOn("ponpon"))return;const q=app.querySelector(".qtext");if(!q||q.dataset.pq)return;q.dataset.pq="1";ponQ++;if(ponQ>=ponAt)setTimeout(ponShow,150)}).observe(app,{childList:true,subtree:true});
+/* ============ 3.4.0 : On Fire, nouveaux gags et médaille « Soldat du feu » ============ */
+const G_POLE='<svg viewBox="0 0 60 90"><path d="M17 15c0-8 6-12 13-12s13 4 13 12z" fill="#e8b400"/><rect x="13" y="13" width="34" height="4" rx="2" fill="#b98f00"/><circle cx="30" cy="23" r="7" fill="#f2c9a0"/><path d="M26 22h1M33 22h1" stroke="#2a2f37" stroke-width="2" stroke-linecap="round"/><ellipse cx="30" cy="27" rx="3" ry="2" fill="#2a2f37"/><rect x="18" y="30" width="24" height="25" rx="6" fill="#1d2b4a"/><rect x="18" y="41" width="24" height="3" fill="#e8e05a"/><path d="M20 54l-6 16M40 54l6 16" stroke="#1d2b4a" stroke-width="8" stroke-linecap="round"/><path d="M18 34l12 8 12-8" stroke="#f2c9a0" stroke-width="5" fill="none" stroke-linecap="round"/></svg>';
+const G_DAE='<svg viewBox="0 0 60 50"><rect x="4" y="6" width="52" height="40" rx="8" fill="#1f9d55"/><rect x="12" y="14" width="22" height="14" rx="3" fill="#dff7e8"/><path d="M14 22h4l2-5 3 10 2-5h7" stroke="#e3051b" stroke-width="2" fill="none"/><circle cx="45" cy="21" r="6" fill="#ffd60a"/><path d="M44 17l-2 5h3l-2 5" stroke="#2a2f37" stroke-width="1.6" fill="none"/><rect x="12" y="33" width="36" height="6" rx="3" fill="#fff" opacity=".8"/></svg>';
+const SDF_IC='<svg viewBox="0 0 32 40" aria-hidden="true"><path d="M8 1h7l3 12h-7z" fill="#e3051b"/><path d="M17 1h7l-3 12h-7z" fill="#1d2b4a"/><circle cx="16" cy="25" r="12" fill="#f5b700" stroke="#b98f00" stroke-width="2"/><path d="M16 15c3 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-5 3-7 0 2 1 3 2 3 0-3 0-5 1-7z" fill="#e3051b"/></svg>';
+const sdfHtml=p=>p&&p.sdf&&p.sdf>Date.now()?`<span class="deco sdf" role="img" aria-label="Soldat du feu" title="Soldat du feu">${SDF_IC}</span>`:"";
+document.addEventListener("click",e=>{if(e.target.closest&&e.target.closest(".sdf")){e.preventDefault();toast("Médaille « Soldat du feu » : 10 bonnes réponses d'affilée en mode On Fire.")}});
+let sdfAsked=0;
+async function sdfAward(){if(Date.now()-sdfAsked<60000)return;sdfAsked=Date.now();try{await api("badge/sdf","POST",{});alog("fire","médaille Soldat du feu");
+ const el=document.createElement("div");el.className="dlpop";el.innerHTML=`<div class="dlbox"><div class="dltag">MODE ON FIRE</div><div class="dlbig sdfbig">${SDF_IC}</div><h3>Soldat du feu !</h3><p>10 bonnes réponses d'affilée en On Fire : ta médaille brille dans les classements pendant 4 h.</p><div class="actions" style="margin:12px 0 0"><button class="btn full" data-sok>Au feu !</button></div></div>`;
+ document.body.appendChild(el);if(typeof confetti==="function")confetti(el);el.querySelector("[data-sok]").onclick=()=>el.remove();loadBoard(true)}catch(e){}}
+function fireCombo(ok){if(!onFire)return;if(ok&&fbStreak>0&&fbStreak%5===0)setTimeout(()=>playGag("arrose"),250);if(!ok&&fbStreak===-3)setTimeout(()=>playGag("alarme"),250);if(ok&&fbStreak===10)setTimeout(sdfAward,900)}
 /* 3.3.2 : chaque nouvelle question repart du haut de l'écran */
 document.addEventListener("click",e=>{if(e.target.closest&&e.target.closest("#next"))window.scrollTo({top:0,left:0,behavior:"instant"})},true);
 /* 3.3.1 : après une réponse, faire apparaître la correction sans avoir à faire défiler (le bouton suivant reste collé en bas) */
@@ -215,7 +337,7 @@ window.addEventListener("popstate",()=>{const v=$("#viewer");if(v){v.querySelect
 function gameLog(title){try{qShownAt=Date.now();if(title==="Résultat"){if(curGame&&curGame.n){const g=curGame;curGame=null;setTimeout(()=>{const ev=typeof rankOnGameEnd==="function"?rankOnGameEnd(g):null;if(ev){if(ev.type==="down")setTimeout(()=>rankPopup("down",ev.to),400);else rankResultNote(ev)}const sc=$(".result .score"),gr=$(".result .grade");alog("jeu","fin · "+g.title,{score:sc?sc.textContent.trim():"","réponses":g.n,justes:g.ok,"durée":Math.round((Date.now()-g.t0)/1000)+" s",commentaire:gr?gr.textContent.trim().slice(0,120):""})},30)}return}
  if(!curGame||curGame.title!==title){if(curGame&&curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame={title,t0:Date.now(),n:0,ok:0,nL:0,nS:0}}}catch(e){}}
 try{history.scrollRestoration="manual"}catch(e){}
-function push(title,right,onBack){if(title!==lastEcran){alog("ecran",title,right||"");lastEcran=title;window.scrollTo({top:0,left:0,behavior:"instant"});if(title==="Résultat"&&typeof zFaked!=="undefined"&&zFaked)setTimeout(zReveal,450)}gameLog(title);if(!document.body.classList.contains("pushed"))history.pushState({app:1},"");if(cleanup){cleanup();cleanup=null}document.body.classList.add("pushed");$("#composer").hidden=true;app.className="view push";
+function push(title,right,onBack){if(title!==lastEcran){alog("ecran",title,right||"");lastEcran=title;window.scrollTo({top:0,left:0,behavior:"instant"});if(typeof ponReset==="function")ponReset();if(title==="Résultat"&&typeof zFaked!=="undefined"&&zFaked)setTimeout(zReveal,450)}gameLog(title);if(!document.body.classList.contains("pushed"))history.pushState({app:1},"");if(cleanup){cleanup();cleanup=null}document.body.classList.add("pushed");$("#composer").hidden=true;app.className="view push";
   return `<div class="nav"><button class="back" id="back">${I.back}Retour</button><div class="ttl">${esc(title)}</div><div class="right" id="navr">${right||""}</div></div>`}
 function bindBack(fn){const b=$("#back");if(b)b.onclick=()=>{if(cleanup){cleanup();cleanup=null}fn?fn():go(tab)}}
 function setRight(t){const r=$("#navr");if(r)r.textContent=t}
@@ -248,7 +370,7 @@ const NON_PSE=DATA.filter(t=>t.id!=="pse");
 function isoWeek(d=new Date()){const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const y=new Date(Date.UTC(x.getUTCFullYear(),0,1));return x.getUTCFullYear()+"-S"+String(Math.ceil(((x-y)/864e5+1)/7)).padStart(2,"0")}
 function rng(seed){let h=1779033703^seed.length;for(let i=0;i<seed.length;i++){h=Math.imul(h^seed.charCodeAt(i),3432918353);h=h<<13|h>>>19}return()=>{h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);h^=h>>>16;return(h>>>0)/4294967296}}
 function sshuffle(a,r){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function defiQuestions(){const r=rng("defi-"+isoWeek());const all=ALL.filter(q=>(q._k==="qcm"||q._k==="vf")&&q._t.id!=="pse");const picked=[];
+function defiQuestions(){const r=rng("defi-"+isoWeek());const all=ALL.filter(q=>(q._k==="qcm"||q._k==="vf")&&q._t.id!=="pse"&&q._t.id!=="culture"&&!isFeu(q));const picked=[];
   NON_PSE.forEach(t=>picked.push(...sshuffle(all.filter(q=>q._t===t),r).slice(0,3)));
   picked.push(...sshuffle(all.filter(q=>!picked.includes(q)),r).slice(0,20-picked.length));return sshuffle(picked,r)}
 const fmtTime=ms=>{const s=Math.round(ms/1000);return Math.floor(s/60)+" min "+String(s%60).padStart(2,"0")+" s"};
@@ -268,7 +390,7 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
   const g=globalStats();const pct=g.n?Math.round(g.ok/g.n*100):0;const C=2*Math.PI*36;
   const w=isoWeek();const dd=defiDone[w];
   const todo=FICHES.map(f=>({f,s:ficheStats(f.id)})).filter(x=>x.s.st==="ko").sort((a,b)=>b.s.ko-a.s.ko)[0];
-  const chips=DATA.map(t=>`<button class="chip" data-t="${t.id}" aria-pressed="${selected.has(t.id)}">${esc(short(t))}</button>`).join("");
+  const chips=DATA.map(t=>`<button class="chip" data-t="${t.id}" aria-pressed="${selected.has(t.id)}">${esc(short(t))}</button>`).join("")+`<button class="chip feuchip" data-t="feu" aria-pressed="${selected.has("feu")}">${FLAME_IC} Feu</button>`;
   const b=m=>typeof best[m]==="number"?` · record ${best[m]}${m==="chrono"?" pts":" %"}`:"";
   const tile=(m,ic,col,t,s)=>`<button class="tile" data-m="${m}"><span class="ic" style="background:${col}">${ic}</span><b>${t}</b><span>${s}</span></button>`;
   app.innerHTML=`
@@ -286,6 +408,8 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
     ${tile("ordre",I.list,"#30b0c7","Remets dans l'ordre","Messages, gestes, procédures")}
     ${tile("cas",I.siren,"#e3051b","Cas pratiques","Situations d'intervention")}
     ${tile("exam",I.exam,"#34c759","Examen blanc","30 questions, corrigé à la fin"+b("exam"))}
+    ${tile("sudden",I.bolt,"#d0021b","Mort subite","Jusqu'à la première erreur"+(typeof best.sudden==="number"?` · record ${best.sudden}`:""))}
+    ${tile("bilanx",I.list,"#ff7a00","Bilan express","Une prise en charge à remettre en ordre en 90 s")}
     <button class="tile" data-m="radio"><span class="ic" style="background:#0f1d36">${RADIO_IC_T}</span><b>Messages radio</b><span>Constructeur et simulateur phonie</span></button>
     <button class="tile" data-m="carte"><span class="ic" style="background:#1f9d55">${MAP_IC_T}</span><b>Carte des secteurs</b><span>CS, Golf, voisins, quiz carte</span></button>
     ${duelTile()}
@@ -307,7 +431,7 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
   const ds=$("#defiShare");if(ds)ds.onclick=()=>shareText(`Défi CI BSPP ${w} : ${dd.score}/20 en ${fmtTime(dd.ms)}. À toi de jouer !`,$("#defiMsg"));
   app.querySelectorAll("[data-fiche]").forEach(b=>b.onclick=()=>reviseFiche(b.dataset.fiche));
   app.querySelectorAll(".tile[data-m]").forEach(m=>m.onclick=()=>({qcm:()=>runQuiz(fresh(pool("qcm")).slice(0,10),"qcm",true),chrono:runChrono,flash:()=>runFlash(fresh(pool("flashcards"))),ordre:()=>runOrdre(fresh(pool("ordre"))),cas:()=>runCas(fresh(pool("cas"))),
-    exam:()=>runQuiz(fresh([...pool("qcm"),...pool("vf")]).slice(0,30),"exam",false),review:runReview,radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(true),hosp:()=>runHospQuiz(true),marks:()=>{revTab="marks";go("revise")}})[m.dataset.m]());
+    exam:()=>runQuiz(fresh([...pool("qcm"),...pool("vf")]).slice(0,30),"exam",false),review:runReview,sudden:()=>runSudden(),bilanx:()=>runBilanExpress(),radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(true),hosp:()=>runHospQuiz(true),marks:()=>{revTab="marks";go("revise")}})[m.dataset.m]());
 }
 
 /* ============ Jeux ============ */
@@ -398,11 +522,13 @@ function runQuiz(qs,mode,instant,back){qs=(qs||[]).map(mixQ);
     window.scrollTo(0,0)};
   show();
 }
+// 3.3.4 : les 5 dernières secondes d'un jeu chronométré d'une minute, l'écran clignote rouge et bleu (gyrophare), quelle que soit l'ambiance
+function lastFive(on){let f=document.getElementById("lastfive");if(on&&!f&&!matchMedia("(prefers-reduced-motion: reduce)").matches){f=document.createElement("div");f.id="lastfive";f.setAttribute("aria-hidden","true");document.body.appendChild(f)}else if(!on&&f)f.remove()}
 function runChrono(){
   const qs=fresh(pool("vf"));if(!qs.length)return;
   let i=0,score=0,errs=0,timer,over=false;const missed=[];let deadline=Date.now()+60000;
   const left=()=>Math.max(0,Math.ceil((deadline-Date.now())/1000));
-  const stop=()=>clearInterval(timer);
+  const stop=()=>{clearInterval(timer);lastFive(false)};
   const show=()=>{const q=qs[i%qs.length];
     cleanup=null; // ne pas arrêter le chrono en changeant de question
     app.innerHTML=push("Vrai ou faux 60 s",`${score} pts`)+`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px"><span class="qtag">${esc(short(q._t))}</span><span class="timer" id="tm">${left()} s</span></div><p class="qtext">${qHtml(q)}</p><div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
@@ -412,7 +538,7 @@ function runChrono(){
     app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}</div><div class="grade">bonnes réponses en 60 s</div><p class="small">${errs} erreur(s) · chaque erreur coûte 3 s</p></div><div class="actions"><button class="btn full" id="again">Rejouer</button></div>
      ${missed.length?`<div class="sect">Ce que tu as raté</div><div class="recap">${missed.map(q=>`<div class="card"><div class="qhead"><b>${qHtml(q)}</b>${markBtn(q._id,false)}</div><div class="a">${q.answer?"VRAI":"FAUX"}</div><div class="e">${esc(q.explication)}</div>${srcBtn(q)}</div>`).join("")}</div>`:""}`;
     bindBack();bindSrc();$("#again").onclick=runChrono};
-  timer=setInterval(()=>{const t=left();const el=$("#tm");if(el)el.textContent=t+" s";if(t<=0)end()},250);
+  timer=setInterval(()=>{const t=left();const el=$("#tm");if(el)el.textContent=t+" s";lastFive(t>0&&t<=5);if(t<=0)end()},250);
   show();
 }
 function runFlash(cards,back){
@@ -434,14 +560,26 @@ function runFlash(cards,back){
     $("#yes").onclick=()=>{kn++;record(c._id,true);i++;show()};$("#no").onclick=()=>{again.push(c);record(c._id,false);i++;show()};
   };show();
 }
+// 3.4.0 : glisser-déposer des étapes (poignée à gauche) ; le reste de la carte laisse défiler la page normalement, et l'écran défile tout seul près des bords
+function ordDrag(list,onDrop){if(!list)return;list.querySelectorAll(".grip").forEach(g=>g.addEventListener("pointerdown",e=>{if(e.button>0)return;const li=g.closest(".oitem");if(!li)return;e.preventDefault();
+ try{g.setPointerCapture(e.pointerId)}catch(x){}const kids=[...list.children];const from=kids.indexOf(li);const r=li.getBoundingClientRect();const dy=e.clientY-r.top;let y=e.clientY,raf=0,live=true;
+ const ph=document.createElement("li");ph.className="oitem ph";ph.style.height=r.height+"px";li.after(ph);
+ li.classList.add("drag");Object.assign(li.style,{width:r.width+"px",left:r.left+"px",top:r.top+"px"});if(navigator.vibrate)navigator.vibrate(8);
+ const place=()=>{li.style.top=(y-dy)+"px";const others=[...list.children].filter(x=>x!==li&&x!==ph);let before=null;for(const o of others){const b=o.getBoundingClientRect();if(y<b.top+b.height/2){before=o;break}}if(before){if(ph.nextSibling!==before)list.insertBefore(ph,before)}else if(list.lastElementChild!==ph)list.appendChild(ph)};
+ const loop=()=>{if(!live)return;const edge=90;let v=0;if(y<edge)v=-Math.ceil((edge-y)/6);else if(y>innerHeight-edge)v=Math.ceil((y-(innerHeight-edge))/6);if(v){window.scrollBy(0,v);place()}raf=requestAnimationFrame(loop)};raf=requestAnimationFrame(loop);
+ const move=ev=>{y=ev.clientY;place()};
+ const up=()=>{live=false;cancelAnimationFrame(raf);g.removeEventListener("pointermove",move);g.removeEventListener("pointerup",up);g.removeEventListener("pointercancel",up);
+  const to=[...list.children].filter(x=>x!==li).indexOf(ph);ph.remove();li.classList.remove("drag");li.removeAttribute("style");onDrop(from,to<0?from:to)};
+ g.addEventListener("pointermove",move);g.addEventListener("pointerup",up);g.addEventListener("pointercancel",up)}))}
 function runOrdre(items,back){let i=0;
   const show=()=>{if(i>=items.length){back?back():go(tab);return}
     const it=items[i];markSeen(it._id);let cur=shuffle(it.etapes.map((s,k)=>({s,k})));if(cur.length>1&&cur.every((c,k)=>c.k===k))cur.reverse();
     const draw=checked=>{
       app.innerHTML=push("Remets dans l'ordre",`${i+1}/${items.length}`)+`<div style="margin-top:16px">${qhead(it)}</div><p class="qtext" style="margin-top:4px">${esc(it.titre.replace(/^Remets dans l'ordre\s*:\s*/i,""))}</p>
-       <ol class="olist">${cur.map((c,k)=>`<li class="oitem ${checked?(c.k===k?"good":"bad"):""}"><span class="n">${k+1}</span><span class="t">${esc(c.s)}</span>${checked?"":`<span class="mv"><button data-u="${k}" aria-label="Monter">▲</button><button data-d="${k}" aria-label="Descendre">▼</button></span>`}</li>`).join("")}</ol>
+       <ol class="olist">${cur.map((c,k)=>`<li class="oitem ${checked?(c.k===k?"good":"bad"):""}" data-oi="${k}">${checked?"":`<span class="grip" aria-label="Glisser pour déplacer" title="Glisser"><svg viewBox="0 0 12 20" width="12" height="20"><circle cx="3" cy="4" r="1.6"/><circle cx="9" cy="4" r="1.6"/><circle cx="3" cy="10" r="1.6"/><circle cx="9" cy="10" r="1.6"/><circle cx="3" cy="16" r="1.6"/><circle cx="9" cy="16" r="1.6"/></svg></span>`}<span class="n">${k+1}</span><span class="t">${esc(c.s)}</span>${checked?"":`<span class="mv"><button data-u="${k}" aria-label="Monter">▲</button><button data-d="${k}" aria-label="Descendre">▼</button></span>`}</li>`).join("")}</ol>
        <div id="after"></div><div class="actions">${checked?`<button class="btn full" id="next">${i+1<items.length?"Séquence suivante":"Terminer"}</button>`:`<button class="btn full" id="check">Vérifier</button>`}</div>`;
       bindBack(back);
+      if(!checked)ordDrag(app.querySelector(".olist"),(f,t)=>{if(f===t)return draw(false);const [m]=cur.splice(f,1);cur.splice(t,0,m);draw(false)});
       app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{const k=+b.dataset.u;if(k>0){[cur[k-1],cur[k]]=[cur[k],cur[k-1]];draw(false)}});
       app.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const k=+b.dataset.d;if(k<cur.length-1){[cur[k+1],cur[k]]=[cur[k],cur[k+1]];draw(false)}});
       if(checked){const ok=cur.every((c,k)=>c.k===k);record(it._id,ok);
@@ -638,6 +776,7 @@ function loadSimple(){if(SIMPLE)return Promise.resolve(SIMPLE);if(simpleP)return
    Q.items.forEach(it=>{it._id=it.id;it._k=it.k;it._t={id:"s-"+it.g,theme:Q.themes[it.g]};SHORT["s-"+it.g]=Q.themes[it.g];BYID[it.id]=it});SIMPLE=Q;res(Q)};
   sc.onerror=()=>{simpleP=null;rej()};document.body.appendChild(sc)});return simpleP}
 let sSel=new Set(store.get("sThemes",["guide","ssuap","acr","efibi","bsp"]));
+if(!store.get("sCultAdded",false)){sSel.add("culture");store.set("sThemes",[...sSel]);store.set("sCultAdded",true)}
 // documents découverts : une bonne réponse sur une question simple qui s'y rapporte
 function discovered(){const set=new Set();if(!SIMPLE)return set;Object.entries(hist).forEach(([id,h])=>{if(!h.includes(1))return;
   if(id.startsWith("doc:"))set.add(id.split(":")[1]);else if(id.startsWith("s:")&&BYID[id])set.add(BYID[id].ref.d)});return set}
@@ -666,21 +805,23 @@ function viewHomeSimple(){
     <button class="tile" data-sm="radio"><span class="ic" style="background:#0f1d36">${RADIO_IC_T}</span><b>Messages radio</b><span>Construis tes messages pas à pas</span></button>
     <button class="tile" data-sm="carte"><span class="ic" style="background:#1f9d55">${MAP_IC_T}</span><b>Carte des secteurs</b><span>Les CS, leurs adresses, leur Golf</span></button>
     <button class="tile" data-sm="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><b>Les grades</b><span>Reconnais les galons</span></button>
+    <button class="tile" data-sm="sudden"><span class="ic" style="background:#d0021b">${I.bolt}</span><b>Mort subite</b><span>Jusqu'à la première erreur${typeof best.sudden==="number"?` · record ${best.sudden}`:""}</span></button>
+    <button class="tile" data-sm="bilanx"><span class="ic" style="background:#ff7a00">${I.list}</span><b>Bilan express</b><span>Une prise en charge en 90 s</span></button>
     ${duelTile()}
     <button class="tile wide" data-sm="hosp"><span class="ic" style="background:#d92d20">${H_IC}</span><div><b>Les hôpitaux</b><br><span>Qui fait quoi : SAU, maternité, SOS Mains, ophtalmo…</span></div></button>
    </div>
-   <div class="sect">Thèmes du quiz</div><div class="chips">${Object.entries(Q.themes).map(([k,l])=>`<button class="chip" data-st="${k}" aria-pressed="${sSel.has(k)}">${esc(l)}</button>`).join("")}</div>
+   <div class="sect">Thèmes du quiz</div><div class="chips">${Object.entries(Q.themes).map(([k,l])=>`<button class="chip" data-st="${k}" aria-pressed="${sSel.has(k)}">${esc(l)}</button>`).join("")}<button class="chip feuchip" data-st="feu" aria-pressed="${sSel.has("feu")}">${FLAME_IC} Feu</button></div>
    <div class="sect">Cette semaine</div>
    <div class="defi"><div class="wk">DÉFI ${w}</div><h2>Défi de la semaine</h2><p>Le défi est au niveau Officier (×2) : tente-le quand tu te sens prêt.</p>${dd?`<p class="done">Ton premier essai : <b>${dd.score}/20</b></p>`:""}<div class="actions" style="margin-top:0"><button class="btn" id="defiGo">${dd?"Rejouer":"Relever le défi"}</button></div></div>
    ${homeBoard()}
    <div class="card" style="margin-top:14px"><b>Comment ça marche ?</b><p class="small" style="margin:6px 0 0">Au niveau Sapeur, chaque bonne réponse rapporte 5 points (×0,5). Au niveau Officier, 20 points (×2). Après chaque question, « Voir dans le référentiel » t'ouvre la bonne page du document : c'est le meilleur moyen de les découvrir.</p></div>
    <footer class="note" style="margin-top:10px"><b>Application non officielle.</b> Elle n'est ni éditée ni validée par la BSPP ni par la Croix-Rouge française et sert uniquement à s'entraîner et à réviser. Développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française.</footer>`;
-  const pool=k=>Q.items.filter(x=>sSel.has(x.g)&&(!k||x.k===k));
+  const pool=k=>Q.items.filter(x=>(isFeu(x)?sSel.has("feu"):sSel.has(x.g))&&(!k||x.k===k));
   app.querySelectorAll("[data-st]").forEach(c=>c.onclick=()=>{const k=c.dataset.st;sSel.has(k)?sSel.delete(k):sSel.add(k);if(!sSel.size)sSel.add(k);store.set("sThemes",[...sSel]);c.setAttribute("aria-pressed",sSel.has(k))});
   const back=()=>go("home");
   app.querySelectorAll("[data-sm]").forEach(b=>b.onclick=()=>({quiz:()=>runSimple(fresh(pool()).slice(0,10),"Quiz découverte"),vf:()=>runSimple(fresh(pool("vf")).slice(0,10),"Vrai ou faux ?"),
-   doc:()=>runSimple(docQuestions(10),"Devine le document"),mix:()=>runSimple(fresh(Q.items).slice(0,16).concat(docQuestions(4)).sort(()=>Math.random()-.5),"Grand mélange"),
-   radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(false),hosp:()=>runHospQuiz(false),rbuild:()=>runRadioBuild(()=>go("home"))})[b.dataset.sm]());
+   doc:()=>runSimple(docQuestions(10),"Devine le document"),mix:()=>runSimple(fresh(pool()).slice(0,16).concat(docQuestions(4)).sort(()=>Math.random()-.5),"Grand mélange"),
+   sudden:()=>runSudden(),bilanx:()=>runBilanExpress(),radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(false),hosp:()=>runHospQuiz(false),rbuild:()=>runRadioBuild(()=>go("home"))})[b.dataset.sm]());
   $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
  }).catch(()=>{const b=$("#sbody");if(b)b.innerHTML=`<div class="card"><p style="margin:0">Impossible de charger les questions du niveau Sapeur. Vérifie ta connexion.</p><button class="btn sec full" style="margin-top:12px" id="sRetry">Réessayer</button></div>`;const r=$("#sRetry");if(r)r.onclick=viewHomeSimple})}
 function runSimple(qs,title){if(!qs.length)return;qs=qs.map(mixQ);let i=0,score=0,combo=0,bestCombo=0;const missed=[];const back=()=>go("home");const before=discovered();
@@ -873,6 +1014,11 @@ function nickOf(p){const n=p&&p.nick;return n&&n.u>Date.now()?n:null}
 function nickHtml(p){const n=nickOf(p);return n?` <button type="button" class="nick" data-nick="${esc(p.id)}">« ${esc(n.n)} »</button>`:""}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-nick]");if(!b)return;e.stopPropagation();e.preventDefault();const p=(board&&board.profiles||[]).find(x=>x.id===b.dataset.nick);const n=nickOf(p);if(n)toast(`Surnom donné par ${n.by} après sa victoire en duel · encore ${Math.max(1,Math.round((n.u-Date.now())/6e4))} min`)},true);
 const canNick=d=>d&&d.status==="done"&&d.winner===me.id&&!d.nick&&Date.now()<(d.done||0)+36e5;
+// 3.4.0 : gage du gagnant (1 h) : un mode Z au choix pour le perdant
+const canGage=d=>d&&d.status==="done"&&d.winner===me.id&&!d.zg&&Date.now()<(d.done||0)+36e5;
+const GAGES=[["blague","Blagues visibles","ses réponses fuient, l'écran se retourne, le sergent commente"],["fuite","Fuite","la réponse touchée s'échappe 2 fois avant de valider"],["miroir","Miroir","les questions s'affichent à l'envers"],["escargot","Escargot","les réponses s'écrivent lettre par lettre"],["radio","Radio grésillante","des lettres des questions sont brouillées"],["piege","Piège secret","toutes ses réponses s'affichent fausses, révélé en fin de série"]];
+function gageSheet(d,after){const o=duelOther(d);const sh=sheet(`<h2>Un gage pour ${esc(o.n)} ?</h2><p class="small">Bonus du vainqueur : choisis un gage qu'il subira pendant 1 h dans ses entraînements (jamais en examen, défi ou duel).</p><div class="list">${GAGES.map(([k,l,dd])=>`<button class="row" data-gage="${k}"><span class="tx"><b>${esc(l)}</b><span>${esc(dd)}</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div><p class="small" id="ggM" style="color:var(--ko)"></p><div class="actions"><button class="btn sec full" data-close>Plus tard</button></div>`);
+ sh.querySelectorAll("[data-gage]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api("duel/gage","POST",{did:d.id,mode:b.dataset.gage});d.zg=b.dataset.gage;closeSheet();toast(`Gage envoyé : ${o.n} va s'en souvenir pendant 1 h !`);alog("duel","gage choisi",{contre:o.n,gage:b.dataset.gage});loadDuels(true);if(after)after()}catch(e){sh.querySelector("#ggM").textContent=e.error||"Erreur.";b.disabled=false}})}
 function nickSheet(d,after){const o=duelOther(d);const sh=sheet(`<h2>Choisis un surnom pour ${esc(o.n)}</h2><p class="small">Il s'affichera à côté de son nom pendant 24 h, dans tous les classements. Reste dans l'esprit pompier : taquin, jamais blessant.</p>
   <div class="chips wrap" style="margin:10px 0">${shuffle(NICK_IDEAS).slice(0,8).map(n=>`<button class="chip" data-ni="${esc(n)}">${esc(n)}</button>`).join("")}</div>
   <form class="form" id="nkF"><label for="nkI">Ou invente le tien (28 caractères max.)</label><input id="nkI" maxlength="28" placeholder="ex. Sapeur Pas-de-bol"><button class="btn" type="submit">Valider le surnom</button></form><p class="small" id="nkM" style="margin:8px 0 0"></p>`);
@@ -880,7 +1026,7 @@ function nickSheet(d,after){const o=duelOther(d);const sh=sheet(`<h2>Choisis un 
  sh.querySelector("#nkF").onsubmit=async e=>{e.preventDefault();const v=sh.querySelector("#nkI").value.trim();if(v.length<3){sh.querySelector("#nkM").textContent="Choisis ou écris un surnom (3 caractères minimum).";return}
   try{await api("duel/nick","POST",{did:d.id,nick:v});d.nick=v;alog("duel","surnom donné",{a:o.n,surnom:v});closeSheet();toast(`${o.n} devient « ${v} » pendant 24 h !`);await loadDuels(true);await loadBoard(true);if(after)after()}catch(err){sh.querySelector("#nkM").textContent=err.error||"Erreur."}}}
 function decoOf(p){const d=p&&p.deco;return d&&d.u>Date.now()?d:null}
-function decoHtml(p,cls="deco"){const d=decoOf(p);if(!d)return "";return `<button type="button" class="${cls}" data-deco="${esc(p.id)}" aria-label="${esc(DECO_TXT[d.t]||"")}">${(DECO_IC[d.t]||"").replace("<svg","<svg aria-hidden=\"true\"")}</button>`}
+function decoHtml(p,cls="deco"){const d=decoOf(p);if(!d)return sdfHtml(p);return sdfHtml(p)+`<button type="button" class="${cls}" data-deco="${esc(p.id)}" aria-label="${esc(DECO_TXT[d.t]||"")}">${(DECO_IC[d.t]||"").replace("<svg","<svg aria-hidden=\"true\"")}</button>`}
 function decoText(p){const d=decoOf(p);if(!d)return "";const min=Math.max(1,Math.round((d.u-Date.now())/6e4));const n=p.pseudo;
  const t=d.t==="medal"?`${n} a battu ${d.vs} en duel « ${d.th} »${d.sc?` (${d.sc} pts)`:""}`:d.t==="broom"?`${n} a perdu son duel « ${d.th} » contre ${d.vs}${d.sc?` (${d.sc} pts)`:""} : corvée de balai !`:`${n} a ${d.why==="expired"?"laissé filer":"refusé"} le duel de ${d.vs} : pompier qui se défile !`;
  return `${t} · encore ${min>=60?Math.round(min/60)+" h":min+" min"}`}
@@ -917,31 +1063,33 @@ function duelResultPop(d){const el=document.createElement("div");el.className="d
  let h,ic,txt;if(d.status==="declined"||d.status==="expired"){h="Défi refusé";ic=DECO_IC.run;txt=`${esc(o.n)} a ${d.status==="expired"?"laissé passer le délai":"refusé ton défi"} « ${esc(d.themeN)} » : il porte le pompier qui se défile pendant 24 h.`}
  else{const win=d.winner===me.id,draw=!d.winner;h=draw?"Match nul":win?"Victoire !":"Défaite…";ic=draw?"":win?DECO_IC.medal:DECO_IC.broom;txt=duelScoreHtml(d)+`<p class="small">${draw?"Égalité parfaite : pas de décoration. +15 points.":win?"Ta médaille brille à côté de ton nom pendant 24 h. +30 points.":"Corvée de balai pendant 24 h… +10 points pour avoir joué."}</p>`}
  el.innerHTML=`<div class="dlbox"><div class="dltag">RÉSULTAT DU DUEL</div><h3 class="${d.winner===me.id?"win":""}">${h}</h3>${ic?`<div class="dlbig">${ic}</div>`:""}${d.status==="done"?txt:`<p class="small">${txt}</p>`}
-  ${canNick(d)?`<button class="btn full" data-dnick style="margin-top:10px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}<div class="actions" style="margin:12px 0 0">${d.status==="done"?`<button class="btn sec" style="flex:1" data-dok>Fermer</button><button class="btn" style="flex:1" data-drev>${d.winner===me.id?"Rejouer":"Revanche"}</button>`:`<button class="btn full" data-dok>Compris</button>`}</div></div>`;
- document.body.appendChild(el);if(d.winner===me.id)confetti(el);el.querySelector("[data-dok]").onclick=()=>el.remove();const rv=el.querySelector("[data-drev]");if(rv)rv.onclick=()=>{el.remove();duelSheet(o.id,d.level,d.theme)};const nk=el.querySelector("[data-dnick]");if(nk)nk.onclick=()=>{el.remove();nickSheet(d)}}
+  ${canNick(d)?`<button class="btn full" data-dnick style="margin-top:10px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}${canGage(d)?`<button class="btn full" data-dgage style="margin-top:8px">🎁 Infliger un gage à ${esc(o.n)}</button>`:""}<div class="actions" style="margin:12px 0 0">${d.status==="done"?`<button class="btn sec" style="flex:1" data-dok>Fermer</button><button class="btn" style="flex:1" data-drev>${d.winner===me.id?"Rejouer":"Revanche"}</button>`:`<button class="btn full" data-dok>Compris</button>`}</div></div>`;
+ document.body.appendChild(el);if(d.winner===me.id)confetti(el);el.querySelector("[data-dok]").onclick=()=>el.remove();const rv=el.querySelector("[data-drev]");if(rv)rv.onclick=()=>{el.remove();duelSheet(o.id,d.level,d.theme)};const nk=el.querySelector("[data-dnick]");if(nk)nk.onclick=()=>{el.remove();nickSheet(d)};const gg=el.querySelector("[data-dgage]");if(gg)gg.onclick=()=>{el.remove();gageSheet(d)}}
 function duelScoreHtml(d){const o=duelOther(d),A=d.mine||{},B=d.other||{};const t=ms=>{const s=Math.round((ms||0)/1000);return s>=60?`${Math.floor(s/60)} min ${String(s%60).padStart(2,"0")}`:`${s} s`};
  return `<div class="dlscore"><div class="${d.winner===me.id?"w":""}">Toi<b>${A.pts??"—"}</b><span class="small">${A.ok??0}/10 · ${t(A.ms)}</span></div><div class="${d.winner===o.id?"w":""}">${esc(o.n)}<b>${B.pts??"—"}</b><span class="small">${B.ok??0}/10 · ${t(B.ms)}</span></div></div>`}
 function confetti(host){if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;const C=["#ffd60a","#e3051b","#0a84ff","#34c759","#ff9f0a"];for(let i=0;i<40;i++){const s=document.createElement("i");s.className="cft";s.style.left=Math.random()*100+"%";s.style.background=pick(C);s.style.animationDelay=Math.random()*.6+"s";s.style.transform=`rotate(${Math.random()*360}deg)`;host.appendChild(s);setTimeout(()=>s.remove(),3200)}}
 // choix de l'adversaire, du niveau et du thème
 function duelThemes(lvl){return lvl==="simple"?[["all","Tous les thèmes"],...Object.entries((SIMPLE&&SIMPLE.themes)||{})]:[["all","Tous les thèmes"],...DATA.map(t=>[t.id,short(t)])]}
-async function duelSheet(toId,lvl,theme){if(!me||me.expired){toast("Connecte-toi pour défier un membre.");return}
+async function duelSheet(toId,lvl,theme,live){if(!me||me.expired){toast("Connecte-toi pour défier un membre.");return}
  await loadSimple().catch(()=>null);if(!board)await loadBoard(true);
- let L=lvl||(level==="simple"?"simple":"expert"),T=theme||"all",to=toId||"",q="";
+ let L=lvl||(level==="simple"?"simple":"expert"),T=theme||"all",to=toId||"",q="",W=live?"live":store.get("duelWhen","later");
  const people=()=>(board&&board.profiles||[]).filter(p=>p.id!==me.id).sort((a,b)=>((b.team===myTeamId())-(a.team===myTeamId()))||a.pseudo.localeCompare(b.pseudo));
  const draw=()=>{const P=people().filter(p=>!q||norm(p.pseudo+" "+(p.unite||"")).includes(norm(q)));const tm=myTeamId();
-  const sh=sheet(`<h2>Lancer un duel</h2><p class="small">10 questions chronométrées : plus tu réponds vite, plus tu marques. Ton adversaire a 48 h pour jouer les mêmes.</p>
+  const sh=sheet(`<h2>Lancer un duel</h2><p class="small">10 questions chronométrées : plus tu réponds vite, plus tu marques. ${W==="live"?"En direct : ton adversaire doit accepter dans la minute, puis vous jouez en même temps.":"Ton adversaire a 48 h pour jouer les mêmes."}</p><div class="seg" style="margin-top:10px"><button data-dw="later" aria-pressed="${W!=="live"}">Différé (48 h)</button><button data-dw="live" aria-pressed="${W==="live"}">⚔ En direct</button></div>
    <div class="sect">Adversaire</div><input class="search" id="dlQ" type="search" placeholder="Chercher un membre" value="${esc(q)}">
-   <div class="list dlpeople">${P.slice(0,40).map(p=>`<button class="row ${p.id===to?"sel":""}" data-dto="${esc(p.id)}">${avatar(p,32)}<span class="tx"><b>${gradeSvg(rankCode((p.stats&&p.stats.rank)||0),"rkmini")}${esc(p.pseudo)}${decoHtml(p).replace(/^<button type="button"/,"<span").replace(/<\/button>$/,"</span>")}</b><span>${p.team&&p.team===tm?"Mon équipe":esc(p.unite||"")}</span></span>${p.id===to?'<span class="pill ok">Choisi</span>':""}</button>`).join("")||`<p class="small" style="padding:10px">Aucun membre trouvé.</p>`}</div>
+   <div class="list dlpeople">${P.slice(0,40).map(p=>`<button class="row ${p.id===to?"sel":""}" data-dto="${esc(p.id)}">${avatar(p,32)}<span class="tx"><b>${gradeSvg(rankCode((p.stats&&p.stats.rank)||0),"rkmini")}${esc(p.pseudo)}${decoHtml(p).replace(/<button type="button"/g,"<span").replace(/<\/button>/g,"</span>")}</b><span>${p.team&&p.team===tm?"Mon équipe":esc(p.unite||"")}</span></span>${p.id===to?'<span class="pill ok">Choisi</span>':""}</button>`).join("")||`<p class="small" style="padding:10px">Aucun membre trouvé.</p>`}</div>
    <div class="sect">Niveau</div><div class="seg"><button data-dl="simple" aria-pressed="${L==="simple"}">Sapeur</button><button data-dl="expert" aria-pressed="${L==="expert"}">Officier</button></div>
    <div class="sect">Thème</div><div class="chips wrap">${duelThemes(L).map(([k,l])=>`<button class="chip" data-dt="${esc(k)}" aria-pressed="${k===T}">${esc(l)}</button>`).join("")}</div>
-   <button class="btn full" id="dlGo" style="margin-top:16px" ${to?"":"disabled"}>${to?`Défier ${esc(people().find(p=>p.id===to)?.pseudo||"")}`:"Choisis un adversaire"}</button><p class="small" id="dlMsg" style="margin:8px 0 0"></p>`);
+   <button class="btn full" id="dlGo" style="margin-top:16px" ${to?"":"disabled"}>${to?`${W==="live"?"Défier en direct":"Défier"} ${esc(people().find(p=>p.id===to)?.pseudo||"")}`:"Choisis un adversaire"}</button><p class="small" id="dlMsg" style="margin:8px 0 0"></p>`);
   const qi=sh.querySelector("#dlQ");qi.oninput=()=>{q=qi.value;clearTimeout(qi._t);qi._t=setTimeout(()=>{draw();const n=$("#dlQ");if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length)}},250)};
   sh.querySelectorAll("[data-dto]").forEach(b=>b.onclick=()=>{to=b.dataset.dto;draw()});
   sh.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>{L=b.dataset.dl;T="all";draw()});
   sh.querySelectorAll("[data-dt]").forEach(b=>b.onclick=()=>{T=b.dataset.dt;draw()});
+  sh.querySelectorAll("[data-dw]").forEach(b=>b.onclick=()=>{W=b.dataset.dw;store.set("duelWhen",W);draw()});
   sh.querySelector("#dlGo").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent="Préparation…";
    const pool=L==="simple"?(SIMPLE&&SIMPLE.items||[]).filter(x=>(T==="all"||x.g===T)&&(x._k==="qcm"||x._k==="vf")):ALL.filter(x=>(T==="all"||x._t.id===T)&&(x._k==="qcm"||x._k==="vf"));
    const cands=fresh(pool).slice(0,80).map(x=>x._id);const tn=(duelThemes(L).find(x=>x[0]===T)||[,"Tous les thèmes"])[1];
+   if(W==="live"){try{const j=await api("live/new","POST",{to,level:L,themeN:tn,qids:shuffle(cands.slice(0,30)).slice(0,10)});closeSheet();alog("duel","duel en direct lancé",{contre:j.room.bN});liveLobby(j.room)}catch(err){b.disabled=false;b.textContent="Réessayer";$("#dlMsg").textContent=err.error||"Erreur."}return}
    try{const j=await api("duel/new","POST",{to,level:L,theme:T,themeN:tn,cands});closeSheet();alog("duel","défi lancé",{contre:j.duel.toN,theme:tn,niveau:L});runDuel(j.duel)}
    catch(err){b.disabled=false;b.textContent="Réessayer";$("#dlMsg").textContent=err.error||"Erreur."}}};
  draw()}
@@ -967,10 +1115,10 @@ function runDuel(d){const wantSimple=d.level==="simple";(wantSimple?loadSimple()
   alog("duel","duel joué",{contre:o.n,points:pts,justes:ok+"/"+qs.length});await loadDuels(true);
   const res=r||{...d,mine:{pts,ok,ms:tAll},status:d.from===me.id?"pending":"pending"};
   const bad=ans.filter(a=>!a.good);const recap=bad.length?`<div class="sect">Corrigé (${bad.length})</div><div class="recap">${bad.map(a=>`<div class="card"><div class="qhead"><b>${esc(a.q.q)}</b>${markBtn(a.q._id,false)}</div><div class="a">${esc(a.q._k==="qcm"?a.q.choices[a.q.answer]:(a.q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(a.q.explication||"")}</div>${srcBtn(a.q)}</div>`).join("")}</div>`:`<p class="sub" style="text-align:center">Sans faute !</p>`;
-  if(res.status==="done"){app.innerHTML=push("Résultat du duel")+`<div class="result"><div class="dlbig sm">${!res.winner?"":res.winner===me.id?DECO_IC.medal:DECO_IC.broom}</div><div class="grade">${!res.winner?"Match nul !":res.winner===me.id?"Victoire !":"Défaite…"}</div>${duelScoreHtml(res)}<p class="small">${!res.winner?"Égalité parfaite. +15 points.":res.winner===me.id?"Médaille affichée pendant 24 h. +30 points.":"Corvée de balai pendant 24 h. +10 points."}</p></div>${canNick(res)?`<button class="btn full" id="dNick" style="margin-top:6px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}<div class="actions"><button class="btn${canNick(res)?" sec":""}" id="dRev">${res.winner===me.id?"Rejouer":"Revanche"}</button><button class="btn sec" id="dHub">Mes duels</button></div>${recap}`;
+  if(res.status==="done"){app.innerHTML=push("Résultat du duel")+`<div class="result"><div class="dlbig sm">${!res.winner?"":res.winner===me.id?DECO_IC.medal:DECO_IC.broom}</div><div class="grade">${!res.winner?"Match nul !":res.winner===me.id?"Victoire !":"Défaite…"}</div>${duelScoreHtml(res)}<p class="small">${!res.winner?"Égalité parfaite. +15 points.":res.winner===me.id?"Médaille affichée pendant 24 h. +30 points.":"Corvée de balai pendant 24 h. +10 points."}</p></div>${canNick(res)?`<button class="btn full" id="dNick" style="margin-top:6px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}${canGage(res)?`<button class="btn full" id="dGage" style="margin-top:6px">🎁 Infliger un gage à ${esc(o.n)}</button>`:""}<div class="actions"><button class="btn${canNick(res)?" sec":""}" id="dRev">${res.winner===me.id?"Rejouer":"Revanche"}</button><button class="btn sec" id="dHub">Mes duels</button></div>${recap}`;
    const seen=store.get("duelSeen",{});seen[res.id]=1;store.set("duelSeen",seen);if(res.winner===me.id)confetti(app);loadBoard(true);duelCredit()}
   else app.innerHTML=push("Duel envoyé")+`<div class="result"><div class="score">${pts}</div><div class="grade">points · ${ok}/${qs.length} bonnes réponses</div><p class="small">Défi envoyé à <b>${esc(o.n)}</b>. Il a 48 h pour jouer les mêmes questions ; tu verras le résultat dès qu'il aura joué.</p></div><div class="actions"><button class="btn" id="dHub">Mes duels</button><button class="btn sec" id="dRev">Défier quelqu'un d'autre</button></div>${recap}`;
-  bindBack(()=>go("home"));bindSrc();const h=$("#dHub");if(h)h.onclick=viewDuels;const nk=$("#dNick");if(nk)nk.onclick=()=>nickSheet(res,()=>{nk.remove()});const rv=$("#dRev");if(rv)rv.onclick=()=>duelSheet(res.status==="done"?o.id:"",d.level,d.theme);window.scrollTo(0,0)};
+  bindBack(()=>go("home"));bindSrc();const h=$("#dHub");if(h)h.onclick=viewDuels;const nk=$("#dNick");if(nk)nk.onclick=()=>nickSheet(res,()=>{nk.remove()});const gg=$("#dGage");if(gg)gg.onclick=()=>gageSheet(res,()=>{gg.remove()});const rv=$("#dRev");if(rv)rv.onclick=()=>duelSheet(res.status==="done"?o.id:"",d.level,d.theme);window.scrollTo(0,0)};
  show()})}
 // écran « Mes duels »
 function viewDuels(){app.innerHTML=push("Mes duels")+`<div id="dlBody"><div class="loading">Chargement…</div></div>`;bindBack(()=>go("home"));
@@ -1013,16 +1161,19 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {art:`<div class="tlogos">${LOGOS}</div>`,t:"Bienvenue dans le Quiz CI BSPP",p:"L'appli pour se former au parcours Chef d'Intervention en réseau de secours BSPP, et garder la main une fois en poste. En quelques écrans, voici comment elle fonctionne.",n:"Application non officielle, développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française."},
  {art:`<div class="tpair"><div>${CROSS_IC}<b>Apprenti</b></div><div>${HELMET_IC}<b>CI BSPP</b></div></div>`,t:"Deux modes d'utilisation",p:"<b>Apprenti</b> : tout l'entraînement pour préparer le parcours. <b>CI BSPP</b> : une fois formé, l'appli devient ton assistant de garde, avec le défi de la semaine et tes outils.",n:"Tu changes de mode quand tu veux dans Profil › Moi. Ton choix suit ton compte."},
  {art:`<div class="tpair"><div>${gradeSvg("1CL","tgr")}<b>Sapeur</b></div><div><span class="tgr">${LTN_HELM}</span><b>Officier</b></div></div>`,t:"Deux niveaux de questions",p:"<b>Sapeur</b> : des questions faciles pour découvrir les documents (5 points). <b>Officier</b> : des questions expertes, tirées des référentiels (20 points).",n:"Le niveau se choisit en haut de l'accueil, en mode Apprenti."},
- {art:ic(I.quiz,"#0a84ff"),t:"Des jeux pour réviser",p:"Quiz, vrai ou faux en 60 secondes, flashcards, séquences à remettre dans l'ordre, cas pratiques, examen blanc… et chaque semaine un <b>défi</b> : les mêmes 20 questions pour tout le monde.",n:"Les questions changent à chaque partie : celles que tu n'as jamais vues passent en premier."},
+ {art:ic(I.quiz,"#0a84ff"),t:"Des jeux pour réviser",p:"Quiz, vrai ou faux en 60 secondes, flashcards, séquences à remettre dans l'ordre, cas pratiques, examen blanc, mort subite, bilan express… et chaque semaine un <b>défi</b> : les mêmes 20 questions pour tout le monde.",n:"Les questions changent à chaque partie : celles que tu n'as jamais vues passent en premier. Les questions sur l'incendie sont regroupées dans la rubrique <b>Feu</b>, à activer à côté des thèmes. Nouveau thème : <b>Culture BSPP</b> (histoire, traditions, chiffres de la Brigade). Dans « Remets dans l'ordre », fais glisser les étapes par leur poignée."},
  {art:ic(I.book,"#5e5ce6"),t:"Le référentiel à portée de main",p:"Après chaque question, <b>Voir dans le référentiel</b> ouvre la bonne page du document. Le drapeau <b>Marquer</b> garde une question de côté pour la revoir dans Réviser.",n:"Tous les documents sont aussi dans le menu Documents, avec une recherche."},
  {art:`<div class="tpair">${ic(RADIO_IC_T,"#0f1d36")}${ic(MAP_IC_T,"#1f9d55")}</div>`,t:"Tes outils de garde",p:"<b>Messages radio</b> : construis ton message pas à pas avec ton indicatif. <b>Codes CRI</b>, <b>Carte des secteurs</b> (adresses des CS et téléphones des PVO), <b>Hôpitaux</b> (le plus proche, filtré par spécialité), <b>Grades</b> et <b>Documents</b>.",n:"Tout est accessible depuis le menu en haut à droite."},
- {art:ic(I.user,"#ff9f0a"),t:"Classements et équipes",p:"Rejoins ou crée ton équipe dans Profil › Équipe. Touche une <b>équipe</b> pour voir ses membres (Points, Défi, Fiches, Duels), puis un <b>membre</b> pour voir sa fiche et le défier. Les points de la semaine repartent de zéro chaque lundi.",n:"Le menu Statistiques montre ton total depuis ton arrivée, tes courbes semaine par semaine et ton évaluation par fiche."},
- {id:"duel",art:`<div class="tpair"><div><span class="tdeco">${DECO_IC.medal}</span><b>Gagnant</b></div><div><span class="tdeco">${DECO_IC.broom}</span><b>Perdant</b></div><div><span class="tdeco">${DECO_IC.run}</span><b>Refus</b></div></div>`,t:"Les duels",p:"Défie un membre sur <b>10 questions chronométrées</b>, au thème et au niveau de ton choix : tuile <b>Duels</b> de l'accueil ou bouton ⚔ dans les classements. Ton adversaire a 48 h pour jouer les mêmes questions ; plus on répond vite, plus on marque. Le gagnant porte la <b>médaille</b> et choisit un <b>surnom</b> au perdant, qui passe <b>le balai</b>. Refuser ? Tu deviens le <b>pompier qui se défile</b> !",n:"Décorations et surnom s'affichent 24 h à côté du nom, dans tous les classements. Victoire +30 points, nul +15, défaite +10."},
+ {art:ic(I.user,"#ff9f0a"),t:"Classements et équipes",p:"Rejoins ou crée ton équipe dans Profil › Équipe : ta demande doit être acceptée par un membre, et l'équipe peut fixer un nombre maximum de joueurs. Touche une <b>équipe</b> pour voir ses membres (Points, Défi, Fiches, Duels), puis un <b>membre</b> pour voir sa fiche et le défier. Les points de la semaine repartent de zéro chaque lundi.",n:"Le menu Statistiques montre ton total depuis ton arrivée, tes courbes semaine par semaine et ton évaluation par fiche."},
+ {id:"new340",art:`<div class="tpair">${ic(I.bolt,"#d0021b")}${ic(I.list,"#ff7a00")}<div class="tdeco" style="font-size:30px">⚔</div></div>`,t:"Nouveaux jeux",p:"<b>Mort subite</b> : des questions jusqu'à la première erreur, avec ton record et celui de ton équipe. <b>Bilan express</b> : une prise en charge à remettre dans l'ordre en 90 secondes. <b>Duel en direct</b> : défie un membre connecté, vous jouez en même temps et tu vois son score évoluer.",n:"Le duel en direct se lance avec le bouton ⚔ en choisissant « En direct » ; ton adversaire a une minute pour accepter."},
+ {id:"team340",art:ic(I.user,"#1d2b4a"),t:"La vie de l'équipe",p:"Pour entrer dans une équipe, envoie une <b>demande</b> : un membre doit l'accepter. L'équipe fixe son <b>nombre maximum</b> de joueurs. Ses membres peuvent aussi <b>voter l'exclusion</b> d'un joueur : il faut la majorité des autres membres, en 48 h.",n:"Tout se gère dans Profil › Équipe, sur la page de ton équipe."},
+ {id:"duel",art:`<div class="tpair"><div><span class="tdeco">${DECO_IC.medal}</span><b>Gagnant</b></div><div><span class="tdeco">${DECO_IC.broom}</span><b>Perdant</b></div><div><span class="tdeco">${DECO_IC.run}</span><b>Refus</b></div></div>`,t:"Les duels",p:"Défie un membre sur <b>10 questions chronométrées</b>, au thème et au niveau de ton choix : tuile <b>Duels</b> de l'accueil ou bouton ⚔ dans les classements. Ton adversaire a 48 h pour jouer les mêmes questions ; plus on répond vite, plus on marque. Le gagnant porte la <b>médaille</b>, choisit un <b>surnom</b> au perdant, qui passe <b>le balai</b>, et peut lui infliger un <b>gage</b> d'une heure (réponses qui s'enfuient, questions à l'envers…). Refuser ? Tu deviens le <b>pompier qui se défile</b> !",n:"Décorations et surnom s'affichent 24 h, le gage dure 1 h (jamais en examen, défi ou duel). Victoire +30 points, nul +15, défaite +10. Active les <b>notifications de duel</b> dans Profil › Moi pour savoir quand on te défie."},
  {id:"rank",art:`<div class="tpair"><div>${gradeSvg("SAP","tgr")}<b>Sapeur 2e cl.</b></div><div>${gradeSvg("1CL","tgr")}<b>1re classe</b></div><div>${gradeSvg("CPL","tgr")}<b>Caporal</b></div></div>`,t:"Monte en grade",p:"Tu débutes <b>Sapeur de 2e classe</b>. Chaque exercice d'au moins 5 questions réussi à <b>50 % ou plus</b> fait avancer ta barre de progression. Une fois la barre pleine, l'<b>examen de passage</b> se débloque : 15 questions, <b>12 bonnes réponses</b> pour être promu, avec feu d'artifice et ton nouveau galon.",n:"Il faut 3 exercices réussis pour les premiers grades, un peu plus à mesure que tu montes. Examen raté : nouvel essai après 3 exercices réussis."},
  {art:`<div class="tpair"><div>${gradeSvg("SCH","tgr")}<b>Sergent-chef</b></div><div><span class="tgr">${LTN_HELM}</span><b>Niveau Officier</b></div></div>`,t:"Garde tes galons",p:"<b>3 exercices d'affilée sous 50 %</b> et tu redescends d'un grade : l'appli te prévient dès le 2e. Au-delà de <b>Sergent-chef</b>, seuls les exercices du <b>niveau Officier</b> font progresser : pour viser Adjudant, Lieutenant ou Général, il faut maîtriser les questions expertes.",n:"Ton grade, ta barre de progression et le bouton de l'examen sont dans Profil › Moi et en haut du menu Statistiques. Ton galon s'affiche aussi devant ton pseudo dans les classements."},
- {art:`<div class="tpair">${ic(FLAME_IC,"#ff6a00")}${ic(I.refresh,"#0f1d36")}</div>`,t:"Ton profil, tes réglages",p:"Dans Profil › Moi : choisis ton ambiance : <b>Normal</b>, <b>Braise</b> (messages de sergent-chef énervé, sans effets) ou <b>On Fire</b> (en plus, thème enflammé et animations). Et si l'appli semble ancienne, touche <b>Forcer la mise à jour</b> pour charger la dernière version.",n:"Ta version et la dernière version en ligne y sont affichées. Ta progression est conservée."},
+ {art:`<div class="tpair">${ic(FLAME_IC,"#ff6a00")}${ic(I.refresh,"#0f1d36")}</div>`,t:"Ton profil, tes réglages",p:"Dans Profil › Moi : choisis ton ambiance : <b>Normal</b>, <b>Braise</b> (messages de sergent-chef énervé, sans effets) ou <b>On Fire</b> (en plus, thème enflammé et animations : 5 bonnes réponses d'affilée déclenchent la lance, 3 erreurs l'alarme, et 10 de suite la médaille <b>Soldat du feu</b>). Et si l'appli semble ancienne, touche <b>Forcer la mise à jour</b> pour charger la dernière version.",n:"Ta version et la dernière version en ligne y sont affichées. Ta progression est conservée."},
  {art:ic(I.plus,"#e3051b"),t:"À toi de jouer !",p:"Sur iPhone, ajoute l'appli à ton écran d'accueil : bouton <b>Partager</b> puis <b>Sur l'écran d'accueil</b>. Le menu se trouve en haut à droite de chaque page.",n:"Tu pourras revoir cette présentation à tout moment dans Profil › Moi › Tutoriel."}]}
 const NEWS={rank:{n:2,t:"Nouveau dans la version 3.2",p:"Deux nouveautés : un <b>grade de progression</b> qui évolue avec tes résultats, et un menu <b>Statistiques</b> à part. Voici comment ça marche."},
+ new340:{n:3,t:"Nouveau dans la version 3.4",p:"Trois nouveaux jeux, un thème Culture BSPP, des gages pour les duels, des notifications de défi et des équipes mieux organisées. Voici l'essentiel."},
  duel:{n:1,t:"Nouveau dans la version 3.3",p:"Les <b>duels</b> arrivent : défie tes collègues, gagne la médaille… ou passe le balai. Et le menu <b>Statistiques</b> a été refait, avec ses onglets Résumé, Évolution et Fiches."}};
 function openTuto(onDone,from){let S=tutoSlides();if(from&&NEWS[from]){const k=S.findIndex(x=>x.id===from);const N=NEWS[from];if(k>0)S=[{art:`<div class="tlogos">${LOGOS}</div>`,t:N.t,p:N.p,n:"Tu pourras revoir tout le tutoriel dans Profil › Moi › Tutoriel."},...S.slice(k,k+N.n)]}let i=0;const el=document.createElement("div");el.className="tuto";el.setAttribute("role","dialog");el.setAttribute("aria-modal","true");document.body.appendChild(el);
  const close=()=>{el.remove();document.removeEventListener("keydown",key);if(onDone)onDone()};
@@ -1118,7 +1269,7 @@ function applyFire(){document.body.classList.toggle("onfire",onFire);let fx=docu
  const fl=[...Array(9)].map((_,i)=>`<span class="fl" style="left:${3+i*11.5}%;--s:${.7+((i*37)%5)/10};--d:${(i*.23)%1.4}s">${FLAME_IC}</span>`).join("");
  const em=[...Array(14)].map((_,i)=>`<i class="em" style="left:${(i*71)%100}%;--d:${(i*.61)%6}s;--t:${5+(i*13)%5}s;--x:${((i*29)%40)-20}px"></i>`).join("");
  fx.innerHTML=`<div class="flames">${fl}</div>${em}<div class="firetag">${FLAME_IC}<span>ON FIRE</span></div>`;document.body.appendChild(fx)}
-function fireFx(ok){if(!onFire||matchMedia("(prefers-reduced-motion: reduce)").matches)return;const b=document.querySelector(".opt.good")||document.querySelector(".opt");if(!b)return;const r=b.getBoundingClientRect();
+function fireFx(ok){fireCombo(ok);if(!onFire||matchMedia("(prefers-reduced-motion: reduce)").matches)return;const b=document.querySelector(".opt.good")||document.querySelector(".opt");if(!b)return;const r=b.getBoundingClientRect();
  const box=document.createElement("div");box.className="burst "+(ok?"ok":"ko");box.style.left=(r.left+r.width/2)+"px";box.style.top=(r.top+r.height/2)+"px";
  box.innerHTML=ok?[...Array(7)].map((_,i)=>`<span style="--a:${i*51}deg;--dl:${i*25}ms">${FLAME_IC}</span>`).join(""):`<span class="puff">Pschhht !</span>`;document.body.appendChild(box);setTimeout(()=>box.remove(),1300)}
 /* ---- gags animés aléatoires sur le thème du secours (en plus du feu) ---- */
@@ -1137,7 +1288,7 @@ const G_LAD='<svg viewBox="0 0 40 170" preserveAspectRatio="none"><path d="M8 0v
 let gagT=null;
 function startGags(){if(gagT||matchMedia("(prefers-reduced-motion: reduce)").matches)return;const next=d=>{gagT=setTimeout(()=>{if(!onFire){gagT=null;return}if(!document.hidden&&!$("#sheet")&&!document.querySelector(".tuto"))playGag();next(18000+Math.random()*27000)},d)};next(5000+Math.random()*4000)}
 function stopGags(){clearTimeout(gagT);gagT=null;document.querySelectorAll(".gag").forEach(x=>x.remove())}
-function playGag(kind){const k=kind||pick(["amb","fpt","branc","rain","rain","ext","gyro","lance","lance","chat","ronf"]);const el=document.createElement("div");el.className="gag gag-"+k;el.setAttribute("aria-hidden","true");let life=7000;
+function playGag(kind){const k=kind||pick(["amb","fpt","branc","rain","rain","ext","gyro","lance","lance","chat","ronf","vsav","perche","dae"]);const el=document.createElement("div");el.className="gag gag-"+k;el.setAttribute("aria-hidden","true");let life=7000;
  if(k==="amb"){const ltr=Math.random()<.5;el.classList.add(ltr?"ltr":"rtl");el.style.top=(25+Math.random()*45)+"vh";el.innerHTML=`<div class="veh">${G_AMB}</div><span class="bub">${pick(["Pin-pon !","Pin-pon, pin-pon !","On arrive !","Départ immédiat !","Statut 1 !"])}</span>`;life=6200}
  else if(k==="branc"){el.style.top=(30+Math.random()*40)+"vh";el.innerHTML=`<div class="veh">${G_BRANC}</div><span class="bub">${pick(["Brancardage en cours…","On ne court pas, on se presse !","Attention la marche !","Il faut un renfort brancardage !"])}</span>`;life=7500}
  else if(k==="rain"){el.innerHTML=[...Array(16)].map((_,i)=>`<span class="drop" style="left:${(i*6.3+Math.random()*4)%98}%;--d:${(Math.random()*2.2).toFixed(2)}s;--t:${(3+Math.random()*2.5).toFixed(2)}s;--r:${Math.round(Math.random()*720-360)}deg;--w:${Math.round(22+Math.random()*18)}px">${pick(G_ITEMS)}</span>`).join("");life=7600}
@@ -1146,6 +1297,11 @@ function playGag(kind){const k=kind||pick(["amb","fpt","branc","rain","rain","ex
  else if(k==="fpt"){el.className="gag gag-amb gag-fpt "+(Math.random()<.5?"ltr":"rtl");el.style.top=(25+Math.random()*45)+"vh";el.innerHTML=`<div class="veh">${G_FPT}</div><span class="bub">${pick(["Engin pompe en route !","Pin-pon, pousse-toi !","Renfort brancardage, 6 personnels !","Qui a commandé une ouverture de porte ?"])}</span>`;life=6200}
  else if(k==="lance"){el.innerHTML=`<div class="pomp">${G_POMP}</div><svg class="jet" viewBox="0 0 300 140" preserveAspectRatio="none"><path d="M0 112C90 0 210 0 300 150"/><path class="j2" d="M0 116C100 20 200 20 300 150"/></svg><span class="bub">${pick(["Établissement de la lance !","Attaque du foyer !","Eau !","Feu éteint… pour l'instant."])}</span>`;life=6200;document.body.classList.add("doused");setTimeout(()=>document.body.classList.remove("doused"),5200)}
  else if(k==="chat"){el.innerHTML=`<div class="lad">${G_LAD}<div class="cat">${G_CAT}</div></div><span class="bub">${pick(["Miaou ! Sauvetage animalier réussi.","Le chat redescend tout seul en général…","Opération chat perché terminée !"])}</span>`;life=7000}
+ else if(k==="arrose"){el.innerHTML=`<div class="pomp">${G_POMP}</div>${[0,1,2].map(n=>`<svg class="jet jet${n}" viewBox="0 0 300 140" preserveAspectRatio="none"><path d="M0 112C90 0 210 0 300 150"/><path class="j2" d="M0 116C100 20 200 20 300 150"/></svg>`).join("")}<span class="bub">${pick(["Combo ×5 : on noie le feu !","Lance en grand débit !","Arrosage général !"])}</span>`;el.classList.add("gag-lance");life=6200;document.body.classList.add("doused");setTimeout(()=>document.body.classList.remove("doused"),5200)}
+ else if(k==="alarme"){el.innerHTML=`<div class="smoke"></div><span class="bub">${pick(["Évacuation ! Tout le monde dehors !","Alarme incendie : on évacue !","3 erreurs… ça sent le roussi !"])}</span>`;life=4200}
+ else if(k==="vsav"){el.className="gag gag-amb gag-vsav rtl";el.style.top=(25+Math.random()*45)+"vh";el.innerHTML=`<div class="veh">${G_AMB}</div><span class="bub">${pick(["Bip… bip… bip… marche arrière !","On recule, on recule…","VSAV à contresens !"])}</span>`;life=6200}
+ else if(k==="perche"){el.innerHTML=`<div class="pole"></div><div class="slider">${G_POLE}</div><span class="bub">${pick(["Glissade réglementaire !","La perche : interdite aux CRF, hein !","Départ par la perche !"])}</span>`;life=4200}
+ else if(k==="dae"){el.innerHTML=`<div class="daebox">${G_DAE}</div><div class="zap"></div><span class="bub">${pick(["Analyse… choc recommandé !","Écartez-vous ! Choc délivré.","Personne ne touche la victime !"])}</span>`;life=3600;setTimeout(()=>{app.classList.add("shake");setTimeout(()=>app.classList.remove("shake"),600)},1500)}
  else if(k==="ronf"){el.innerHTML=`<span class="bub">${pick(["Ronfleur ! Court, long, court…","Départ ! Le café attendra.","Ronfleur… pile pendant le repas !"])}</span>`;life=3200;app.classList.add("shake");setTimeout(()=>app.classList.remove("shake"),700)}
  document.body.appendChild(el);setTimeout(()=>el.remove(),life);alog("gag",k)}
 applyFire();
@@ -1788,7 +1944,7 @@ function hospQuestions(expert){const n=expert?4:3;const Q=[];const P=()=>pick(HO
  const withS=k=>HOSP.filter(h=>h.sp.includes(k)),without=k=>HOSP.filter(h=>!h.sp.includes(k));
  const dep={"75":"Paris (75)","92":"Hauts-de-Seine (92)","93":"Seine-Saint-Denis (93)","94":"Val-de-Marne (94)"};
  const gens=[
-  ()=>{const k=pick(Object.keys(HSP).filter(k=>withS(k).length&&(expert||!["trauma","neuro","dentaire"].includes(k))));const h=pick(withS(k));const o=opts(h,without(k));
+  ()=>{let k=pick(Object.keys(HSP).filter(k=>withS(k).length&&(expert||!["trauma","neuro","dentaire"].includes(k))));if(k==="ophtalmo"&&Math.random()<.7)return null;const h=pick(withS(k));const o=opts(h,without(k));
    return{id:"sp2h:"+k+":"+h.n,q:`Lequel de ces hôpitaux propose : ${HSP[k].toLowerCase()} ?`,choices:o.map(x=>x.n),answer:o.indexOf(h),e:`${HSP[k]} : ${withS(k).map(x=>x.n).join(", ")}.`}},
   ()=>{const h=pick(HOSP.filter(x=>x.sp.some(k=>!["sau","saup"].includes(k))));const k=pick(h.sp);const o=opts(k,Object.keys(HSP).filter(x=>!h.sp.includes(x)));
    return{id:"h2sp:"+h.n,q:`Que trouve-t-on à l'hôpital ${h.n} ?`,choices:o.map(x=>HSP[x]),answer:o.indexOf(k),e:`${h.n} : ${h.sp.map(x=>HSP[x]).join(", ")}.`}},
@@ -1799,8 +1955,8 @@ function hospQuestions(expert){const n=expert?4:3;const Q=[];const P=()=>pick(HO
   ()=>({id:"sossau",q:"Que signifie SAU ?",choices:shuffle(["Service d'accueil des urgences","Service d'aide urgente","Secteur d'accueil unifié","Service ambulancier d'urgence"]).slice(0,n),fix:"Service d'accueil des urgences",e:"SAU = Service d'accueil des urgences : les urgences générales d'un hôpital. SAU pédiatrique = urgences des enfants."}),
   ()=>{const h=pick(withS("main").filter(x=>!x.sp.includes("saup")));const o=opts(h,without("main"));
    return{id:"main:"+h.n,q:"Une victime adulte a une plaie grave de la main. Lequel de ces hôpitaux a un centre SOS Mains ?",choices:o.map(x=>x.n),answer:o.indexOf(h),e:"SOS Mains adultes : Saint-Antoine et Georges-Pompidou (HEGP). Enfants : Robert-Debré."}},
-  ()=>({id:"psy",q:"Quel hôpital est connu pour l'accueil psychiatrique d'urgence 24 h/24 (CPOA) ?",choices:shuffle(["Sainte-Anne (GHU Paris)",...shuffle(["Quinze-Vingts","Saint-Antoine","Beaujon","Tenon"]).slice(0,n-1)]),fix:"Sainte-Anne (GHU Paris)",e:"Le CPOA (Centre psychiatrique d'orientation et d'accueil) est à Sainte-Anne, 1 rue Cabanis (14e)."}),
-  ()=>({id:"1520",q:"Pour quelle spécialité l'hôpital des Quinze-Vingts est-il connu ?",choices:shuffle(["Ophtalmologie",...shuffle(["Dermatologie","ORL","Dentaire","Psychiatrie"]).slice(0,n-1)]),fix:"Ophtalmologie",e:"Les Quinze-Vingts (12e) : centre hospitalier national d'ophtalmologie."})];
+  ()=>({id:"psy",q:"Quel hôpital est connu pour l'accueil psychiatrique d'urgence 24 h/24 (CPOA) ?",choices:shuffle(["Sainte-Anne (GHU Paris)",...shuffle(["Bichat","Saint-Antoine","Beaujon","Tenon"]).slice(0,n-1)]),fix:"Sainte-Anne (GHU Paris)",e:"Le CPOA (Centre psychiatrique d'orientation et d'accueil) est à Sainte-Anne, 1 rue Cabanis (14e)."}),
+  ()=>Math.random()<.3&&({id:"1520",q:"Pour quelle spécialité l'hôpital des Quinze-Vingts est-il connu ?",choices:shuffle(["Ophtalmologie",...shuffle(["Dermatologie","ORL","Dentaire","Psychiatrie"]).slice(0,n-1)]),fix:"Ophtalmologie",e:"Les Quinze-Vingts (12e) : centre hospitalier national d'ophtalmologie."})];
  if(expert)gens.push(
   ()=>({id:"orlnuit",q:"Urgence ORL chez un adulte, un samedi à 20 h. Quel hôpital AP-HP assure les urgences ORL à ces horaires ?",choices:shuffle(["Lariboisière","Necker-Enfants malades","Cochin","Pitié-Salpêtrière"]),fix:"Lariboisière",e:"ORL adultes : Lariboisière (nuits dès 18 h 30, samedi dès 13 h, dimanches et fériés). ORL enfants : Necker."}),
   ()=>({id:"ophnuit",q:"Urgence ophtalmologique un dimanche, patient non suivi à l'AP-HP. Vers quel hôpital AP-HP ?",choices:shuffle(["Cochin (Ophtalmopole)","Lariboisière","Bichat","Saint-Antoine"]),fix:"Cochin (Ophtalmopole)",e:"L'Ophtalmopole de Cochin prend les urgences ophtalmo l'après-midi, la nuit, le dimanche et les jours fériés, et toute la journée pour les patients non suivis."}),
@@ -1810,7 +1966,7 @@ function hospQuestions(expert){const n=expert?4:3;const Q=[];const P=()=>pick(HO
   ()=>{const h=pick(without("sau"));const o=opts(h,withS("sau"));return{id:"nosau:"+h.n,q:"Lequel de ces hôpitaux n'a PAS de SAU adultes ?",choices:o.map(x=>x.n),answer:o.indexOf(h),e:`${h.n} : ${h.sp.map(x=>HSP[x]).join(", ")}.`}},
   ()=>{if(!SECT)return null;const s=pick(SECT.sect);const L=withS("sau").map(h=>({h,d:kmTo(s.ll,h.ll)})).sort((a,b)=>a.d-b.d);const far=L.slice(1).filter(x=>x.d-L[0].d>1.2);if(far.length<n-1)return null;
    const o=shuffle([L[0],...shuffle(far.slice(0,6)).slice(0,n-1)]);return{id:"near:"+s.code,q:`Depuis le CS ${s.name}, quel est l'hôpital avec SAU adultes le plus proche (à vol d'oiseau) ?`,choices:o.map(x=>x.h.n),answer:o.indexOf(L[0]),e:`${L[0].h.n}, à ${fmtKm(L[0].d)} du CS ${s.name}. L'orientation reste décidée par la régulation.`}});
- const seen=new Set(),fam={},cap={sp2h:3,h2sp:2,near:2,dep:1};let guard=0;while(Q.length<10&&guard++<400){const q=pick(gens)();if(!q||seen.has(q.id))continue;const f=q.id.split(":")[0];if((fam[f]||0)>=(cap[f]||1))continue;q.choices=q.choices.map(hShort);q.q=HOSP.reduce((t,h)=>h.n.includes("(")?t.split(h.n).join(hShort(h.n)):t,q.q);if(q.fix)q.fix=hShort(q.fix);if(new Set(q.choices).size<q.choices.length)continue;fam[f]=(fam[f]||0)+1;seen.add(q.id);
+ const seen=new Set(),fam={},cap={sp2h:3,h2sp:2,near:2,dep:1};let guard=0;while(Q.length<10&&guard++<400){const q=pick(gens)();if(!q||seen.has(q.id))continue;const f=q.id.split(":")[0];if((fam[f]||0)>=(cap[f]||1))continue;if(/Quinze-Vingts/.test(q.q+q.choices.join())&&Math.random()<.75)continue;q.choices=q.choices.map(hShort);q.q=HOSP.reduce((t,h)=>h.n.includes("(")?t.split(h.n).join(hShort(h.n)):t,q.q);if(q.fix)q.fix=hShort(q.fix);if(new Set(q.choices).size<q.choices.length)continue;fam[f]=(fam[f]||0)+1;seen.add(q.id);
   if(q.fix){if(!q.choices.includes(q.fix))q.choices[0]=q.fix;q.choices=shuffle(q.choices);q.answer=q.choices.indexOf(q.fix)}Q.push(q)}
  return Q}
 function runHospQuiz(expert,back){back=back||(()=>go("home"));loadSect().catch(()=>null).then(()=>{const pre=expert?"hosp:":"s:hosp:";const qs=freshGen(()=>hospQuestions(expert),pre,10);let i=0,score=0,combo=0;
@@ -1914,6 +2070,12 @@ function fireCard(){const d={off:"Encouragements adaptés à ton niveau, sans ef
 function bindFire(){document.querySelectorAll("[data-fx]").forEach(b=>b.onclick=async()=>{const m=b.dataset.fx;if(m===fxMode)return;document.querySelectorAll("[data-fx]").forEach(x=>x.disabled=true);
  try{await api("profile","PUT",{fx:m});setFx(m,true);alog("fire",m);toast({off:"Retour au calme. Repos !",sgt:"Mode Braise activé. Garde-à-vous !",fire:"Mode On Fire allumé. Ça va chauffer !"}[m]);viewProfile()}catch(e){document.querySelectorAll("[data-fx]").forEach(x=>x.disabled=false);toast(e.error||"Erreur.")}})}
 function updCard(){return `<div class="sect">Mise à jour</div><div class="card"><p class="small" style="margin:0 0 10px">Version installée : <b>${APP_VER}</b> · <span id="verOnline">en ligne : vérification…</span></p><button class="btn sec full" id="forceUpd">${I.refresh} Forcer la mise à jour de l'appli</button><p class="small" style="margin:8px 0 0">Recharge la dernière version mise en ligne (vide le cache de l'appli, garde tes documents téléchargés et ta progression).</p></div>`}
+// 3.4.0 : au lancement, si une version plus récente est en ligne, on le signale (une fois par version)
+async function updWatch(){if(navigator.onLine===false)return;try{const t=await (await fetch("sw.js?t="+Date.now(),{cache:"no-store"})).text();const m=t.match(/quiz-ci-v?([\d.]+)/);const v=m&&m[1];
+ const n=x=>String(x).split(".").map(Number);const newer=(a,b)=>{const A=n(a),B=n(b);for(let i=0;i<3;i++){if((A[i]||0)!==(B[i]||0))return (A[i]||0)>(B[i]||0)}return false};
+ if(!v||!newer(v,APP_VER)||store.get("updSeen","")===v||document.querySelector(".updbar"))return;const el=document.createElement("div");el.className="updbar";el.innerHTML=`<span>Nouvelle version <b>${esc(v)}</b> disponible</span><button class="btn small" data-uok>Mettre à jour</button><button class="updx" data-ux aria-label="Plus tard">✕</button>`;document.body.appendChild(el);
+ el.querySelector("[data-uok]").onclick=()=>{el.remove();forceUpdate()};el.querySelector("[data-ux]").onclick=()=>{store.set("updSeen",v);el.remove()}}catch(e){}}
+setTimeout(updWatch,8000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)setTimeout(updWatch,1500)});
 async function checkOnline(){const el=$("#verOnline");if(!el)return;try{const t=await (await fetch("sw.js?t="+Date.now(),{cache:"no-store"})).text();const m=t.match(/quiz-ci-v?([\d.]+)/);const v=m?m[1]:"?";el.innerHTML=v===APP_VER?"à jour ✓":`en ligne : <b>${v}</b> – mets à jour !`}catch(e){el.textContent="en ligne : hors connexion"}}
 async function forceUpdate(){const b=$("#forceUpd");if(b){b.disabled=true;b.textContent="Mise à jour en cours…"}alog("maj","force",{ver:APP_VER});
  try{await Promise.race([syncNow(),new Promise(r=>setTimeout(r,2500))])}catch(e){}try{logFlush(true)}catch(e){}
@@ -1924,7 +2086,20 @@ function usageCard(){return `<div class="sect">Mode d'utilisation</div><div clas
   <div class="seg usage"><button data-usage="apprenti" aria-pressed="${usage==="apprenti"}">${CROSS_IC}<span>Apprenti</span></button><button data-usage="ci" aria-pressed="${usage==="ci"}">${HELMET_IC}<span>CI BSPP</span></button></div>
   <p class="small" style="margin:10px 0 0">${usage==="ci"?"<b>Mode CI BSPP</b> : l'appli garde le défi de la semaine et tes outils de garde (documents, codes CRI, messages radio, grades, carte des secteurs). L'entraînement est masqué, ta progression est conservée. Ce choix suit ton compte sur tous tes appareils.":"<b>Mode Apprenti</b> : tout l'entraînement (quiz, niveaux Sapeur et Officier, révisions, évaluation par fiche) en plus des outils. Passe en mode CI BSPP une fois ta formation validée."}</p></div>`}
 function bindUsage(){app.querySelectorAll("[data-usage]").forEach(b=>b.onclick=()=>{if(usage===b.dataset.usage)return;setUsage(b.dataset.usage);renderTabs();viewProfile();toast(usage==="ci"?"Mode CI BSPP activé.":"Mode Apprenti activé.")})}
-function viewMe(head){app.innerHTML=head+`${meCard()}${me&&!me.expired?rankCard():""}${usageCard()}${fireCard()}<div class="sect">Aide</div><div class="list"><button class="row" id="openTuto"><span class="ic" style="background:#e3051b">${TUTO_IC}</span><span class="tx"><b>Tutoriel et présentation</b><span>Revoir la visite guidée de l'appli</span></span><span class="chev">${I.chev}</span></button></div><p class="small" style="margin:8px 4px 0">Pour corriger les bugs, l'appli enregistre ton activité (pages ouvertes, boutons touchés, réponses, erreurs) pendant 30 jours. Seuls les administrateurs y ont accès.</p>${updCard()}${accountCard()}`;bindProfTabs();bindMe();bindUsage();bindFire();bindRank();$("#openTuto").onclick=()=>openTuto();$("#forceUpd").onclick=forceUpdate;checkOnline()}
+// 3.4.0 : notifications de duel (« untel t'a défié »), rien d'autre
+const pushOK=()=>"serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;
+const pushIOSHint=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)&&!(matchMedia("(display-mode: standalone)").matches||navigator.standalone);
+function pushCard(){if(!me||me.expired)return"";const on=pushOK()&&store.get("pushOn",false)&&Notification.permission==="granted";
+ const hint=!pushOK()?(pushIOSHint()?"Sur iPhone, installe d'abord l'appli sur l'écran d'accueil (Partager › Sur l'écran d'accueil), puis reviens ici.":"Ce navigateur ne gère pas les notifications."):Notification.permission==="denied"?"Les notifications sont bloquées pour cette appli dans les réglages du téléphone.":"";
+ return `<div class="sect">Notifications</div><div class="card"><b>Défis et mises à jour</b><p class="small" style="margin:6px 0 10px">Deux notifications seulement : quand quelqu'un te défie en duel (différé ou en direct), et quand une nouvelle version de l'appli est disponible. Rien d'autre.</p>${hint?`<p class="small" style="margin:0">${hint}</p>`:`<button class="btn ${on?"sec ":""}full" id="pushT">${on?"Désactiver les notifications":"Activer les notifications"}</button>`}<p class="small" id="pushM" style="margin:6px 0 0"></p></div>`}
+const ub64k=s=>{const b=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((s.length+3)%4));return Uint8Array.from(b,c=>c.charCodeAt(0))};
+function bindPush(){const b=$("#pushT");if(!b)return;b.onclick=async()=>{const m=$("#pushM");b.disabled=true;try{const reg=await navigator.serviceWorker.ready;
+ if(store.get("pushOn",false)&&Notification.permission==="granted"){const sub=await reg.pushManager.getSubscription();if(sub){await api("push/unsub","POST",{endpoint:sub.endpoint}).catch(()=>{});await sub.unsubscribe()}store.set("pushOn",false);toast("Notifications désactivées.")}
+ else{const perm=await Notification.requestPermission();if(perm!=="granted"){m.textContent="Autorisation refusée : tu peux la changer dans les réglages du téléphone.";b.disabled=false;return}
+  const k=(await api("push/key")).key;let sub=await reg.pushManager.getSubscription();if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:ub64k(k)});
+  await api("push/sub","POST",{sub:sub.toJSON()});store.set("pushOn",true);toast("Notifications activées.");alog("push","activées")}
+ viewProfile()}catch(e){m.textContent=e.error||"Impossible d'activer les notifications sur cet appareil.";b.disabled=false}}}
+function viewMe(head){app.innerHTML=head+`${meCard()}${me&&!me.expired?rankCard():""}${usageCard()}${fireCard()}${pushCard()}<div class="sect">Aide</div><div class="list"><button class="row" id="openTuto"><span class="ic" style="background:#e3051b">${TUTO_IC}</span><span class="tx"><b>Tutoriel et présentation</b><span>Revoir la visite guidée de l'appli</span></span><span class="chev">${I.chev}</span></button></div><p class="small" style="margin:8px 4px 0">Pour corriger les bugs, l'appli enregistre ton activité (pages ouvertes, boutons touchés, réponses, erreurs) pendant 30 jours. Seuls les administrateurs y ont accès.</p>${updCard()}${accountCard()}`;bindProfTabs();bindMe();bindUsage();bindFire();bindPush();bindRank();$("#openTuto").onclick=()=>openTuto();$("#forceUpd").onclick=forceUpdate;checkOnline()}
 /* ---- graphiques d'évolution (barres SVG, une seule série : pas de légende, le titre la nomme) ---- */
 let evoPer=store.get("evoPer","w");
 const MOIS=["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."];
@@ -2028,7 +2203,7 @@ async function loadCfg(){try{srvCfg=await api("config");store.set("srvCfg",srvCf
 function themePct(){const o={};DATA.forEach(t=>{const items=ALL.filter(x=>x._t===t&&SCORED.has(x._k));const k=items.filter(x=>known(x._id)).length;o[t.id]=items.length?Math.round(k/items.length*100):0});return o}
 function buildStats(){const g=globalStats();const w=isoWeek();
   const T=cntTotal(),W=wkTotal(),H=myHist();return {points:W.points,week:w,total:T.points,hw:H.hw,hm:H.hm,answered:T.answered,correct:T.correct,fichesOk:g.by.ok,fichesTotal:FICHES.length,seen:Object.keys(hist).length,streak:streak(),
-    rank:rankObj.g,dw:Object.values(duelCr).filter(v=>v===30).length,dl:Object.values(duelCr).filter(v=>v===10).length,bestExam:best.exam||0,bestQcm:best.qcm||0,bestChrono:best.chrono||0,themes:themePct(),defi:defiDone[w]?{week:w,score:defiDone[w].score,ms:defiDone[w].ms}:null}}
+    rank:rankObj.g,sudden:best.sudden||0,dw:Object.values(duelCr).filter(v=>v===30).length,dl:Object.values(duelCr).filter(v=>v===10).length,bestExam:best.exam||0,bestQcm:best.qcm||0,bestChrono:best.chrono||0,themes:themePct(),defi:defiDone[w]?{week:w,score:defiDone[w].score,ms:defiDone[w].ms}:null}}
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
   const rdA = a.radio, rdB = b.radio; // l'indicatif radio survit aux remises à zéro
@@ -2181,7 +2356,7 @@ function renderBoard(fromRefresh){const el=$("#board");if(!el)return;
 // niveau 1 : mon équipe, les équipes, tout le monde
 function rkTop(el){const rows=teamRanking(),mine=myTeamId(),tm=teamOf(mine),all=(board&&board.profiles||[]);const ti=rows.findIndex(x=>x.t.id===mine);
  const meP=all.find(p=>p.id===me.id);const inTeam=tm?all.filter(p=>p.team===mine).sort((a,b)=>wpts(b)-wpts(a)):[];const myRk=inTeam.findIndex(p=>p.id===me.id);
- el.innerHTML=`${tm?`<button class="card rkteam" data-rkteam="${esc(mine)}"><div class="rkteamh"><span class="av" style="width:44px;height:44px;background:var(--navy2);font-size:16px">${esc(initials(tm.name))}</span><div><span class="small">Mon équipe</span><b>${esc(tm.name)}</b></div><span class="chev">${I.chev}</span></div>
+ el.innerHTML=`${tm?`<button class="card rkteam" data-rkteam="${esc(mine)}"><div class="rkteamh"><span class="av" style="width:44px;height:44px;background:var(--navy2);font-size:16px">${esc(initials(tm.name))}</span><div><span class="small">Mon équipe</span><b>${esc(tm.name)}</b>${(tm.pending||[]).length?`<span class="pill warn" style="margin-top:4px;align-self:flex-start">${tm.pending.length} demande${tm.pending.length>1?"s":""} à valider</span>`:""}${(tm.votes||[]).length?`<span class="pill warn" style="margin-top:4px;align-self:flex-start">${tm.votes.length} vote${tm.votes.length>1?"s":""} en cours</span>`:""}</div><span class="chev">${I.chev}</span></div>
    <div class="rkkpi"><div><b>${myRk+1}<small>/${inTeam.length}</small></b><span>ma place</span></div><div><b>${ti+1}<small>/${rows.length}</small></b><span>place de l'équipe</span></div><div><b>${(rows[ti]?rows[ti].avg:0).toLocaleString("fr-FR")}</b><span>pts moyens</span></div></div></button>`:noTeamCard()}
   <div class="sect">Classements de la semaine</div>
   <div class="list">${rows.map((x,i)=>`<button class="row lbrow ${x.t.id===mine?"mine":""}" data-rkteam="${esc(x.t.id)}"><span class="rk ${i<3?"top"+(i+1):""}">${i+1}</span><span class="av" style="width:36px;height:36px;background:var(--navy2);font-size:14px">${esc(initials(x.t.name))}</span><span class="tx"><b>${esc(x.t.name)}${x.t.id===mine?" (mon équipe)":""}</b><span>${x.n} membre${x.n>1?"s":""}</span></span><span class="val">${x.avg.toLocaleString("fr-FR")} pts moy.</span><span class="chev">${I.chev}</span></button>`).join("")}
@@ -2201,6 +2376,7 @@ function rkList(el){const all=(board&&board.profiles||[]);const isTeam=rkNav.v==
   <div class="seg rkm">${RKM.map(([k,l])=>`<button data-rkm="${k}" aria-pressed="${k===rkMetric}">${l}</button>`).join("")}</div>
   ${rkMetric==="defi"?`<div class="card" style="margin:10px 0;display:flex;gap:12px;align-items:center"><div style="flex:1"><b>Défi ${isoWeek()}</b><div class="small">Seul le premier essai compte, égalité départagée au temps.</div></div><button class="btn small" id="bDefi">${defiDone[isoWeek()]?"Rejouer":"Jouer"}</button></div>`:""}
   <div class="list" style="margin-top:10px">${has.map((p,i)=>row(p,i)).join("")}${none.length?`${has.length?`<div class="rksep">${rkMetric==="defi"?"Pas encore joué le défi":rkMetric==="duels"?"Pas encore de duel":"Pas encore de points"}</div>`:""}${none.map(p=>row(p,-1)).join("")}`:""}</div>
+  ${isTeam&&rkNav.team===mine?teamGate(teamOf(mine),mem.length):""}
   ${isTeam&&rkNav.team===mine?`<div class="actions" style="margin-top:12px;flex-direction:column"><button class="btn sec full" data-teams="1">Changer d'équipe</button><button class="btn sec full" id="leaveTeam">Quitter l'équipe</button>${teamOf(mine)&&teamOf(mine).ownerId===me.id?`<button class="btn sec full" id="delTeam" style="color:var(--ko)">Supprimer l'équipe</button>`:""}</div><p class="small" id="tmMsg"></p>`:""}${rkUpdated()}`;
  bindCrumb(el,parts);el.querySelectorAll("[data-rkm]").forEach(b=>b.onclick=()=>{rkMetric=b.dataset.rkm;store.set("rkMetric",rkMetric);renderBoard(true)});
  el.querySelectorAll("[data-rkmem]").forEach(r=>r.onclick=e=>{if(e.target.closest("[data-duelp],[data-deco],[data-nick]"))return;rkGo({v:"member",id:r.dataset.rkmem,back:rkNav})});
@@ -2215,8 +2391,8 @@ function rkMember(el){const all=(board&&board.profiles||[]);const p=all.find(x=>
  el.innerHTML=`${rkCrumb(parts)}<div class="card rkmem"><div class="rkmemh">${avatar(p,56)}<div><b class="rkname">${esc(p.pseudo)}${isMe?" (toi)":""}${decoHtml(p)}</b>${nickHtml(p)?`<div>${nickHtml(p)}</div>`:""}<div class="small">${gradeSvg(rankCode(s.rank||0),"rkmini")}${esc(rankName(s.rank||0))}${t?` · ${esc(t.name)}`:""}${p.unite?` · ${esc(p.unite)}`:""}</div></div></div>
    ${decoOf(p)?`<p class="small rkdeco">${esc(decoText(p))}</p>`:""}</div>
   <div class="stgrid" style="margin-top:12px">${tile(wpts(p).toLocaleString("fr-FR"),"points cette semaine")}${tile((s.total||0).toLocaleString("fr-FR"),"points au total")}${tile(s.answered?Math.round(s.correct/s.answered*100)+" %":"—","de bonnes réponses")}${tile(t&&tr>=0?`${tr+1}<small>/${inTeam.length}</small>`:"—","place dans l'équipe")}${tile(s.defi&&s.defi.week===isoWeek()?s.defi.score+"/20":"—","défi de la semaine")}${tile(`${s.fichesOk||0}<small>/${s.fichesTotal||FICHES.length}</small>`,"fiches acquises")}${tile(s.streak||0,"jours de suite")}${tile(`${s.dw||0} V · ${s.dl||0} D`,"duels")}</div>
-  ${isMe?`<p class="small" style="margin:12px 4px">C'est ta fiche telle que les autres la voient. Le détail de ta progression est dans le menu Statistiques.</p>`:`${vs.length?`<div class="card" style="margin-top:12px"><b>Vos duels</b><p class="small" style="margin:4px 0 0">${vW} victoire${vW>1?"s":""} pour toi · ${vL} pour ${esc(p.pseudo)}${vs.length-vW-vL?` · ${vs.length-vW-vL} nul${vs.length-vW-vL>1?"s":""}`:""}</p></div>`:""}<button class="btn full" data-duelp="${esc(p.id)}" style="margin-top:12px">⚔ Défier ${esc(p.pseudo)}</button>`}`;
- bindCrumb(el,parts)}
+  ${isMe?`<p class="small" style="margin:12px 4px">C'est ta fiche telle que les autres la voient. Le détail de ta progression est dans le menu Statistiques.</p>`:`${vs.length?`<div class="card" style="margin-top:12px"><b>Vos duels</b><p class="small" style="margin:4px 0 0">${vW} victoire${vW>1?"s":""} pour toi · ${vL} pour ${esc(p.pseudo)}${vs.length-vW-vL?` · ${vs.length-vW-vL} nul${vs.length-vW-vL>1?"s":""}`:""}</p></div>`:""}<button class="btn full" data-duelp="${esc(p.id)}" style="margin-top:12px">⚔ Défier ${esc(p.pseudo)}</button>${p.team&&p.team===myTeamId()?voteBox(p):""}`}`;
+ bindCrumb(el,parts);bindVotes()}
 function noTeamCard(){return `<div class="card"><h2 style="font-size:20px;margin-bottom:6px">Tu n'es dans aucune équipe</h2><p class="small" style="margin:0 0 12px">Rejoins une équipe existante ou crée la tienne pour te comparer à tes coéquipiers.</p><button class="btn full" data-teams="1">Rejoindre ou créer une équipe</button></div>`}
 function teamCard(){const tid=myTeamId(),tm=teamOf(tid);
   if(!tm)return `<div class="sect">Mon équipe</div>${noTeamCard()}`;
@@ -2224,20 +2400,44 @@ function teamCard(){const tid=myTeamId(),tm=teamOf(tid);
   return `<div class="sect">Mon équipe</div><div class="card"><div style="display:flex;gap:12px;align-items:center"><span class="av" style="width:44px;height:44px;background:var(--navy2);font-size:17px">${esc(initials(tm.name))}</span><div style="flex:1;min-width:0"><b style="font-size:18px">${esc(tm.name)}</b><div class="small">${n} membre(s)${owner?" · tu l'as créée":""}</div></div></div>
    ${(()=>{const rk=teamRanking();const i=rk.findIndex(x=>x.t.id===tid);return i<0?"":`<button class="teamrank" id="goTeams"><span class="rk ${i<3?"top"+(i+1):""}" style="font-size:22px;width:auto">${i+1}<sup style="font-size:12px">${i?"e":"re"}</sup></span><span style="flex:1;text-align:left"><b>sur ${rk.length} équipe${rk.length>1?"s":""}</b><br><span class="small">Moyenne : ${rk[i].avg.toLocaleString("fr-FR")} pts par membre</span></span><span class="small" style="color:var(--red);font-weight:600">Classement ›</span></button>`})()}
    <div class="actions"><button class="btn sec small" data-teams="1">Changer d'équipe</button><button class="btn sec small" id="leaveTeam">Quitter</button>${owner||me.admin?`<button class="btn sec small" id="delTeam" style="color:var(--ko)">Supprimer l'équipe</button>`:""}</div><p class="small" id="tmMsg" style="margin:8px 0 0"></p></div>`}
-function bindTeams(){
+// 3.3.4 : vote d'exclusion (les autres membres déclenchent et votent ; majorité absolue des autres membres ; 48 h)
+function voteOf(uid){const tm=teamOf(myTeamId());return tm&&(tm.votes||[]).find(v=>v.uid===uid)||null}
+function voteLine(v){const n=(board.profiles||[]).find(x=>x.id===v.uid);return `<div class="vote"><div class="voteh"><b>Exclure ${esc(n?n.pseudo:"ce joueur")} ?</b><span class="small">proposé par ${esc(v.byN||"un membre")} · fin ${new Date(v.exp).toLocaleString("fr-FR",{weekday:"short",hour:"2-digit",minute:"2-digit"})}</span></div>
+  <div class="votebar"><i style="width:${Math.min(100,v.yes/v.need*100)}%"></i></div><p class="small" style="margin:4px 0 8px">${v.yes} pour · ${v.no} contre · ${v.need} voix « pour » nécessaires (${v.el} votant${v.el>1?"s":""})</p>
+  <div class="seg"><button data-vote="${esc(v.uid)}" data-yes="1" aria-pressed="${v.mine==="yes"}">Pour l'exclusion</button><button data-vote="${esc(v.uid)}" data-yes="0" aria-pressed="${v.mine==="no"}">Contre</button></div></div>`}
+function voteBox(p){const v=voteOf(p.id);return `<div class="card" style="margin-top:12px">${v?voteLine(v):`<b>Exclusion de l'équipe</b><p class="small" style="margin:4px 0 10px">Tu peux proposer d'exclure ${esc(p.pseudo)}. Les autres membres votent pendant 48 h ; il faut la majorité d'entre eux. ${esc(p.pseudo)} ne voit pas le vote.</p><button class="btn sec full" data-votestart="${esc(p.id)}" style="color:var(--ko)">Proposer son exclusion</button>`}<p class="small" id="vMsg" style="margin:6px 0 0"></p></div>`}
+function bindVotes(){const tid=myTeamId();
+ const go_=async(uid,yes,b)=>{b.disabled=true;try{const j=await api("teams/vote","POST",{teamId:tid,uid,yes});toast(j.result==="out"?"Majorité atteinte : le joueur est exclu de l'équipe.":j.result==="kept"?"Vote clos : le joueur reste dans l'équipe.":"Vote enregistré.");await loadBoard(true);renderBoard(true)}catch(e){const m=$("#vMsg")||$("#tgMsg");if(m)m.textContent=e.error||"Erreur.";b.disabled=false}};
+ app.querySelectorAll("[data-vote]").forEach(b=>b.onclick=()=>go_(b.dataset.vote,b.dataset.yes==="1",b));
+ app.querySelectorAll("[data-votestart]").forEach(b=>b.onclick=()=>{if(!b.dataset.c){b.dataset.c="1";b.textContent="Confirmer : lancer le vote";return}go_(b.dataset.votestart,true,b)})}
+// élimination : message au joueur exclu (flambeau éteint, dessin original)
+const TORCH='<svg viewBox="0 0 80 150" class="torch"><g class="tflame"><path d="M40 6c10 14 20 22 20 38 0 13-9 22-20 22S20 57 20 44c0-9 5-15 9-21 1 8 4 12 8 13-2-10 0-20 3-30z" fill="#ff8a00"/><path d="M40 30c6 8 10 13 10 21 0 7-4 11-10 11s-10-4-10-11c0-5 3-9 5-12 1 5 3 7 5 7-1-6-1-11 0-16z" fill="#ffd60a"/></g><path class="tsmoke" d="M40 60c-6-8 6-14 0-22s6-14 0-22" stroke="#9aa6b2" stroke-width="4" fill="none" stroke-linecap="round" opacity="0"/><path d="M26 64h28l-6 14H32z" fill="#8a5a2b"/><path d="M33 78h14l-4 66h-6z" fill="#b07a3e"/><path d="M33 90h14M34 104h12M35 118h10" stroke="#8a5a2b" stroke-width="3"/></svg>';
+function kickPop(k){if(document.querySelector(".kickpop"))return;const el=document.createElement("div");el.className="dlpop kickpop";
+ el.innerHTML=`<div class="dlbox kickbox"><div class="dltag">CONSEIL DE L'ÉQUIPE</div>${TORCH}<h3>Tu as été éliminé…</h3><p>Les membres de l'équipe <b>« ${esc(k.team)} »</b> ont décidé de t'éliminer, et leur sentence est irrévocable.</p><p class="small">Au revoir. Tu peux rejoindre ou créer une autre équipe quand tu veux.</p><div class="actions" style="margin:12px 0 0"><button class="btn full" data-kok>Éteindre mon flambeau</button></div></div>`;
+ document.body.appendChild(el);el.querySelector("[data-kok]").onclick=()=>{el.classList.add("out");api("kick/seen","POST",{}).catch(()=>{});me.team=null;saveMe();rkNav={v:"top"};loadBoard(true);setTimeout(()=>el.remove(),1900)};alog("equipe","élimination annoncée",{"équipe":k.team})}
+// 3.3.4 : adhésions validées par les membres et nombre maximum de joueurs
+function teamGate(tm,n){if(!tm)return"";const P=tm.pending||[];
+ return `<div class="sect">Adhésions</div><div class="card">${P.length?`<p class="small" style="margin:0 0 8px">Ces personnes demandent à rejoindre l'équipe. N'importe quel membre peut accepter ou refuser.</p><div class="list">${P.map(q=>`<div class="row"><span class="tx"><b>${esc(q.pseudo)}</b><span>demande du ${new Date(q.at).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</span></span><button class="btn small" data-tok="${esc(q.id)}">Accepter</button><button class="btn sec small" data-tno="${esc(q.id)}">Refuser</button></div>`).join("")}</div>`:`<p class="small" style="margin:0">Aucune demande en attente. Les nouvelles adhésions doivent être acceptées par un membre de l'équipe.</p>`}
+  ${(tm.votes||[]).length?`<div class="sect" style="margin:14px 0 6px">Votes d'exclusion</div>${tm.votes.map(voteLine).join("")}`:""}
+  <form id="tmaxF" style="display:flex;gap:8px;align-items:flex-end;margin-top:12px"><div style="flex:1;display:grid;gap:6px"><label for="tmax" class="small">Nombre maximum de membres (${n} actuellement)</label><select id="tmax"><option value="0"${!tm.max?" selected":""}>Pas de limite</option>${[...Array(98)].map((_,i)=>i+2).filter(v=>v>=n).map(v=>`<option value="${v}"${tm.max===v?" selected":""}>${v}</option>`).join("")}</select></div><button class="btn sec small" type="submit">Enregistrer</button></form><p class="small" id="tgMsg" style="margin:6px 0 0"></p></div>`}
+function bindGate(){const tid=myTeamId();
+ app.querySelectorAll("[data-tok],[data-tno]").forEach(b=>b.onclick=async()=>{const ok=!!b.dataset.tok;b.disabled=true;try{await api("teams/decide","POST",{teamId:tid,uid:b.dataset.tok||b.dataset.tno,ok});toast(ok?"Adhésion acceptée.":"Demande refusée.");await loadBoard(true);renderBoard(true)}catch(e){const m=$("#tgMsg");if(m)m.textContent=e.error||"Erreur.";b.disabled=false}});
+ const f=$("#tmaxF");if(f)f.onsubmit=async e=>{e.preventDefault();const m=$("#tgMsg");try{const j=await api("teams/max","PUT",{teamId:tid,max:+$("#tmax").value});toast(j.max?`Maximum enregistré : ${j.max} membres.`:"Pas de limite de membres.");await loadBoard(true)}catch(err){m.textContent=err.error||"Erreur."}}}
+function bindTeams(){bindGate();bindVotes();
   const gt=$("#goTeams");if(gt)gt.onclick=()=>{profTab="equipe";store.set("profTab",profTab);rkNav={v:"top"};viewProfile()};
   app.querySelectorAll("[data-teams]").forEach(b=>b.onclick=teamsSheet);
   const lv=$("#leaveTeam");if(lv)lv.onclick=async()=>{if(!lv.dataset.c){lv.dataset.c="1";lv.textContent="Confirmer : quitter";return}try{await api("teams/leave","POST",{});me.team=null;saveMe();rkNav={v:"top"};await loadBoard(true);viewProfile();toast("Tu as quitté l'équipe.")}catch(e){$("#tmMsg").textContent=e.error||"Erreur."}};
   const dl=$("#delTeam");if(dl)dl.onclick=async()=>{if(!dl.dataset.c){dl.dataset.c="1";dl.textContent="Confirmer la suppression";$("#tmMsg").textContent="L'équipe sera supprimée pour tous ses membres (leurs scores sont conservés).";return}
     try{await api("teams","DELETE",{teamId:myTeamId()});me.team=null;saveMe();rkNav={v:"top"};await loadBoard(true);viewProfile();toast("Équipe supprimée.")}catch(e){$("#tmMsg").textContent=e.error||"Erreur."}};
 }
-async function teamsSheet(){const sh=sheet(`<h2>Équipes</h2><p class="small">Tu ne peux être que dans une seule équipe à la fois.</p><div id="tlist"><div class="loading">Chargement…</div></div>
+async function teamsSheet(){const sh=sheet(`<h2>Équipes</h2><p class="small">Tu ne peux être que dans une seule équipe à la fois. Pour entrer dans une équipe, un de ses membres doit accepter ta demande.</p><div id="tlist"><div class="loading">Chargement…</div></div>
    <div class="sect">Créer une équipe</div><form id="tform" class="form" style="display:flex;gap:8px;align-items:flex-end"><div style="flex:1;min-width:0;display:grid;gap:6px"><label for="tName" style="margin-top:0">Nom de l'équipe</label><input id="tName" maxlength="40" placeholder="ex. CRF Paris 18 · garde du lundi"></div><button class="btn" type="submit">Créer</button></form><p class="small" id="tsMsg" style="color:var(--ko)"></p>
    <div class="actions"><button class="btn sec full" data-close>Fermer</button></div>`);
   let data;try{data=await api("teams")}catch(e){sh.querySelector("#tlist").innerHTML=`<p class="small">${esc(e.error||"Erreur.")}</p>`;return}
   const cur=data.myTeam,curName=(data.teams.find(t=>t.id===cur)||{}).name;
-  sh.querySelector("#tlist").innerHTML=data.teams.length?`<div class="list">${data.teams.map(t=>`<div class="row"><span class="av" style="width:36px;height:36px;background:var(--navy2);font-size:14px">${esc(initials(t.name))}</span><span class="tx"><b>${esc(t.name)}</b><span>${t.members} membre(s) · créée par ${esc(t.owner)}</span></span>${t.id===cur?`<span class="pill ok">Ton équipe</span>`:`<button class="btn small" data-join="${esc(t.id)}">Rejoindre</button>`}</div>`).join("")}</div>${cur?`<p class="small" style="margin:8px 4px 0">Rejoindre une autre équipe te fera quitter « ${esc(curName||"ton équipe")} ».</p>`:""}`:`<p class="small">Aucune équipe pour l'instant. Crée la première ci-dessous.</p>`;
-  sh.querySelectorAll("[data-join]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{const j=await api("teams/join","POST",{teamId:b.dataset.join});me.team=j.team.id;saveMe();rkNav={v:"top"};closeSheet();await loadBoard(true);viewProfile();toast("Tu as rejoint « "+j.team.name+" ».")}catch(e){sh.querySelector("#tsMsg").textContent=e.error||"Erreur.";b.disabled=false}});
+  sh.querySelector("#tlist").innerHTML=data.teams.length?`<div class="list">${data.teams.map(t=>`<div class="row"><span class="av" style="width:36px;height:36px;background:var(--navy2);font-size:14px">${esc(initials(t.name))}</span><span class="tx"><b>${esc(t.name)}</b><span>${t.members}${t.max?"/"+t.max:""} membre(s) · créée par ${esc(t.owner)}</span></span>${t.id===cur?`<span class="pill ok">Ton équipe</span>`:t.asked?`<span class="pill warn">Demande envoyée</span><button class="btn sec small" data-tcancel>Annuler</button>`:t.max&&t.members>=t.max?`<span class="pill">Complète</span>`:`<button class="btn small" data-join="${esc(t.id)}">${t.members?"Demander":"Rejoindre"}</button>`}</div>`).join("")}</div>${cur?`<p class="small" style="margin:8px 4px 0">Rejoindre une autre équipe te fera quitter « ${esc(curName||"ton équipe")} ».</p>`:""}`:`<p class="small">Aucune équipe pour l'instant. Crée la première ci-dessous.</p>`;
+  sh.querySelectorAll("[data-join]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{const j=await api("teams/join","POST",{teamId:b.dataset.join});if(j.pending){closeSheet();toast("Demande envoyée à « "+j.team.name+" ». Un membre de l'équipe doit l'accepter.");teamsSheet();return}me.team=j.team.id;saveMe();rkNav={v:"top"};closeSheet();await loadBoard(true);viewProfile();toast("Tu as rejoint « "+j.team.name+" ».")}catch(e){sh.querySelector("#tsMsg").textContent=e.error||"Erreur.";b.disabled=false}});
+  sh.querySelectorAll("[data-tcancel]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api("teams/cancel","POST",{});closeSheet();toast("Demande annulée.");teamsSheet()}catch(e){b.disabled=false}});
   sh.querySelector("#tform").onsubmit=async e=>{e.preventDefault();const name=sh.querySelector("#tName").value.trim();try{const j=await api("teams","POST",{name});me.team=j.team.id;saveMe();rkNav={v:"top"};closeSheet();await loadBoard(true);viewProfile();toast("Équipe « "+j.team.name+" » créée.")}catch(err){sh.querySelector("#tsMsg").textContent=err.error||"Erreur."}};
 }
 function homeBoard(){if(!me||!board)return `<div id="homeBoard"></div>`;
@@ -2251,6 +2451,7 @@ function homeBoard(){if(!me||!board)return `<div id="homeBoard"></div>`;
   return `<div id="homeBoard"><div class="sect">${tm?"Mon équipe · "+esc(tm.name):"Classement général"}</div>
    <div class="card hbcard" id="hbGo" role="button" tabindex="0"><div class="hbhead"><b>${tm?"Mon équipe":"Tous les membres"}</b><span class="small">${members.length} membre${members.length>1?"s":""} ›</span></div>
     ${members.length?cut(members,p=>p.id===me.id).map(rowP).join(""):`<span class="small">Aucun membre pour l'instant.</span>`}
+    ${tm&&(tm.pending||[]).length?`<p class="small" style="margin:8px 0 0;color:var(--red);font-weight:600">${tm.pending.length} demande${tm.pending.length>1?"s":""} d'adhésion à valider ›</p>`:""}
     ${tm&&members.length===1?`<p class="small" style="margin:8px 0 0">Tu es seul dans l'équipe : invite tes coéquipiers à la rejoindre depuis Profil › Équipe.</p>`:""}
     ${tm?"":`<p class="small" style="margin:8px 0 0">Rejoins une équipe depuis Profil › Équipe pour te comparer à tes coéquipiers.</p>`}</div>
    ${rk.length?`<div class="card hbcard" id="hbTeams" role="button" tabindex="0" style="margin-top:10px"><div class="hbhead"><b>Équipes</b><span class="small">${ti>=0?`Ton équipe : ${ti+1}<sup>${ti?"e":"re"}</sup>/${rk.length}`:`${rk.length} équipe${rk.length>1?"s":""}`} ›</span></div>
@@ -2347,6 +2548,7 @@ function memberSheet(m){const A=adminData;const canAdmin=A.superAdmin&&m.email&&
     <button class="btn sec full" data-act="reset">Remettre ses scores à zéro</button>
     <div class="small" style="margin:2px 0 -2px">Ambiance (actuelle : ${FXLBL[fxFrom(m)]})</div><div class="seg firetog admfx">${[["unfire","off","Normal",""],["sergent","sgt","Braise",SGT_IC],["fire","fire","On Fire",FLAME_IC]].map(([a,k,l,ic])=>`<button data-act="${a}" aria-pressed="${fxFrom(m)===k}">${ic}${l}</button>`).join("")}</div>
     <label class="zxrow"><input type="checkbox" data-zx="z" ${m.z?"checked":""}><span><b>Mode Z (piège secret)</b> · 1 h : toutes ses réponses s'affichent fausses, révélé en fin de série${m.z?` (par ${esc(m.z.by)}, jusqu'à ${new Date(m.z.u).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})})`:""}</span></label>
+    ${[["miroir","miroir","tout le texte des questions s'affiche à l'envers"],["escargot","escargot","les réponses s'écrivent lettre par lettre, très lentement"],["radio","radio grésillante","des lettres des questions sont brouillées"],["fuite","fuite","la réponse touchée s'échappe 2 fois, la 3e touche valide"],["ponpon","ponpon","une question bonus par jeu : « Qui c'est la meilleure ? », toutes les réponses sont « C'est Ponpon »"]].map(([k,l,d])=>{const v=m.zmo&&m.zmo[k];return `<label class="zxrow"><input type="checkbox" data-zmo="${k}" ${v?"checked":""}><span><b>Mode Z (${l})</b> · 1 h : ${d}${v?` (par ${esc(v.by)}, jusqu'à ${new Date(v.u).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})})`:""}</span></label>`}).join("")}
     <label class="zxrow"><input type="checkbox" data-zx="x" ${m.x?"checked":""}><span><b>Mode Z (blagues visibles)</b> · 1 h : réponses qui fuient, écran qui se retourne, sergent bavard${m.x?` (par ${esc(m.x.by)}, jusqu'à ${new Date(m.x.u).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})})`:""}</span></label>
     ${m.nick&&m.nick.u>Date.now()?`<button class="btn sec full" data-act="unnick">Retirer le surnom « ${esc(m.nick.n)} »</button>`:""}
     ${m.superAdmin?"":`<button class="btn sec full" data-act="${m.blocked?"unblock":"block"}">${m.blocked?"Débloquer le compte":"Bloquer le compte"}</button>`}
@@ -2356,6 +2558,7 @@ function memberSheet(m){const A=adminData;const canAdmin=A.superAdmin&&m.email&&
   const act=async(action,extra)=>{const msg=sh.querySelector("#mMsg");msg.textContent="…";try{await api("admin/member","PUT",{target:m.id,action,...extra});closeSheet();toast("Modification enregistrée.");adminData=await api("admin/members");drawAdmin();loadBoard(true)}catch(e){msg.textContent=e.error||"Erreur."}};
   sh.querySelector("#rnf").onsubmit=e=>{e.preventDefault();act("rename",{pseudo:sh.querySelector("#rnP").value})};
   sh.querySelectorAll("[data-zx]").forEach(c=>c.onchange=()=>act((c.dataset.zx)+(c.checked?"on":"off")));
+  sh.querySelectorAll("[data-zmo]").forEach(c=>c.onchange=()=>act("zmo-"+c.dataset.zmo+"-"+(c.checked?"on":"off")));
   sh.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{const a=b.dataset.act;if((a==="delete"||a==="reset"||a==="block")&&!b.dataset.c){b.dataset.c="1";b.textContent="Confirmer : "+b.textContent.toLowerCase();return}act(a)});
 }
 
@@ -2368,8 +2571,9 @@ alog("demarrage",APP_VER,{chargement:Math.round(performance.now())+" ms",langue:
 if(me&&me.id){const o=store.get("progOwner",null);if(o&&o!==me.id)applyProgress({resetAt:0});store.set("progOwner",me.id)}
 go(tab);{const wel=store.get("welcome",false);if(wel)store.del("welcome");const tk="tutoSeen_"+(me&&me.id||"x");
  const afterTuto=()=>{if(wel){profTab="moi";go("profile");profileSheet(true,true)}};
- const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");
- if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
+ const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x");
+ if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
  else if(me&&!me.expired&&!store.get(nk,false))setTimeout(()=>openTuto(()=>store.set(nk,true),"rank"),600);
- else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
+ else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
+ else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>store.set(nk3,true),"new340"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
 if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});
