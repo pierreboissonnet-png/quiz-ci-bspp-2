@@ -206,7 +206,7 @@ let zxLast=0;setInterval(()=>{const act=(zState&&zState.u>Date.now())||(xState&&
 setTimeout(()=>{if(me&&!me.expired)api("me").then(zxSet).catch(()=>{})},4000);
 /* ============ 3.4.0 : Mort subite, Bilan express, Duel en direct ============ */
 // ---- Mort subite : des questions jusqu'à la première erreur
-function suddenPool(){return level==="simple"?(SIMPLE&&SIMPLE.items||[]).filter(x=>(x._k==="qcm"||x._k==="vf")&&(!isFeu(x)||sSel.has("feu"))):ALL.filter(x=>(x._k==="qcm"||x._k==="vf")&&(!isFeu(x)||selected.has("feu")))}
+function suddenPool(){return level==="simple"?(SIMPLE&&SIMPLE.items||[]).filter(x=>(x._k==="qcm"||x._k==="vf")&&(isFeu(x)?sSel.has("feu"):sSel.has(x.g))):[...pool("qcm"),...pool("vf")]} // 3.4.0 : respecte les thèmes cochés et la rubrique Feu
 function teamSuddenRec(){const t=myTeamId();if(!t)return null;const P=(board&&board.profiles||[]).filter(p=>p.team===t&&p.stats&&p.stats.sudden>0).sort((a,b)=>b.stats.sudden-a.stats.sudden);return P[0]?{n:P[0].stats.sudden,who:P[0].pseudo}:null}
 function qOpts(q){return q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`:`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`}
 const qCorr=q=>q._k==="qcm"?q.answer:(q.answer?1:0);
