@@ -69,7 +69,7 @@ const emptyStats = () => sanitizeStats({});
 // ---- Duels entre membres (asynchrones) ----
 const DUEL_TTL = 48 * 3600e3, DECO_TTL = 24 * 3600e3, NICK_PICK = 3600e3, DRAFT_TTL = 2 * 3600e3;
 async function duelIds(st, uid) { return (await st.get("dl/" + uid, { type: "json" })) || []; }
-async function duelLink(st, uid, id) { const l = (await duelIds(st, uid)).filter((x) => x !== id); l.unshift(id); await st.setJSON("dl/" + uid, l.slice(0, 40)); }
+async function duelLink(st, uid, id) { const l = (await duelIds(st, uid)).filter((x) => x !== id); l.unshift(id); await st.setJSON("dl/" + uid, l.slice(0, 80)); }
 async function setDeco(st, uid, deco) { const p = await st.get("p/" + uid, { type: "json" }); if (!p) return; p.deco = { ...deco, u: Date.now() + DECO_TTL }; await st.setJSON("p/" + uid, p); }
 // clôture : résultat, décorations (24 h) ; à appeler quand le duel change d'état
 async function duelSettle(st, d) {
@@ -136,6 +136,30 @@ async function pushTo(st, uid, msg) {
     }
     if (keep.length !== p.push.length) { p.push = keep; await st.setJSON("p/" + uid, p); }
   } catch (e) {}
+}
+// 5.0.0 : évaluations (synthèse de vacation CIR BSPP)
+const EV_COMPS = ["base", "orga", "garde", "depart", "renforts", "admin", "cat", "radio"];
+const nameFromEmail = (p) => { const m = /^([a-z0-9-]+)\.([a-z0-9.-]+)@/i.exec(p.email || ""); if (!m) return p.name || p.pseudo || ""; const cap = (s) => s.split(/([-.])/).map((w) => (w === "-" || w === "." ? (w === "." ? " " : w) : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())).join(""); return cap(m[1]) + " " + cap(m[2]).toUpperCase(); };
+async function evList(st, key) { return (await st.get(key, { type: "json" })) || []; }
+async function evLink(st, key, id, add) { let l = (await evList(st, key)).filter((x) => x !== id); if (add) l.unshift(id); await st.setJSON(key, l.slice(0, 200)); }
+const evRole = (ev, me, cfg) => (ev.cand === me.id ? "cand" : ev.enc && ev.enc.uid === me.id ? "enc" : isAdmin(me, cfg) ? "admin" : null);
+const evSum = (ev) => ({ id: ev.id, cand: ev.cand, candN: ev.candN, num: ev.num, date: ev.date, enc: ev.enc, status: ev.status, encDone: !!ev.encDone, updated: ev.updated, comps: Object.fromEntries(EV_COMPS.map((k) => [k, (ev.comps && ev.comps[k] && ev.comps[k].lvl) || 0])), autoEnc: ev.autoEnc && ev.autoEnc.v || "", autoCi: ev.autoCi && ev.autoCi.v || "", n: (ev.inter || []).length, cnt: (ev.inter || []).reduce((c, x) => { if (c[x.t] != null) c[x.t]++; return c; }, { UA: 0, UR: 0, DCD: 0, SS: 0 }) });
+function evClean(ev, patch, role) {
+  const s = (v, n) => clean(v, n), lvl = (v) => Math.max(0, Math.min(4, Math.round(Number(v) || 0)));
+  const encPart = role === "enc" || (role === "cand" && !(ev.enc && ev.enc.uid));
+  if (role === "cand") {
+    if ("date" in patch) ev.date = s(patch.date, 10); if ("horaires" in patch) ev.horaires = s(patch.horaires, 40);
+    if ("equip" in patch) ev.equip = ["ul", "ext", "mixte"].includes(patch.equip) ? patch.equip : "";
+    if ("autoCi" in patch && patch.autoCi) ev.autoCi = { v: ["oui", "non"].includes(patch.autoCi.v) ? patch.autoCi.v : "", c: s(patch.autoCi.c, 1500) };
+  }
+  if ((role === "cand" || role === "enc") && Array.isArray(patch.inter)) ev.inter = patch.inter.slice(0, 20).map((x) => ({ t: ["UA", "UR", "DCD", "SS"].includes(x.t) ? x.t : "", motif: s(x.motif, 120), pos: s(x.pos, 1200), axes: s(x.axes, 1200) }));
+  if (encPart) {
+    if (patch.comps && typeof patch.comps === "object") { ev.comps = ev.comps || {}; for (const k of EV_COMPS) if (patch.comps[k]) ev.comps[k] = { lvl: lvl(patch.comps[k].lvl), obs: s(patch.comps[k].obs, 1500) }; }
+    if ("autoEnc" in patch && patch.autoEnc) ev.autoEnc = { v: ["oui", "non"].includes(patch.autoEnc.v) ? patch.autoEnc.v : "", c: s(patch.autoEnc.c, 1500) };
+    if ("reserve" in patch) ev.reserve = !!patch.reserve;
+    if (role === "enc" && "encDone" in patch) ev.encDone = !!patch.encDone;
+  }
+  return ev;
 }
 // 3.3.4 : vote d'exclusion d'un membre (seuls les autres membres déclenchent et votent ; majorité absolue ; 48 h)
 const VOTE_TTL = 48 * 3600e3;
@@ -281,7 +305,7 @@ async function verifyGoogle(idToken) {
 }
 
 // 3.4.0 : notification « nouvelle version disponible » envoyée une seule fois par version (verrou Redis SET NX)
-const APP_VERSION = "3.4.1"; let announced = false;
+const APP_VERSION = "5.0.0"; let announced = false;
 async function announceVersion(st) {
   try {
     const r = await redis(["SET", NS + "ver/announced/" + APP_VERSION, "1", "NX"]); if (r !== "OK") return;
@@ -375,10 +399,7 @@ async function handler(req) {
     if (route === "duel/new" && req.method === "POST") {
       const to = clean(body.to, 40); if (!to || to === me.id) return json({ error: "Choisis un adversaire." }, 400);
       const op = await st.get("p/" + to, { type: "json" }); if (!op || op.blocked) return json({ error: "Adversaire introuvable." }, 404);
-      const mine = (await st.getMany((await duelIds(st, me.id)).map((i) => "duel/" + i), { type: "json" })).filter(Boolean);
-      const open = mine.filter((d) => (d.status === "pending" || (d.status === "draft" && Date.now() < d.created + DRAFT_TTL)) && Date.now() < d.exp);
-      if (open.filter((d) => d.from === me.id).length >= 3) return json({ error: "Tu as déjà 3 défis en cours : attends leurs résultats." }, 429);
-      if (open.some((d) => (d.from === to || d.to === to))) return json({ error: `Un duel est déjà en cours avec ${op.pseudo}.` }, 409);
+      // 5.0.0 : plus de limite de défis en cours ni d'attente avec le même adversaire
       const cands = (Array.isArray(body.cands) ? body.cands : []).map((x) => clean(x, 60)).filter(Boolean).slice(0, 120);
       if (cands.length < 10) return json({ error: "Pas assez de questions pour ce thème." }, 400);
       const prog = (await st.get("u/" + to, { type: "json" })) || {}; const seen = prog.hist || {};
@@ -390,6 +411,7 @@ async function handler(req) {
     if (route === "duel/gage" && req.method === "POST") { // 3.4.0 : le gagnant inflige un gage (mode Z) d'une heure au perdant
       const d = await st.get("duel/" + clean(body.did, 20), { type: "json" }); if (!d || d.winner !== me.id || d.status !== "done") return json({ error: "Seul le gagnant peut choisir un gage." }, 403);
       if (d.zg) return json({ error: "Un gage a déjà été choisi pour ce duel." }, 409);
+      if (d.nick && !((d.res[me.id] || {}).ok >= 10)) return json({ error: "Tu as déjà choisi un surnom : sans un sans-faute, c'est surnom OU gage." }, 409);
       if (Date.now() > (d.done || 0) + NICK_PICK) return json({ error: "Trop tard : le gage se choisit dans l'heure qui suit la victoire." }, 409);
       const m = clean(body.mode, 20); if (!["piege", "blague", "miroir", "escargot", "radio", "fuite"].includes(m)) return json({ error: "Gage inconnu." }, 400);
       const loser = d.from === me.id ? d.to : d.from; const l = await st.get("p/" + loser, { type: "json" }); if (!l) return json({ error: "Perdant introuvable." }, 404);
@@ -410,6 +432,7 @@ async function handler(req) {
     if (route === "duel/nick" && req.method === "POST") {
       const d = await st.get("duel/" + clean(body.did, 20), { type: "json" }); if (!d || d.status !== "done" || d.winner !== me.id) return json({ error: "Seul le gagnant peut choisir un surnom." }, 403);
       if (d.nick) return json({ error: "Le surnom a déjà été choisi." }, 409);
+      if (d.zg && !((d.res[me.id] || {}).ok >= 10)) return json({ error: "Tu as déjà choisi un gage : sans un sans-faute, c'est surnom OU gage." }, 409);
       if (Date.now() > (d.done || 0) + NICK_PICK) return json({ error: "Trop tard : le surnom se choisit dans l'heure qui suit la victoire." }, 409);
       const nick = clean(body.nick, 28).replace(/\s+/g, " ");
       if (nick.length < 3) return json({ error: "Surnom trop court." }, 400);
@@ -487,6 +510,50 @@ async function handler(req) {
         t2.team = tm.id; t2.askTeam = null; t2.updatedAt = Date.now(); await st.setJSON("p/" + t2.id, t2);
       } else if (t2 && t2.askTeam === tm.id) { t2.askTeam = null; await st.setJSON("p/" + t2.id, t2); }
       await st.setJSON("t/" + tm.id, tm); return json({ ok: true });
+    }
+    // ---- 5.0.0 : évaluations
+    if (route === "ev/list" && req.method === "GET") {
+      const cand = clean(url.searchParams.get("cand"), 40);
+      if (cand && cand !== me.id) { if (!isAdmin(me, cfg)) return json({ error: "Réservé aux administrateurs." }, 403); const ids = await evList(st, "evc/" + cand); const evs = (await st.getMany(ids.map((i) => "ev/" + i), { type: "json" })).filter(Boolean); return json({ mine: evs.map(evSum) }); }
+      const [a, b] = await Promise.all([evList(st, "evc/" + me.id), evList(st, "eve/" + me.id)]);
+      const [ea, eb] = await Promise.all([st.getMany(a.map((i) => "ev/" + i), { type: "json" }), st.getMany(b.map((i) => "ev/" + i), { type: "json" })]);
+      return json({ mine: ea.filter(Boolean).map(evSum), asEnc: eb.filter(Boolean).filter((e) => e.enc && e.enc.uid === me.id).map(evSum), me: { name: nameFromEmail(me) } });
+    }
+    if (route === "ev/get" && req.method === "GET") {
+      const ev = await st.get("ev/" + clean(url.searchParams.get("eid"), 20), { type: "json" }); if (!ev) return json({ error: "Fiche introuvable." }, 404);
+      const role = evRole(ev, me, cfg); if (!role) return json({ error: "Accès réservé au candidat, à son encadrant et aux administrateurs." }, 403);
+      return json({ ev, role });
+    }
+    if (route === "ev/new" && req.method === "POST") {
+      const ids = await evList(st, "evc/" + me.id); const prev = (await st.getMany(ids.map((i) => "ev/" + i), { type: "json" })).filter(Boolean);
+      const num = prev.reduce((m, e) => Math.max(m, e.num || 0), 0) + 1;
+      const d = new Date(); const ev = { id: randomBytes(6).toString("hex"), cand: me.id, candN: nameFromEmail(me), num, date: d.toISOString().slice(0, 10), horaires: "", enc: null, equip: "", inter: [], comps: {}, autoEnc: { v: "", c: "" }, autoCi: { v: "", c: "" }, reserve: false, status: "draft", encDone: false, created: Date.now(), updated: Date.now() };
+      await st.setJSON("ev/" + ev.id, ev); await evLink(st, "evc/" + me.id, ev.id, true); return json({ ev, role: "cand" });
+    }
+    if (route === "ev/save" && req.method === "POST") {
+      const ev = await st.get("ev/" + clean(body.eid, 20), { type: "json" }); if (!ev) return json({ error: "Fiche introuvable." }, 404);
+      const role = evRole(ev, me, cfg); if (role !== "cand" && role !== "enc") return json({ error: "Seuls le candidat et son encadrant peuvent modifier la fiche." }, 403);
+      const patch = body.patch || {};
+      if (role === "cand" && "status" in patch) ev.status = patch.status === "done" ? "done" : "draft";
+      else if (ev.status === "done") return json({ error: "Fiche clôturée : rouvre-la pour la modifier." }, 409);
+      if (role === "cand" && "enc" in patch) { // choix de l'encadrant : membre de l'appli ou nom saisi
+        const old = ev.enc && ev.enc.uid; const e = patch.enc || null; let enc = null;
+        if (e && e.uid) { const p = await st.get("p/" + clean(e.uid, 40), { type: "json" }); if (p && p.id !== me.id) enc = { uid: p.id, name: nameFromEmail(p) || p.pseudo }; }
+        else if (e && e.name) enc = { uid: null, name: clean(e.name, 60) };
+        if (old && (!enc || enc.uid !== old)) { await evLink(st, "eve/" + old, ev.id, false); ev.encDone = false; }
+        if (enc && enc.uid && enc.uid !== old) { await evLink(st, "eve/" + enc.uid, ev.id, true); if (ev.status !== "done") await pushTo(st, enc.uid, { title: "📋 Fiche d'évaluation", body: `${ev.candN} t'a choisi comme encadrant : sa synthèse de vacation n°${ev.num} est à compléter.`, tag: "ev-" + ev.id, ev: ev.id }); }
+        ev.enc = enc;
+      }
+      const wasDone = !!ev.encDone; evClean(ev, patch, role); ev.updated = Date.now(); await st.setJSON("ev/" + ev.id, ev);
+      if (role === "enc" && ev.encDone && !wasDone) await pushTo(st, ev.cand, { title: "✅ Évaluation complétée", body: `${(ev.enc && ev.enc.name) || "Ton encadrant"} a complété et validé ta synthèse de vacation n°${ev.num}.`, tag: "ev-" + ev.id, ev: ev.id });
+      return json({ ev, role });
+    }
+    if (route === "ev/delete" && req.method === "POST") {
+      const ev = await st.get("ev/" + clean(body.eid, 20), { type: "json" }); if (!ev) return json({ ok: true });
+      const role = evRole(ev, me, cfg); const adm = isAdmin(me, cfg);
+      if (!adm && !(role === "cand" && ev.status !== "done")) return json({ error: "Une fiche clôturée ne peut être supprimée que par un administrateur." }, 403);
+      await st.delete("ev/" + ev.id); await evLink(st, "evc/" + ev.cand, ev.id, false); if (ev.enc && ev.enc.uid) await evLink(st, "eve/" + ev.enc.uid, ev.id, false);
+      return json({ ok: true });
     }
     if (route === "push/key" && req.method === "GET") { const v = await vapid(st); return json({ key: v.pub }); }
     if (route === "push/sub" && req.method === "POST") {
@@ -654,7 +721,7 @@ async function handler(req) {
             if (!t.email) return json({ error: "Ce membre n'a pas de compte Google." }, 400);
             cfg.admins = (cfg.admins || []).filter((e) => e !== t.email); if (body.action === "admin") cfg.admins.push(t.email);
             await st.setJSON("cfg/settings", cfg); return json({ ok: true });
-          case "delete": await st.delete("u/" + t.id); await st.delete("p/" + t.id); if (t.sub) await st.delete("g/" + t.sub); return json({ ok: true });
+          case "delete": { await st.delete("u/" + t.id); await st.delete("p/" + t.id); if (t.sub) await st.delete("g/" + t.sub); const eids = await evList(st, "evc/" + t.id); for (const i of eids) { const ev = await st.get("ev/" + i, { type: "json" }); if (ev && ev.enc && ev.enc.uid) await evLink(st, "eve/" + ev.enc.uid, i, false); await st.delete("ev/" + i); } await st.delete("evc/" + t.id); return json({ ok: true }); }
         }
         t.updatedAt = Date.now(); await st.setJSON("p/" + t.id, t); return json({ ok: true });
       }

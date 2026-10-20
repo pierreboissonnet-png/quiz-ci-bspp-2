@@ -646,3 +646,38 @@ body.zmir .qtext,body.zmir .opt>span:last-child,body.zmir .vf .opt{transform:sca
 
 .updbar{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:10px;background:var(--navy2);color:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;animation:rkpopin .4s ease}
 .updbar span{flex:1}.updbar .updx{color:#fff;opacity:.7;font-size:16px;padding:4px 6px}
+
+.rbtraps{margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--warn-soft,#fff4d6);font-size:13.5px;display:grid;gap:4px}
+/* 5.0.0 : évaluations de vacation */
+.evform label{display:grid;gap:4px;font-size:13px;color:var(--muted);margin-top:8px}
+.evform input,.evform textarea,.evform select{font:inherit;font-size:16px;color:var(--ink);background:var(--card2);border:1px solid var(--sep);border-radius:10px;padding:9px 10px;width:100%;box-sizing:border-box;min-width:0}
+.evform textarea{resize:vertical;min-height:56px;line-height:1.35}
+.evform input:disabled,.evform textarea:disabled,.evform select:disabled{opacity:.75;-webkit-text-fill-color:var(--ink)}
+.vacard{margin-bottom:10px}.vacard>b{display:block}
+.evgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.evgrid label{margin-top:0}
+.evgrid+.evgrid{margin-top:8px}
+.evseg{margin-top:6px}.evseg button{padding:0 6px;font-size:12.5px}.evseg button:disabled{cursor:default}
+.evseg[data-seg^="c"] button[aria-pressed="true"][data-v="1"]{background:#d92d20;color:#fff}
+.evseg[data-seg^="c"] button[aria-pressed="true"][data-v="2"]{background:#ff9f0a;color:#fff}
+.evseg[data-seg^="c"] button[aria-pressed="true"][data-v="3"]{background:#34c759;color:#fff}
+.evseg[data-seg^="c"] button[aria-pressed="true"][data-v="4"]{background:#1f7a3f;color:#fff}
+.evcount{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.evcount span{background:var(--card2);border-radius:8px;padding:5px 9px;font-size:13px;color:var(--muted)}.evcount b{color:var(--ink);margin-left:2px}
+.evih{display:flex;align-items:center;gap:8px}.evih .evseg{flex:1;margin-top:0}
+.evdel{flex:none;min-width:34px;height:34px;border-radius:9px;background:var(--card2);color:var(--ko);font-size:13px;font-weight:600;padding:0 8px}
+.evtable{overflow-x:auto;margin:10px -4px 0;-webkit-overflow-scrolling:touch}
+.evtable table{border-collapse:collapse;font-size:12.5px;min-width:100%}
+.evtable th{font-weight:600;color:var(--muted);padding:4px 6px;white-space:nowrap}
+.evtable td{padding:5px 6px;border-top:1px solid var(--sep);text-align:center}
+.evtable td:first-child{text-align:left;min-width:120px;color:var(--ink)}
+.evdot{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;color:#fff;font:700 11px var(--mono)}
+.evleg{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--muted)}
+.evleg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.evfocus{margin-top:14px;border-left:4px solid #1f7a3f}
+.chips.wrap{flex-wrap:wrap;overflow:visible}
+.evadm{gap:8px}.evadm .btn.small{flex:none;padding:6px 10px;min-height:0}
+.evform label.zxrow{display:flex;color:var(--ink)}.evform .zxrow input{width:20px;height:20px;padding:0;border:0}
+.rbpool .rbp:disabled{opacity:.45}
+.evx{font:500 9.5px var(--font);fill:var(--muted);text-anchor:middle}
+.evchart>b{display:block;font-size:16px}.evchart>.small{display:block}
+.evchart .chips.wrap{gap:6px}.evchart .chips.wrap .chip{font-size:12.5px;padding:4px 10px;min-height:30px;height:auto}

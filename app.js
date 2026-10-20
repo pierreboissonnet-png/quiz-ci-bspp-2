@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="3.4.1";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="5.0.0";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -145,6 +145,7 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-unmk]");if
 const qhead=(q,extra="")=>`<div class="qhead"><span class="qtag">${esc(short(q._t))}${extra}</span>${markBtn(q._id)}</div>`;
 
 /* ============ Navigation ============ */
+const EV_IC=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2.5"/><path d="M9 3.5h6v3H9z"/><path d="m8.5 13 2 2 4-4.5"/></svg>`;
 const RADIO_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="12" height="13" rx="2.5"/><path d="M9 8 7 3"/><path d="M9.5 12h5M9.5 15h5"/></svg>',MAP_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>';
 const GRADE_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M7 10h10M7 14h10"/></svg>';
 const LEX_IC_T='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/><path d="M9 8h6"/></svg>';
@@ -404,6 +405,7 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
    <div class="card summary"><div class="ring"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="36" fill="none" stroke="var(--card2)" stroke-width="9"/><circle cx="42" cy="42" r="36" fill="none" stroke="var(--ok)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct/100)}"/></svg><b>${pct}%</b></div>
      <div><div style="font-weight:600;margin-bottom:8px">Connaissances acquises</div><div class="kpis"><div class="kpi"><b>${streak()}</b><span>jours de suite</span></div><div class="kpi"><b>${g.by.ko}</b><span>fiches à travailler</span></div><div class="kpi"><b>${review.size}</b><span>à revoir</span></div></div></div></div>
    ${todo?`<div class="sect">Suggestion</div><div class="list"><button class="row" data-fiche="${esc(todo.f.id)}"><span class="ic" style="background:var(--ko)">${I.redo}</span><span class="tx"><b>${esc(todo.f.label)}</b><span>${todo.s.ko} question(s) ratée(s) · fiche à travailler</span></span><span class="chev">${I.chev}</span></button></div>`:""}
+   ${evFocusCard(false)}
    <div class="sect">S'entraîner · thèmes</div>
    <div class="chips">${chips}</div>
    <div class="tiles" style="margin-top:10px">
@@ -434,8 +436,8 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
   bindLevel();app.querySelectorAll(".chip[data-t]").forEach(c=>c.onclick=()=>{const id=c.dataset.t;selected.has(id)?selected.delete(id):selected.add(id);if(!selected.size)selected.add(id);store.set("themes",[...selected]);c.setAttribute("aria-pressed",selected.has(id))});
   $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
   const ds=$("#defiShare");if(ds)ds.onclick=()=>shareText(`Défi CI BSPP ${w} : ${dd.score}/20 en ${fmtTime(dd.ms)}. À toi de jouer !`,$("#defiMsg"));
-  app.querySelectorAll("[data-fiche]").forEach(b=>b.onclick=()=>reviseFiche(b.dataset.fiche));
-  app.querySelectorAll(".tile[data-m]").forEach(m=>m.onclick=()=>({qcm:()=>runQuiz(fresh(pool("qcm")).slice(0,10),"qcm",true),chrono:runChrono,flash:()=>runFlash(fresh(pool("flashcards"))),ordre:()=>runOrdre(fresh(pool("ordre"))),cas:()=>runCas(fresh(pool("cas"))),
+  app.querySelectorAll("[data-fiche]").forEach(b=>b.onclick=()=>reviseFiche(b.dataset.fiche));bindFocus(false);
+  app.querySelectorAll(".tile[data-m]").forEach(m=>m.onclick=()=>({qcm:()=>runQuiz(evFocusMix(fresh(pool("qcm")),false).slice(0,10),"qcm",true),chrono:runChrono,flash:()=>runFlash(fresh(pool("flashcards"))),ordre:()=>runOrdre(fresh(pool("ordre"))),cas:()=>runCas(fresh(pool("cas"))),
     exam:()=>runQuiz(fresh([...pool("qcm"),...pool("vf")]).slice(0,30),"exam",false),review:runReview,sudden:()=>runSudden(),bilanx:()=>runBilanExpress(),radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(true),hosp:()=>runHospQuiz(true),marks:()=>{revTab="marks";go("revise")}})[m.dataset.m]());
 }
 
@@ -800,6 +802,7 @@ function viewHomeSimple(){
   $("#sbody").innerHTML=`<div class="card disc"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>Documents découverts</b><span class="dnum">${nd}<small>/${tot}</small></span></div>
     <div class="prog" style="height:10px;margin-top:10px"><i class="p1" style="width:${nd/tot*100}%"></i></div>
     <p class="small" style="margin:8px 0 0">${nd?`Encore ${tot-nd} à découvrir. `:""}Un document est découvert dès que tu réussis une question qui s'y rapporte. ${sv.length?`${sok}/${sv.length} questions réussies.`:""}</p></div>
+   ${evFocusCard(true)}
    <div class="sect">Jouer</div>
    <div class="tiles">
     <button class="tile" data-sm="quiz"><span class="ic" style="background:#34c759">${SPARK}</span><b>Quiz découverte</b><span>10 questions faciles, 3 choix</span></button>
@@ -824,9 +827,9 @@ function viewHomeSimple(){
   const pool=k=>Q.items.filter(x=>(isFeu(x)?sSel.has("feu"):sSel.has(x.g))&&(!k||x.k===k));
   app.querySelectorAll("[data-st]").forEach(c=>c.onclick=()=>{const k=c.dataset.st;sSel.has(k)?sSel.delete(k):sSel.add(k);if(!sSel.size)sSel.add(k);store.set("sThemes",[...sSel]);c.setAttribute("aria-pressed",sSel.has(k))});
   const back=()=>go("home");
-  app.querySelectorAll("[data-sm]").forEach(b=>b.onclick=()=>({quiz:()=>runSimple(fresh(pool()).slice(0,10),"Quiz découverte"),vf:()=>runSimple(fresh(pool("vf")).slice(0,10),"Vrai ou faux ?"),
-   doc:()=>runSimple(docQuestions(10),"Devine le document"),mix:()=>runSimple(fresh(pool()).slice(0,16).concat(docQuestions(4)).sort(()=>Math.random()-.5),"Grand mélange"),
-   sudden:()=>runSudden(),bilanx:()=>runBilanExpress(),radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(false),hosp:()=>runHospQuiz(false),rbuild:()=>runRadioBuild(()=>go("home"))})[b.dataset.sm]());
+  app.querySelectorAll("[data-sm]").forEach(b=>b.onclick=()=>({quiz:()=>runSimple(evFocusMix(fresh(pool()),true).slice(0,10),"Quiz découverte"),vf:()=>runSimple(fresh(pool("vf")).slice(0,10),"Vrai ou faux ?"),
+   doc:()=>runSimple(docQuestions(10),"Devine le document"),mix:()=>runSimple(evFocusMix(fresh(pool()),true,16).slice(0,16).concat(docQuestions(4)).sort(()=>Math.random()-.5),"Grand mélange"),
+   sudden:()=>runSudden(),bilanx:()=>runBilanExpress(),radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(false),hosp:()=>runHospQuiz(false),rbuild:()=>runRadioBuild(()=>go("home"))})[b.dataset.sm]());bindFocus(true);
   $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
  }).catch(e=>{if(e&&e.message)logErr("affichage",e.message,e.stack);const b=$("#sbody");if(b)b.innerHTML=`<div class="card"><p style="margin:0">${e&&e.message?"Un problème d'affichage est survenu (il a été signalé dans les journaux).":"Impossible de charger les questions du niveau Sapeur. Vérifie ta connexion."}</p><button class="btn sec full" style="margin-top:12px" id="sRetry">Réessayer</button></div>`;const r=$("#sRetry");if(r)r.onclick=viewHomeSimple})}
 function runSimple(qs,title){if(!qs.length)return;qs=qs.map(mixQ);let i=0,score=0,combo=0,bestCombo=0;const missed=[];const back=()=>go("home");const before=discovered();
@@ -1018,9 +1021,11 @@ const NICK_IDEAS=["Pompier du dimanche","Roi du balai","Extincteur vide","Gyroph
 function nickOf(p){const n=p&&p.nick;return n&&n.u>Date.now()?n:null}
 function nickHtml(p){const n=nickOf(p);return n?` <button type="button" class="nick" data-nick="${esc(p.id)}">« ${esc(n.n)} »</button>`:""}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-nick]");if(!b)return;e.stopPropagation();e.preventDefault();const p=(board&&board.profiles||[]).find(x=>x.id===b.dataset.nick);const n=nickOf(p);if(n)toast(`Surnom donné par ${n.by} après sa victoire en duel · encore ${Math.max(1,Math.round((n.u-Date.now())/6e4))} min`)},true);
-const canNick=d=>d&&d.status==="done"&&d.winner===me.id&&!d.nick&&Date.now()<(d.done||0)+36e5;
+const duelPerfect=d=>!!(d&&d.mine&&d.mine.ok>=10); // 5.0.0 : sans-faute = surnom ET gage, sinon l'un OU l'autre
+const canNick=d=>d&&d.status==="done"&&d.winner===me.id&&!d.nick&&(duelPerfect(d)||!d.zg)&&Date.now()<(d.done||0)+36e5;
 // 3.4.0 : gage du gagnant (1 h) : un mode Z au choix pour le perdant
-const canGage=d=>d&&d.status==="done"&&d.winner===me.id&&!d.zg&&Date.now()<(d.done||0)+36e5;
+const canGage=d=>d&&d.status==="done"&&d.winner===me.id&&!d.zg&&(duelPerfect(d)||!d.nick)&&Date.now()<(d.done||0)+36e5;
+const rewardHint=d=>d&&d.status==="done"&&d.winner===me.id&&(canNick(d)||canGage(d))?`<p class="small" style="margin:8px 0 0">${duelPerfect(d)?"Sans-faute (10/10) : tu as droit au surnom <b>et</b> au gage !":"Récompense : choisis <b>un surnom ou un gage</b> (les deux avec un sans-faute)."}</p>`:"";
 const GAGES=[["blague","Blagues visibles","ses réponses fuient, l'écran se retourne, le sergent commente"],["fuite","Fuite","la réponse touchée s'échappe 2 fois avant de valider"],["miroir","Miroir","les questions s'affichent à l'envers"],["escargot","Escargot","les réponses s'écrivent lettre par lettre"],["radio","Radio grésillante","des lettres des questions sont brouillées"],["piege","Piège secret","toutes ses réponses s'affichent fausses, révélé en fin de série"]];
 function gageSheet(d,after){const o=duelOther(d);const sh=sheet(`<h2>Un gage pour ${esc(o.n)} ?</h2><p class="small">Bonus du vainqueur : choisis un gage qu'il subira pendant 1 h dans ses entraînements (jamais en examen, défi ou duel).</p><div class="list">${GAGES.map(([k,l,dd])=>`<button class="row" data-gage="${k}"><span class="tx"><b>${esc(l)}</b><span>${esc(dd)}</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div><p class="small" id="ggM" style="color:var(--ko)"></p><div class="actions"><button class="btn sec full" data-close>Plus tard</button></div>`);
  sh.querySelectorAll("[data-gage]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api("duel/gage","POST",{did:d.id,mode:b.dataset.gage});d.zg=b.dataset.gage;closeSheet();toast(`Gage envoyé : ${o.n} va s'en souvenir pendant 1 h !`);alog("duel","gage choisi",{contre:o.n,gage:b.dataset.gage});loadDuels(true);if(after)after()}catch(e){sh.querySelector("#ggM").textContent=e.error||"Erreur.";b.disabled=false}})}
@@ -1068,7 +1073,7 @@ function duelResultPop(d){const el=document.createElement("div");el.className="d
  let h,ic,txt;if(d.status==="declined"||d.status==="expired"){h="Défi refusé";ic=DECO_IC.run;txt=`${esc(o.n)} a ${d.status==="expired"?"laissé passer le délai":"refusé ton défi"} « ${esc(d.themeN)} » : il porte le pompier qui se défile pendant 24 h.`}
  else{const win=d.winner===me.id,draw=!d.winner;h=draw?"Match nul":win?"Victoire !":"Défaite…";ic=draw?"":win?DECO_IC.medal:DECO_IC.broom;txt=duelScoreHtml(d)+`<p class="small">${draw?"Égalité parfaite : pas de décoration. +15 points.":win?"Ta médaille brille à côté de ton nom pendant 24 h. +30 points.":"Corvée de balai pendant 24 h… +10 points pour avoir joué."}</p>`}
  el.innerHTML=`<div class="dlbox"><div class="dltag">RÉSULTAT DU DUEL</div><h3 class="${d.winner===me.id?"win":""}">${h}</h3>${ic?`<div class="dlbig">${ic}</div>`:""}${d.status==="done"?txt:`<p class="small">${txt}</p>`}
-  ${canNick(d)?`<button class="btn full" data-dnick style="margin-top:10px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}${canGage(d)?`<button class="btn full" data-dgage style="margin-top:8px">🎁 Infliger un gage à ${esc(o.n)}</button>`:""}<div class="actions" style="margin:12px 0 0">${d.status==="done"?`<button class="btn sec" style="flex:1" data-dok>Fermer</button><button class="btn" style="flex:1" data-drev>${d.winner===me.id?"Rejouer":"Revanche"}</button>`:`<button class="btn full" data-dok>Compris</button>`}</div></div>`;
+  ${rewardHint(d)}${canNick(d)?`<button class="btn full" data-dnick style="margin-top:10px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}${canGage(d)?`<button class="btn full" data-dgage style="margin-top:8px">🎁 Infliger un gage à ${esc(o.n)}</button>`:""}<div class="actions" style="margin:12px 0 0">${d.status==="done"?`<button class="btn sec" style="flex:1" data-dok>Fermer</button><button class="btn" style="flex:1" data-drev>${d.winner===me.id?"Rejouer":"Revanche"}</button>`:`<button class="btn full" data-dok>Compris</button>`}</div></div>`;
  document.body.appendChild(el);if(d.winner===me.id)confetti(el);el.querySelector("[data-dok]").onclick=()=>el.remove();const rv=el.querySelector("[data-drev]");if(rv)rv.onclick=()=>{el.remove();duelSheet(o.id,d.level,d.theme)};const nk=el.querySelector("[data-dnick]");if(nk)nk.onclick=()=>{el.remove();nickSheet(d)};const gg=el.querySelector("[data-dgage]");if(gg)gg.onclick=()=>{el.remove();gageSheet(d)}}
 function duelScoreHtml(d){const o=duelOther(d),A=d.mine||{},B=d.other||{};const t=ms=>{const s=Math.round((ms||0)/1000);return s>=60?`${Math.floor(s/60)} min ${String(s%60).padStart(2,"0")}`:`${s} s`};
  return `<div class="dlscore"><div class="${d.winner===me.id?"w":""}">Toi<b>${A.pts??"—"}</b><span class="small">${A.ok??0}/10 · ${t(A.ms)}</span></div><div class="${d.winner===o.id?"w":""}">${esc(o.n)}<b>${B.pts??"—"}</b><span class="small">${B.ok??0}/10 · ${t(B.ms)}</span></div></div>`}
@@ -1120,10 +1125,10 @@ function runDuel(d){const wantSimple=d.level==="simple";(wantSimple?loadSimple()
   alog("duel","duel joué",{contre:o.n,points:pts,justes:ok+"/"+qs.length});await loadDuels(true);
   const res=r||{...d,mine:{pts,ok,ms:tAll},status:d.from===me.id?"pending":"pending"};
   const bad=ans.filter(a=>!a.good);const recap=bad.length?`<div class="sect">Corrigé (${bad.length})</div><div class="recap">${bad.map(a=>`<div class="card"><div class="qhead"><b>${esc(a.q.q)}</b>${markBtn(a.q._id,false)}</div><div class="a">${esc(a.q._k==="qcm"?a.q.choices[a.q.answer]:(a.q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(a.q.explication||"")}</div>${srcBtn(a.q)}</div>`).join("")}</div>`:`<p class="sub" style="text-align:center">Sans faute !</p>`;
-  if(res.status==="done"){app.innerHTML=push("Résultat du duel")+`<div class="result"><div class="dlbig sm">${!res.winner?"":res.winner===me.id?DECO_IC.medal:DECO_IC.broom}</div><div class="grade">${!res.winner?"Match nul !":res.winner===me.id?"Victoire !":"Défaite…"}</div>${duelScoreHtml(res)}<p class="small">${!res.winner?"Égalité parfaite. +15 points.":res.winner===me.id?"Médaille affichée pendant 24 h. +30 points.":"Corvée de balai pendant 24 h. +10 points."}</p></div>${canNick(res)?`<button class="btn full" id="dNick" style="margin-top:6px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}${canGage(res)?`<button class="btn full" id="dGage" style="margin-top:6px">🎁 Infliger un gage à ${esc(o.n)}</button>`:""}<div class="actions"><button class="btn${canNick(res)?" sec":""}" id="dRev">${res.winner===me.id?"Rejouer":"Revanche"}</button><button class="btn sec" id="dHub">Mes duels</button></div>${recap}`;
+  if(res.status==="done"){app.innerHTML=push("Résultat du duel")+`<div class="result"><div class="dlbig sm">${!res.winner?"":res.winner===me.id?DECO_IC.medal:DECO_IC.broom}</div><div class="grade">${!res.winner?"Match nul !":res.winner===me.id?"Victoire !":"Défaite…"}</div>${duelScoreHtml(res)}<p class="small">${!res.winner?"Égalité parfaite. +15 points.":res.winner===me.id?"Médaille affichée pendant 24 h. +30 points.":"Corvée de balai pendant 24 h. +10 points."}</p></div>${rewardHint(res)}${canNick(res)?`<button class="btn full" id="dNick" style="margin-top:6px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}${canGage(res)?`<button class="btn full" id="dGage" style="margin-top:6px">🎁 Infliger un gage à ${esc(o.n)}</button>`:""}<div class="actions"><button class="btn${canNick(res)?" sec":""}" id="dRev">${res.winner===me.id?"Rejouer":"Revanche"}</button><button class="btn sec" id="dHub">Mes duels</button></div>${recap}`;
    const seen=store.get("duelSeen",{});seen[res.id]=1;store.set("duelSeen",seen);if(res.winner===me.id)confetti(app);loadBoard(true);duelCredit()}
   else app.innerHTML=push("Duel envoyé")+`<div class="result"><div class="score">${pts}</div><div class="grade">points · ${ok}/${qs.length} bonnes réponses</div><p class="small">Défi envoyé à <b>${esc(o.n)}</b>. Il a 48 h pour jouer les mêmes questions ; tu verras le résultat dès qu'il aura joué.</p></div><div class="actions"><button class="btn" id="dHub">Mes duels</button><button class="btn sec" id="dRev">Défier quelqu'un d'autre</button></div>${recap}`;
-  bindBack(()=>go("home"));bindSrc();const h=$("#dHub");if(h)h.onclick=viewDuels;const nk=$("#dNick");if(nk)nk.onclick=()=>nickSheet(res,()=>{nk.remove()});const gg=$("#dGage");if(gg)gg.onclick=()=>gageSheet(res,()=>{gg.remove()});const rv=$("#dRev");if(rv)rv.onclick=()=>duelSheet(res.status==="done"?o.id:"",d.level,d.theme);window.scrollTo(0,0)};
+  bindBack(()=>go("home"));bindSrc();const h=$("#dHub");if(h)h.onclick=viewDuels;const nk=$("#dNick");if(nk)nk.onclick=()=>nickSheet(res,()=>{nk.remove();if(!duelPerfect(res)){const g=$("#dGage");if(g)g.remove()}});const gg=$("#dGage");if(gg)gg.onclick=()=>gageSheet(res,()=>{gg.remove();if(!duelPerfect(res)){const n=$("#dNick");if(n)n.remove()}});const rv=$("#dRev");if(rv)rv.onclick=()=>duelSheet(res.status==="done"?o.id:"",d.level,d.theme);window.scrollTo(0,0)};
  show()})}
 // écran « Mes duels »
 function viewDuels(){app.innerHTML=push("Mes duels")+`<div id="dlBody"><div class="loading">Chargement…</div></div>`;bindBack(()=>go("home"));
@@ -1134,7 +1139,7 @@ function viewDuels(){app.innerHTML=push("Mes duels")+`<div id="dlBody"><div clas
    <div class="sect">À jouer (${inc.length})</div><div class="list">${inc.map(d=>row(d,`<span class="small">${dlLeft(d)}</span>`,`<button class="btn small" data-dplay="${d.id}">Jouer</button>`)).join("")||'<div class="row"><span class="tx"><span>Aucun défi reçu pour l\'instant.</span></span></div>'}</div>
    <div class="sect">En attente de l'adversaire (${wait.length})</div><div class="list">${wait.map(d=>row(d,`<span class="small">ton score ${d.mine?.pts??"—"} · ${dlLeft(d)}</span>`)).join("")||'<div class="row"><span class="tx"><span>Aucun défi en attente.</span></span></div>'}</div>
    <div class="sect">Derniers résultats</div><div class="list">${fin.map(d=>`<button class="row dlrow" data-dres="${d.id}">${(()=>{const o=duelOther(d);const op=(board&&board.profiles||[]).find(p=>p.id===o.id)||{pseudo:o.n,id:o.id};return `${avatar(op,36)}<span class="tx"><b>${esc(o.n)}</b><span>${esc(d.themeN)} · ${new Date(d.done||d.created).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}${d.nick?` · surnom « ${esc(d.nick)} »`:""}${canNick(d)?' · <b style="color:var(--ko)">surnom à choisir !</b>':""}</span></span>`})()}${res(d)}</button>`).join("")||'<div class="row"><span class="tx"><span>Pas encore de duel terminé.</span></span></div>'}</div>
-   <p class="small" style="margin:12px 4px 0">Barème : bonne réponse = 100 points moins 5 par seconde (30 minimum). Le meilleur total gagne. Victoire +30, nul +15, défaite +10 points au classement de la semaine. Médaille, corvée de balai ou pompier qui se défile : 24 h à côté du nom. Le gagnant choisit aussi un surnom au perdant pour 24 h. 3 défis lancés en même temps au maximum.</p>`;
+   <p class="small" style="margin:12px 4px 0">Barème : bonne réponse = 100 points moins 5 par seconde (30 minimum). Le meilleur total gagne. Victoire +30, nul +15, défaite +10 points au classement de la semaine. Médaille, corvée de balai ou pompier qui se défile : 24 h à côté du nom. Le gagnant choisit aussi un surnom au perdant pour 24 h.</p>`;
   $("#dlNew").onclick=()=>duelSheet();el.querySelectorAll("[data-dplay]").forEach(b=>b.onclick=()=>runDuel(duels.find(d=>d.id===b.dataset.dplay)));
   el.querySelectorAll("[data-dres]").forEach(b=>b.onclick=()=>{const d=duels.find(x=>x.id===b.dataset.dres);if(d){if(canNick(d))nickSheet(d,draw);else duelResultPop(d)}})};
  draw();loadDuels(true).then(()=>{if($("#dlBody"))draw()})}
@@ -1153,13 +1158,178 @@ function viewHomeCI(){const w=isoWeek(),dd=defiDone[w];
    ${t("docs",I.book,"#5e5ce6","Documents","Tous les référentiels")}
    <button class="tile wide hosptile" data-ci="hospnear"><span class="ic" style="background:#d92d20">${H_IC}</span><div><b>Hôpital le plus proche</b><br><span>Localise-toi et filtre par spécialité (SAU, maternité, SOS Mains…)</span></div></button>
    <button class="tile wide" data-ci="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><div><b>Grades</b><br><span>La planche des galons BSPP</span></div></button>
+   ${evTile()}
   </div>
   <div class="defimini"><div><span class="wk">DÉFI ${w}</span><b>Défi de la semaine</b><span class="small">${dd?`Ton score : ${dd.score}/20`:"20 questions pour garder la main"}</span></div><button class="btn small" id="defiGo">${dd?"Rejouer":"Jouer"}</button></div>
   <p class="small" style="margin:14px 4px 0">Envie de réviser ? Repasse en mode Apprenti depuis ton profil.</p>
   <footer class="note" style="margin-top:10px"><b>Application non officielle.</b> Elle n'est ni éditée ni validée par la BSPP ni par la Croix-Rouge française et sert uniquement à s'entraîner et à réviser. Développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française.</footer>`;
  $("#defiGo").onclick=()=>runQuiz(defiQuestions(),"defi",false);
- app.querySelectorAll("[data-ci]").forEach(b=>b.onclick=()=>b.dataset.ci==="hospnear"?openHospNear():go(b.dataset.ci))}
+ app.querySelectorAll("[data-ci]").forEach(b=>b.onclick=()=>b.dataset.ci==="hospnear"?openHospNear():b.dataset.ci==="evals"?viewEvals():go(b.dataset.ci))}
+function evTile(){const E=evCache||{mine:[],asEnc:[]};const n=(E.asEnc||[]).filter(e=>!e.encDone&&e.status!=="done").length,r=(E.mine||[]).filter(e=>e.encDone&&e.status!=="done").length;
+ return `<button class="tile wide" data-ci="evals"><span class="ic" style="background:#1f7a3f">${EV_IC}</span><div><b>Évaluations${n+r?` <span class="dlbadge">${n+r}</span>`:""}</b><br><span>${n?`${n} fiche${n>1?"s":""} à compléter en tant qu'encadrant`:r?`${r} fiche${r>1?"s":""} validée${r>1?"s":""} par ton encadrant, à clôturer`:"Synthèse de vacation CIR BSPP, PDF et progression"}</span></div></button>`}
 
+/* ============ 5.0.0 : Évaluations (synthèse de vacation CIR BSPP) ============ */
+const EV_C=[["base","Compétences de base du CIR","Maîtrise des compétences de base de la fonction de CIR (ensemble des compétences attendues d'un CIR Alpha)"],["orga","Organisation BSPP","Connaissance et respect de l'organisation, des interlocuteurs et des modes de fonctionnement de la BSPP"],["garde","Prise de garde","Prise de garde : prise de contact stationnaire, perception de matériel, prise de consignes opérationnelles"],["depart","Départ en intervention","Départ en intervention suivant les spécificités BSPP (prise en compte, usage du parcellaire, procédure radio)"],["renforts","Demandes de renforts","Demandes de renforts et procédures associées"],["admin","Administratif BSPP","Gestion de l'administratif BSPP, message de rentrée, saisie ADAGIO"],["cat","Situations particulières","Connaissance des conduites à tenir liées à des situations particulières (notamment chapitre 8 du référentiel)"],["radio","Radio et ANTARES","Connaissances générales des procédures radios BSPP et utilisation du portatif ANTARES"]];
+const EV_L=["—","Non acquis","En cours","Acquis","Maîtrisé"],EV_COL=["#c5ccd6","#d92d20","#ff9f0a","#34c759","#1f7a3f"];
+const EV_T=[["UA","UA"],["UR","UR"],["DCD","DCD"],["SS","Sans suite"]];
+const EV_EQ=[["ul","UL du CI"],["ext","UL externe"],["mixte","Mixte"]];
+let evCache=store.get("evCache",null);
+async function evLoad(){const j=await api("ev/list");evCache={mine:j.mine||[],asEnc:j.asEnc||[],name:j.me&&j.me.name||"",at:Date.now()};store.set("evCache",evCache);return evCache}
+const evCount=ev=>{const c={SS:0,UA:0,UR:0,DCD:0};(ev.inter||[]).forEach(x=>{if(c[x.t]!=null)c[x.t]++});return c};
+const evDate=d=>d?new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"}):"";
+function viewEvals(){app.innerHTML=push("Évaluations")+`<div id="evBody"><div class="loading">Chargement…</div></div>`;bindBack(()=>go("home"));
+ const draw=()=>{const E=evCache||{mine:[],asEnc:[]};const b=$("#evBody");if(!b)return;const todo=E.asEnc.filter(e=>!e.encDone&&e.status!=="done");
+  const row=(e,asEnc)=>`<button class="row" data-ev="${esc(e.id)}"><span class="ic" style="background:${e.status==="done"?"#1f9d55":"#ff9f0a"}">${e.num}</span><span class="tx"><b>${asEnc?esc(e.candN)+" · ":""}Vacation n°${e.num}</b><span>${esc(evDate(e.date))}${e.enc&&e.enc.name&&!asEnc?" · encadrant : "+esc(e.enc.name):""} · ${e.status==="done"?"clôturée":asEnc&&!e.encDone?"à remplir":"brouillon"}</span></span><span class="chev">${I.chev}</span></button>`;
+  b.innerHTML=`<p class="sub" style="margin-top:12px">La synthèse de tes vacations d'accompagnement : tu remplis l'en-tête, tes interventions et ton avis ; ton encadrant renseigne les compétences et son avis. Le PDF de la fiche se génère à la fin.</p>
+   <button class="btn full" id="evNew">Nouvelle vacation</button>
+   ${todo.length?`<div class="sect">À évaluer (tu es encadrant)</div><div class="list">${todo.map(e=>row(e,true)).join("")}</div>`:""}
+   <div class="sect">Mes vacations</div>${E.mine.length?`<div class="list">${E.mine.slice().sort((a,c)=>c.num-a.num).map(e=>row(e)).join("")}</div>`:`<p class="small" style="margin:0 4px">Aucune vacation pour l'instant.</p>`}
+   ${E.asEnc.filter(e=>e.encDone||e.status==="done").length?`<div class="sect">Déjà évaluées par toi</div><div class="list">${E.asEnc.filter(e=>e.encDone||e.status==="done").map(e=>row(e,true)).join("")}</div>`:""}
+   <p class="small" style="margin:14px 4px 0">Les fiches sont visibles par le candidat, son encadrant et les administrateurs.</p>`;
+  $("#evNew").onclick=async e=>{e.currentTarget.disabled=true;try{const j=await api("ev/new","POST",{});alog("eval","nouvelle vacation",{num:j.ev.num});await evLoad().catch(()=>{});evEdit(j.ev,j.role)}catch(err){toast(err.error||"Erreur.");e.currentTarget.disabled=false}};
+  b.querySelectorAll("[data-ev]").forEach(x=>x.onclick=()=>evOpen(x.dataset.ev))};
+ draw();evLoad().then(draw).catch(e=>{const b=$("#evBody");if(b&&!evCache)b.innerHTML=`<p class="small">${esc(e.error||"Pas de connexion.")}</p>`})}
+async function evOpen(id,back){try{const j=await api("ev/get?eid="+encodeURIComponent(id));evEdit(j.ev,j.role,back)}catch(e){toast(e.error||"Fiche introuvable.")}}
+function evEdit(ev,role,back){back=back||viewEvals;const tok={};app._ev=tok;if(role==="cand"&&ev.status!=="done"||!board)loadBoard(true).then(()=>{const s=$("#evEnc");if(app._ev===tok&&s&&!s.disabled&&document.activeElement!==s){const keep=collect();apply(keep);draw()}}).catch(()=>{});
+ const open=ev.status!=="done",candEdit=role==="cand"&&open,interEdit=open&&(role==="cand"||role==="enc");let encAcc,encEdit;const encCalc=()=>{encAcc=!!(ev.enc&&ev.enc.uid);encEdit=open&&(role==="enc"||(role==="cand"&&!encAcc))};encCalc();
+ const dis=f=>f?"":"disabled";let saveT=null,dirty=false;
+ const seg=(name,opts,val,ok)=>`<div class="seg evseg" data-seg="${name}">${opts.map(([k,l])=>`<button type="button" data-v="${k}" aria-pressed="${val===k}" ${dis(ok)}>${l}</button>`).join("")}</div>`;
+ const members=()=>(board&&board.profiles||[]).filter(p=>p.id!==ev.cand).sort((a,b)=>a.pseudo.localeCompare(b.pseudo));
+ const draw=()=>{encCalc();const c=evCount(ev);const tot=c.SS+c.UA+c.UR+c.DCD;
+  app.innerHTML=push(`Vacation n°${ev.num}`,ev.status==="done"?"clôturée":"brouillon")+`<div class="evform">
+  <p class="small" style="margin:12px 4px 0">${role==="cand"?"Ta fiche":role==="enc"?`Fiche de <b>${esc(ev.candN)}</b> : tu es son encadrant`:`Fiche de <b>${esc(ev.candN)}</b> (lecture administrateur)`}${open?"":" · clôturée"}</p>
+  <div class="sect">En-tête</div><div class="card vacard">
+   <div class="evgrid"><label>Date<input type="date" id="evDate" value="${esc(ev.date||"")}" ${dis(candEdit)}></label><label>Horaires<input id="evHor" maxlength="40" placeholder="ex. 19h00 – 07h00" value="${esc(ev.horaires||"")}" ${dis(candEdit)}></label></div>
+   <div class="evgrid"><label>CI<input value="${esc(ev.candN)}" disabled></label><label>Vacation n°<input value="${ev.num}" disabled></label></div>
+   <label>Encadrant<select id="evEnc" ${dis(candEdit)}><option value="">— choisir —</option>${members().map(p=>`<option value="u:${esc(p.id)}" ${ev.enc&&ev.enc.uid===p.id?"selected":""}>${esc(p.pseudo)}${p.unite?" · "+esc(p.unite):""}</option>`).join("")}<option value="free" ${ev.enc&&!ev.enc.uid?"selected":""}>Autre (saisir le nom)</option></select></label>
+   ${ev.enc&&!ev.enc.uid?`<label>Nom de l'encadrant<input id="evEncN" maxlength="60" value="${esc(ev.enc&&!ev.enc.uid?ev.enc.name:"")}" ${dis(candEdit)}></label>`:""}
+   ${encAcc?`<p class="small" style="margin:4px 0 0">${esc(ev.enc.name)} remplit sa partie depuis son compte (Assistant CI › Évaluations).</p>`:ev.enc?`<p class="small" style="margin:4px 0 0">Ton encadrant n'a pas de compte : il remplit sa partie sur ton téléphone.</p>`:""}
+   <div class="small" style="margin:10px 0 4px">Équipage</div>${seg("equip",EV_EQ,ev.equip,candEdit)}
+   <div class="evcount"><span>Sans suite <b>${c.SS}</b></span><span>UA <b>${c.UA}</b></span><span>UR <b>${c.UR}</b></span><span>DCD <b>${c.DCD}</b></span><span>Victimes <b>${tot}</b></span></div><p class="small" style="margin:2px 0 0">Calculé à partir des interventions ci-dessous.</p></div>
+  <div class="sect">Interventions (${(ev.inter||[]).length})</div>
+  ${(ev.inter||[]).map((x,i)=>`<div class="card vacard" data-int="${i}"><div class="evih"><b>${i+1}.</b>${seg("t"+i,EV_T,x.t,interEdit)}${interEdit?`<button type="button" class="evdel" data-idel="${i}" aria-label="Retirer">✕</button>`:""}</div>
+    <label>Motif<input data-f="motif" maxlength="120" value="${esc(x.motif||"")}" ${dis(interEdit)}></label><label>Points positifs<textarea data-f="pos" rows="2" ${dis(interEdit)}>${esc(x.pos||"")}</textarea></label><label>Axes d'amélioration<textarea data-f="axes" rows="2" ${dis(interEdit)}>${esc(x.axes||"")}</textarea></label></div>`).join("")}
+  ${interEdit?`<button class="btn sec full" id="evAddI">+ Ajouter une intervention</button><p class="small" style="margin:6px 4px 0">En BSPP, un départ sans victime compte bien comme une intervention.</p>`:""}
+  <div class="sect">Compétences ${encEdit?"":"(encadrant)"}</div>
+  ${!encEdit&&role==="cand"&&!EV_C.some(([k])=>ev.comps&&ev.comps[k]&&(ev.comps[k].lvl||ev.comps[k].obs))?`<p class="small" style="margin:0 4px 8px">En attente de ton encadrant.</p>`:""}
+  ${EV_C.map(([k,l,d])=>{const v=(ev.comps||{})[k]||{};return `<div class="card vacard" data-comp="${k}"><b>${esc(l)}</b><p class="small" style="margin:2px 0 8px">${esc(d)}</p>${seg("c"+k,[["1","Non acquis"],["2","En cours"],["3","Acquis"],["4","Maîtrisé"]],String(v.lvl||""),encEdit)}<label>Observations<textarea data-f="obs" rows="2" ${dis(encEdit)}>${esc(v.obs||"")}</textarea></label></div>`}).join("")}
+  <div class="sect">Autonomie</div><p class="small" style="margin:0 4px 8px">Le CI pourrait-il reproduire dès demain cette même vacation, seul ?</p>
+  <div class="card vacard"><b>Avis de l'encadrant</b>${seg("autoEnc",[["oui","Oui"],["non","Non"]],ev.autoEnc&&ev.autoEnc.v,encEdit)}<label>Commentaires<textarea id="evAEc" rows="2" ${dis(encEdit)}>${esc(ev.autoEnc&&ev.autoEnc.c||"")}</textarea></label>
+   <label class="zxrow" style="margin-top:8px"><input type="checkbox" id="evRes" ${ev.reserve?"checked":""} ${dis(encEdit)}><span>L'encadrant émet des réserves non compatibles avec le rôle de CIR BSPP en l'état (à préciser par mail au DLUS et au DTUS).</span></label></div>
+  <div class="card vacard" style="margin-top:10px"><b>Avis du CI</b>${seg("autoCi",[["oui","Oui"],["non","Non"]],ev.autoCi&&ev.autoCi.v,candEdit)}<label>Commentaires<textarea id="evACc" rows="2" ${dis(candEdit)}>${esc(ev.autoCi&&ev.autoCi.c||"")}</textarea></label></div>
+  <p class="small" id="evSt" style="margin:10px 4px 0">${open&&role!=="admin"?"Les modifications sont enregistrées automatiquement.":""}</p>
+  <div class="actions" style="flex-direction:column">
+   <button class="btn full" id="evPdf">Générer le PDF de la synthèse</button>
+   ${role==="enc"&&open?`<button class="btn sec full" id="evEncDone">${ev.encDone?"Évaluation terminée ✓":"J'ai terminé mon évaluation"}</button>`:""}
+   ${role==="cand"?`<button class="btn sec full" id="evClose">${open?"Clôturer la fiche":"Rouvrir la fiche"}</button>`:""}
+   ${(role==="cand"&&open)||(me&&me.admin)?`<button class="btn sec full" id="evDel" style="color:var(--ko)">Supprimer la fiche</button>`:""}
+  </div></div>`;
+  bindBack(()=>{flush();back()});bind()};
+ const collect=()=>{const p={};const sv=n=>{const b=app.querySelector(`[data-seg="${n}"] [aria-pressed="true"]`);return b?b.dataset.v:""};
+  if(candEdit){const es=$("#evEnc"),en=$("#evEncN");if(es)p.enc=es.value==="free"?{name:en?en.value:(ev.enc&&ev.enc.name||"")}:es.value?{uid:es.value.slice(2)}:null;p.date=$("#evDate").value;p.horaires=$("#evHor").value;p.equip=sv("equip");p.autoCi={v:sv("autoCi"),c:$("#evACc").value}}
+  if(interEdit)p.inter=[...app.querySelectorAll("[data-int]")].map(c=>{const i=c.dataset.int;return {t:sv("t"+i),motif:c.querySelector('[data-f="motif"]').value,pos:c.querySelector('[data-f="pos"]').value,axes:c.querySelector('[data-f="axes"]').value}});
+  if(encEdit){p.comps={};EV_C.forEach(([k])=>{const c=app.querySelector(`[data-comp="${k}"]`);p.comps[k]={lvl:+sv("c"+k)||0,obs:c.querySelector('[data-f="obs"]').value}});p.autoEnc={v:sv("autoEnc"),c:$("#evAEc").value};p.reserve=$("#evRes").checked}
+  return p};
+ const apply=p=>{Object.assign(ev,{...p,comps:p.comps?{...(ev.comps||{}),...p.comps}:ev.comps})};
+ const save=async(extra)=>{const p={...collect(),...(extra||{})};apply(p);dirty=false;const st=$("#evSt");if(st)st.textContent="Enregistrement…";
+  try{const j=await api("ev/save","POST",{eid:ev.id,patch:p});Object.assign(ev,j.ev);if($("#evSt"))$("#evSt").textContent="Enregistré ✓";return true}catch(e){if($("#evSt"))$("#evSt").textContent=e.offline?"Hors connexion : réessaie avec du réseau.":(e.error||"Erreur d'enregistrement.");return false}};
+ const later=()=>{if(role==="admin"||!open)return;dirty=true;clearTimeout(saveT);saveT=setTimeout(()=>save(),800);const c=evCount({inter:collect().inter||ev.inter});const e=app.querySelector(".evcount");if(e&&interEdit){apply({inter:collect().inter});const t=c.SS+c.UA+c.UR+c.DCD;e.innerHTML=`<span>Sans suite <b>${c.SS}</b></span><span>UA <b>${c.UA}</b></span><span>UR <b>${c.UR}</b></span><span>DCD <b>${c.DCD}</b></span><span>Victimes <b>${t}</b></span>`}};
+ const flush=()=>{if(dirty){clearTimeout(saveT);save()}};
+ const bind=()=>{app.querySelectorAll(".evform input:not([type=checkbox]),.evform textarea").forEach(x=>x.addEventListener("input",later));const rs=$("#evRes");if(rs)rs.onchange=later;
+  app.querySelectorAll("[data-seg] button").forEach(b=>b.onclick=()=>{if(b.disabled)return;const g=b.closest("[data-seg]");g.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b&&x.getAttribute("aria-pressed")!=="true"?"true":"false"));later()});
+  const en=$("#evEnc");if(en)en.onchange=async()=>{const v=en.value;if(v==="free"){apply(collect());ev.enc={uid:null,name:""};draw();const n=$("#evEncN");if(n)n.focus();return}
+   await save();draw()};
+  const ai=$("#evAddI");if(ai)ai.onclick=async()=>{apply(collect());ev.inter=[...(ev.inter||[]),{t:"",motif:"",pos:"",axes:""}];await save({inter:ev.inter});draw();const l=app.querySelectorAll("[data-int]");if(l.length)l[l.length-1].scrollIntoView({block:"center"})};
+  app.querySelectorAll("[data-idel]").forEach(b=>b.onclick=async()=>{if(!b.dataset.c){b.dataset.c="1";b.textContent="Retirer ?";return}apply(collect());ev.inter.splice(+b.dataset.idel,1);await save({inter:ev.inter});draw()});
+  $("#evPdf").onclick=async e=>{const b=e.currentTarget;flush();b.disabled=true;b.textContent="Préparation du PDF…";try{await evPdf(ev)}catch(err){toast("Impossible de générer le PDF : "+(err&&err.message||"erreur"));logErr("pdf",err&&err.message,err&&err.stack)}b.disabled=false;b.textContent="Générer le PDF de la synthèse"};
+  const ed=$("#evEncDone");if(ed)ed.onclick=async()=>{if(await save({encDone:!ev.encDone})){toast(ev.encDone?"Merci ! Le candidat peut clôturer sa fiche.":"Évaluation rouverte.");evLoad().catch(()=>{});draw()}};
+  const cl=$("#evClose");if(cl)cl.onclick=async()=>{if(open&&!cl.dataset.c){cl.dataset.c="1";cl.textContent="Confirmer : clôturer";return}if(open)await save();const ok=await save({status:open?"done":"draft"});if(ok){alog("eval",open?"fiche clôturée":"fiche rouverte",{num:ev.num});await evLoad().catch(()=>{});evEdit(ev,role,back)}};
+  const dl=$("#evDel");if(dl)dl.onclick=async()=>{if(!dl.dataset.c){dl.dataset.c="1";dl.textContent="Confirmer la suppression";return}try{await api("ev/delete","POST",{eid:ev.id});toast("Fiche supprimée.");alog("eval","fiche supprimée",{num:ev.num,candidat:ev.candN});await evLoad().catch(()=>{});back()}catch(e){toast(e.error||"Erreur.")}}};
+ draw()}
+// ---- PDF : la fiche officielle remplie (gabarit pdf/synthese.pdf + pdf-lib)
+function loadScriptOnce(src){return new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`)&&window.PDFLib)return res();const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=()=>rej(new Error("chargement de "+src));document.body.appendChild(s)})}
+async function evPdf(ev){await loadScriptOnce("pdflib/pdf-lib.min.js");const {PDFDocument,StandardFonts,rgb}=window.PDFLib;
+ const rq=await fetch("pdf/synthese.pdf",{credentials:"same-origin"});if(!rq.ok)throw new Error(rq.status===401?"connecte-toi pour accéder à la fiche":"fiche modèle introuvable ("+rq.status+")");try{if(window.caches){const cc=await caches.open("quiz-ci-docs");if(!(await cc.match("pdf/synthese.pdf")))await cc.put("pdf/synthese.pdf",rq.clone())}}catch(e){}const tpl=await rq.arrayBuffer();const doc=await PDFDocument.load(tpl);
+ const F=await doc.embedFont(StandardFonts.Helvetica),FB=await doc.embedFont(StandardFonts.HelveticaBold);const P=doc.getPages();const H=842.04,ink=rgb(.05,.12,.35);
+ const safe=t=>String(t||"").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[^\x09\x0A\x0D\x20-\x7E -ÿŒœ€–—…«»]/g,"");
+ const box=(pg,text,x0,top,x1,bot,o={})=>{text=safe(text).trim();if(!text)return;let size=o.size||9;const min=o.min||5.5,w=x1-x0-4,h=bot-top-2;let lines;
+  for(;;){const s=size;lines=[];for(const para of text.split(/\n/)){let cur="";for(const word of para.split(/\s+/)){const t=cur?cur+" "+word:word;if((o.font||F).widthOfTextAtSize(t,s)<=w)cur=t;else{if(cur)lines.push(cur);cur=word}}lines.push(cur)}if(lines.length*s*1.18<=h||size<=min)break;size-=.5}
+  const maxL=Math.max(1,Math.floor(h/(size*1.18)));if(lines.length>maxL){lines=lines.slice(0,maxL);lines[maxL-1]=lines[maxL-1].replace(/\s*\S*$/,"")+"…"}
+  lines.forEach((l,i)=>pg.drawText(l,{x:x0+2,y:H-top-size-1-i*size*1.18,size,font:o.font||F,color:ink}))};
+ const mark=(pg,x,top)=>pg.drawText("X",{x:x+0.6,y:H-top-9.2,size:9,font:FB,color:ink});
+ const circle=(pg,x0,top,x1,bot)=>pg.drawEllipse({x:(x0+x1)/2,y:H-(top+bot)/2,xScale:(x1-x0)/2+3,yScale:(bot-top)/2+2,borderColor:ink,borderWidth:1.2});
+ const c=evCount(ev),date=ev.date?new Date(ev.date+"T12:00:00").toLocaleDateString("fr-FR"):"",enc=ev.enc&&ev.enc.name||"";
+ // page 1 : en-tête et compétences 1 à 5
+ const p1=P[0];box(p1,date,140,121,276,139);box(p1,ev.horaires,402,121,552,139);box(p1,ev.candN,140,141,276,159);box(p1,String(ev.num),402,141,552,159);box(p1,enc,140,161,276,179);
+ const eq={ul:372.2,ext:437.6,mixte:510.4}[ev.equip];if(eq)mark(p1,eq,165.5);
+ box(p1,String(c.SS),140,182,203,200,{font:FB});box(p1,String(c.UA),287,182,356,200,{font:FB});box(p1,String(c.UR),415,182,454,200,{font:FB});box(p1,String(c.DCD),514,182,552,200,{font:FB});
+ const compTxt=k=>{const v=(ev.comps||{})[k]||{};return (v.lvl?`[${EV_L[v.lvl]}] `:"")+(v.obs||"")};
+ [["base",323,415],["orga",415,507],["garde",508,600],["depart",600,692],["renforts",693,784]].forEach(([k,t,b])=>box(p1,compTxt(k),178,t+3,561,b-2));
+ const p2=P[1];[["admin",42,134],["cat",134,226],["radio",227,319]].forEach(([k,t,b])=>box(p2,compTxt(k),178,t+3,561,b-2));
+ if(ev.autoEnc&&ev.autoEnc.v==="oui")circle(p2,116.8,462.5,141.7,476.5);if(ev.autoEnc&&ev.autoEnc.v==="non")circle(p2,153.5,462.5,184.6,476.5);box(p2,ev.autoEnc&&ev.autoEnc.c,199,440,560,541);
+ if(ev.autoCi&&ev.autoCi.v==="oui")circle(p2,116.8,584.8,141.7,598.8);if(ev.autoCi&&ev.autoCi.v==="non")circle(p2,153.5,584.8,184.6,598.8);box(p2,ev.autoCi&&ev.autoCi.c,199,565,560,666);
+ if(ev.reserve)p2.drawText("X",{x:69.5,y:H-716,size:14,font:FB,color:ink});
+ // page 3 : rappel et interventions
+ const p3=P[2];box(p3,ev.candN,147,43,276,61);box(p3,enc,395,43,552,61);box(p3,date,147,63,276,83);const vx=[414.3,442.4,467.4,489.3,517.4][ev.num-1];if(vx)mark(p3,vx,68.5);else box(p3,"n° "+ev.num,530,63,558,83,{size:8});
+ const slots=[[2,239],[2,388],[2,538],[3,42],[3,192],[3,341],[3,491],[3,641]];const ty={UA:15.7,UR:34.4,DCD:53,SS:71.6};
+ (ev.inter||[]).slice(0,8).forEach((x,i)=>{const [pi,R]=slots[i];const pg=P[pi];if(ty[x.t]!=null)mark(pg,70.9,R+ty[x.t]);box(pg,x.motif,48,R+103,136,R+148,{size:7.5,min:5});box(pg,x.pos,143,R+3,337,R+147);box(pg,x.axes,348,R+3,542,R+147)});
+ if((ev.inter||[]).length>8){let pg=doc.addPage([595.56,842.04]);let y=60;pg.drawText(safe(`Synthèse vacation n°${ev.num} – ${ev.candN} – interventions suivantes`),{x:48,y:H-40,size:11,font:FB,color:ink});
+  ev.inter.slice(8).forEach((x,j)=>{if(y>720){pg=doc.addPage([595.56,842.04]);y=50}const lbl=`${9+j}. ${({UA:"UA",UR:"UR",DCD:"DCD",SS:"Sans suite"})[x.t]||"—"}${x.motif?" – motif : "+x.motif:""}`;box(pg,lbl,48,y,547,y+14,{font:FB,size:9.5});box(pg,"Points positifs : "+(x.pos||"—"),48,y+16,547,y+60);box(pg,"Axes d'amélioration : "+(x.axes||"—"),48,y+62,547,y+106);y+=116})}
+ doc.setTitle(safe(`Synthèse vacation CIR BSPP n°${ev.num} – ${ev.candN}`));doc.setCreator("Quiz CI BSPP");
+ const bytes=await doc.save();const name=`Synthese_vacation_${ev.num}_${String(ev.candN||"CI").replace(/[^A-Za-z0-9]+/g,"_")}.pdf`;const blob=new Blob([bytes],{type:"application/pdf"});
+ const file=new File([blob],name,{type:"application/pdf"});alog("eval","PDF généré",{num:ev.num});
+ if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name});return}catch(e){if(e&&e.name==="AbortError")return}}
+ const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
+// ---- Statistiques : progression d'une vacation à l'autre
+function statVacations(){const E=evCache||{mine:[]};const L=(E.mine||[]).slice().sort((a,b)=>a.num-b.num);
+ if(!L.length)return `<div class="card"><b>Aucune vacation évaluée</b><p class="small" style="margin:6px 0 0">En mode CI BSPP, l'outil <b>Évaluations</b> te permet de remplir la synthèse de tes vacations d'accompagnement avec ton encadrant. Ta progression apparaîtra ici.</p></div>`;
+ const last=L[L.length-1];const weak=evWeak();
+ return `<div class="card"><b>Compétences, vacation par vacation</b><div class="evtable"><table><thead><tr><th></th>${L.map(e=>`<th>n°${e.num}</th>`).join("")}</tr></thead><tbody>
+  ${EV_C.map(([k,l])=>`<tr><td>${esc(l)}</td>${L.map(e=>{const v=e.comps&&e.comps[k]||0;return `<td><span class="evdot" style="background:${EV_COL[v]}" title="${EV_L[v]}">${v||""}</span></td>`}).join("")}</tr>`).join("")}
+  <tr><td>Autonomie (encadrant)</td>${L.map(e=>`<td>${e.autoEnc==="oui"?"✓":e.autoEnc==="non"?"✗":"—"}</td>`).join("")}</tr></tbody></table></div>
+  <div class="evleg">${[1,2,3,4].map(v=>`<span><i style="background:${EV_COL[v]}"></i>${EV_L[v]}</span>`).join("")}</div></div>
+  ${evCharts(L)}
+  ${weak.length?`<div class="card" style="margin-top:12px"><b>Points à travailler (vacation n°${weak.num})</b><p class="small" style="margin:6px 0 10px">En mode Apprenti, les exercices insistent sur ces compétences.</p><div class="chips wrap">${weak.map(([k,l])=>`<span class="chip" aria-pressed="true">${esc(l)}</span>`).join("")}</div></div>`:`<p class="small" style="margin:12px 4px 0">Aucun point faible relevé sur la dernière vacation notée.</p>`}
+  <div class="sect">Fiches</div><div class="list">${L.slice().reverse().map(e=>`<button class="row" data-evs="${esc(e.id)}"><span class="ic" style="background:${e.status==="done"?"#1f9d55":"#ff9f0a"}">${e.num}</span><span class="tx"><b>Vacation n°${e.num}</b><span>${esc(evDate(e.date))} · ${e.status==="done"?"clôturée":"brouillon"}</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div>`}
+// ---- Graphiques : compétences et interventions au fil des vacations ou des semaines
+let evPer=store.get("evPer","vac"),evCmp=store.get("evCmp","moy");
+const EV_TC={UA:"#ff9f0a",UR:"#d92d20",DCD:"#3a4a6b",SS:"#a3a9b5"};
+function evSeries(L){const rated=e=>EV_C.filter(([k])=>e.comps&&e.comps[k]).map(([k])=>e.comps[k]);const val=e=>{if(evCmp==="moy"){const r=rated(e);return r.length?r.reduce((a,b)=>a+b,0)/r.length:null}return e.comps&&e.comps[evCmp]||null};
+ const cnt=e=>e.cnt||{UA:0,UR:0,DCD:0,SS:0};
+ if(evPer!=="sem")return L.map(e=>({lab:"n°"+e.num,tip:`Vacation n°${e.num} (${evDate(e.date)})`,v:val(e),c:cnt(e)}));
+ const G=new Map();L.forEach(e=>{const k=e.date?isoWeekOf(e.date):"?";if(!G.has(k))G.set(k,[]);G.get(k).push(e)});
+ return [...G.keys()].sort().map(k=>{const es=G.get(k);const vs=es.map(val).filter(v=>v!=null);const c={UA:0,UR:0,DCD:0,SS:0};es.forEach(e=>{const x=cnt(e);for(const t in c)c[t]+=x[t]||0});
+  return {lab:/S\d+$/.test(k)?"S"+(+k.split("-S")[1]):k,tip:`Semaine ${k.split("-S")[1]} : ${es.length} vacation${es.length>1?"s":""}`,v:vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:null,c}})}
+function evLineSvg(S){const W=320,H=150,pl=54,pb=20,pt=12,n=S.length,step=n>1?(W-pl-14)/(n-1):0,x=i=>n>1?pl+6+i*step:pl+(W-pl)/2,y=v=>pt+(H-pt-pb)*(1-(v-1)/3);
+ let g=`<svg class="evo" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(S.map(s=>s.tip+" : "+(s.v==null?"non noté":s.v.toFixed(1))).join(" ; "))}">`;
+ [1,2,3,4].forEach(v=>{g+=`<line x1="${pl}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="evg"/><text x="${pl-5}" y="${y(v)+3.5}" class="evy">${["Non acquis","En cours","Acquis","Maîtrisé"][v-1]}</text>`});
+ const pts=S.map((s,i)=>s.v==null?null:[x(i),y(s.v),s]);let d="";pts.forEach(p=>{if(!p)return;d+=(d?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)});
+ if(d)g+=`<path d="${d}" fill="none" stroke="#1f7a3f" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+ pts.forEach(p=>{if(p)g+=`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${EV_COL[Math.round(p[2].v)]}" stroke="var(--card)" stroke-width="1.5"><title>${esc(p[2].tip)} : ${p[2].v.toFixed(1)}</title></circle>`});
+ S.forEach((s,i)=>{if(n<=8||i%Math.ceil(n/8)===0||i===n-1)g+=`<text x="${x(i)}" y="${H-5}" class="evx">${esc(s.lab)}</text>`});return g+"</svg>"}
+function evStackSvg(S){const W=320,H=150,pl=26,pb=20,pt=12,n=S.length,bw=Math.min(36,(W-pl-4)/n),gap=((W-pl-4)-bw*n)/Math.max(1,n);const tot=s=>s.c.UA+s.c.UR+s.c.DCD+s.c.SS;const mx=Math.max(4,...S.map(tot));const top=mx<=5?Math.max(4,mx):Math.ceil(mx/5)*5;const y=v=>pt+(H-pt-pb)*(1-v/top);
+ let g=`<svg class="evo" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(S.map(s=>`${s.tip} : ${tot(s)} intervention(s), UA ${s.c.UA}, UR ${s.c.UR}, DCD ${s.c.DCD}, sans suite ${s.c.SS}`).join(" ; "))}">`;
+ [0,top/2,top].forEach(v=>{g+=`<line x1="${pl}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="evg"/><text x="${pl-5}" y="${y(v)+3.5}" class="evy">${Math.round(v)}</text>`});
+ S.forEach((s,i)=>{const x0=pl+2+gap/2+i*(bw+gap);let acc=0;const T=["SS","UA","UR","DCD"].filter(t=>s.c[t]);T.forEach((t,j)=>{const y1=y(acc+s.c[t]),y0=y(acc);acc+=s.c[t];g+=`<rect x="${x0.toFixed(1)}" y="${(y1+(j?1:0)).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,y0-y1-(j?1:0)).toFixed(1)}" rx="${j===T.length-1?3:0}" fill="${EV_TC[t]}"><title>${esc(s.tip)} · ${t==="SS"?"Sans suite":t} : ${s.c[t]}</title></rect>`});
+  if(tot(s))g+=`<text x="${x0+bw/2}" y="${y(acc)-4}" class="evx">${tot(s)}</text>`;
+  if(n<=10||i%Math.ceil(n/10)===0||i===n-1)g+=`<text x="${x0+bw/2}" y="${H-5}" class="evx">${esc(s.lab)}</text>`});return g+"</svg>"}
+function evCharts(L){if(!L.length)return"";const S=evSeries(L);const per=`<div class="seg" style="margin:12px 0 0">${[["vac","Par vacation"],["sem","Par semaine"]].map(([k,l])=>`<button data-evper="${k}" aria-pressed="${evPer===k}">${l}</button>`).join("")}</div>`;
+ const cl=evCmp==="moy"?"Moyenne des 8 compétences":(EV_C.find(([k])=>k===evCmp)||[,""])[1];const T=S.reduce((c,s)=>{for(const t in c)c[t]+=s.c[t]||0;return c},{UA:0,UR:0,DCD:0,SS:0});
+ return `${per}<div class="card evchart" style="margin-top:10px"><b>Évolution des compétences</b><span class="small">${esc(cl)}${evPer==="sem"?" · moyenne de la semaine":""}</span>
+  <div class="chips wrap" style="margin:8px 0 4px">${[["moy","Moyenne"],...EV_C.map(([k,l])=>[k,l])].map(([k,l])=>`<button class="chip" data-evcmp="${k}" aria-pressed="${evCmp===k}">${esc(l)}</button>`).join("")}</div>
+  ${S.some(s=>s.v!=null)?evLineSvg(S):`<p class="small">Pas encore de compétence notée.</p>`}</div>
+  <div class="card evchart" style="margin-top:10px"><b>Interventions</b><span class="small">${T.UA+T.UR+T.DCD+T.SS} au total · UA ${T.UA} · UR ${T.UR} · DCD ${T.DCD} · sans suite ${T.SS}</span>
+  ${evStackSvg(S)}<div class="evleg">${[["UA","UA"],["UR","UR"],["DCD","DCD"],["SS","Sans suite"]].map(([k,l])=>`<span><i style="background:${EV_TC[k]}"></i>${l}</span>`).join("")}</div></div>`}
+// ---- Mode Apprenti : on insiste sur les points à travailler de la dernière vacation notée
+const EV_FOCUS={base:{th:["ssuap","acr","pse"]},orga:{th:["orga"],re:/CSO|PVO|\bGolf\b|groupement|stationnaire|sergent de jour|chef de garde|Onyx|centre de secours|\bCS\b/i},garde:{re:/prise de garde|vacation|stationnaire|PVO|perception|consignes|ronfleur|matériel/i},depart:{re:/ordre de départ|parcellaire|carroyage|départ|statut|itinéraire|trajet|présent/i},renforts:{re:/je demande|renfort|demande de moyens|\bpolice\b|engin pompe|prompt secours|complément de départ|équipe médicale|tiroir|escorte/i},admin:{th:["efibi"],re:/ADAGIO|message de rentrée|\bCRI\b|eFiBi|fiche bilan|rapport|décharge/i},cat:{re:/arrêt cardio|ACR|décès|mineur|arme|monoxyde|\bCO\b|vide|hauteur|métro|voies|plan rouge|accident de travail|corpulence|VTBA|escorte|policier|militaire/i},radio:{re:/radio|phonie|message|parlez|\bGolf\b|statut|ANTARES|collation|transmission/i}};
+function evWeak(){const L=((evCache&&evCache.mine)||[]).filter(e=>EV_C.some(([k])=>e.comps&&e.comps[k])).sort((a,b)=>b.num-a.num);const e=L[0];if(!e)return [];const w=EV_C.filter(([k])=>e.comps[k]&&e.comps[k]<=2).map(([k,l])=>[k,l]);w.num=e.num;return w}
+function evFocusItems(k,simple){const f=EV_FOCUS[k];if(!f)return [];const base=simple?(SIMPLE&&SIMPLE.items||[]).filter(x=>x._k==="qcm"||x._k==="vf"):ALL.filter(x=>x._k==="qcm"||x._k==="vf");
+ return base.filter(x=>{const th=simple?x.g:x._t.id;if(f.th&&f.th.includes(th))return true;return f.re?f.re.test(x.q||""):false})}
+function evFocusMix(list,simple,n=10){const w=evWeak();if(!w.length)return list;const seen=new Set();const foc=fresh(w.flatMap(([k])=>evFocusItems(k,simple))).filter(x=>!seen.has(x._id)&&seen.add(x._id));
+ const take=Math.min(Math.round(n*.4),foc.length);const out=foc.slice(0,take);const ids=new Set(out.map(x=>x._id));for(const x of list){if(out.length>=Math.max(n,list.length))break;if(!ids.has(x._id)){out.push(x);ids.add(x._id)}}return shuffle(out.slice(0,n)).concat(list.filter(x=>!ids.has(x._id)))}
+function evFocusCard(simple){const w=evWeak();if(!w.length)return"";return `<div class="card evfocus"><b>Tes axes de travail</b><p class="small" style="margin:4px 0 10px">D'après ta synthèse de vacation n°${w.num}. Touche un point pour un quiz ciblé ; les autres exercices y reviennent aussi plus souvent.</p><div class="chips wrap">${w.map(([k,l])=>`<button class="chip" data-focus="${k}">${esc(l)}</button>`).join("")}</div></div>`}
+function bindFocus(simple){app.querySelectorAll("[data-focus]").forEach(b=>b.onclick=()=>{const k=b.dataset.focus;const L=fresh(evFocusItems(k,simple)).map(mixQ).slice(0,10);if(L.length<3){toast("Pas assez de questions sur ce point.");return}
+ if(k==="radio"&&!simple&&Math.random()<.5){runRadioBuild(()=>go("home"),true);return}simple?runSimple(L,"Axe de travail"):runQuiz(L,"qcm",true)})}
 /* ============ Tutoriel / présentation ============ */
 const TUTO_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.9"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>';
 function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${bg}">${svg}</span>`;return [
@@ -1168,16 +1338,19 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {art:`<div class="tpair"><div>${gradeSvg("1CL","tgr")}<b>Sapeur</b></div><div><span class="tgr">${LTN_HELM}</span><b>Officier</b></div></div>`,t:"Deux niveaux de questions",p:"<b>Sapeur</b> : des questions faciles pour découvrir les documents (5 points). <b>Officier</b> : des questions expertes, tirées des référentiels (20 points).",n:"Le niveau se choisit en haut de l'accueil, en mode Apprenti."},
  {art:ic(I.quiz,"#0a84ff"),t:"Des jeux pour réviser",p:"Quiz, vrai ou faux en 60 secondes, flashcards, séquences à remettre dans l'ordre, cas pratiques, examen blanc, mort subite, bilan express… et chaque semaine un <b>défi</b> : les mêmes 20 questions pour tout le monde.",n:"Les questions changent à chaque partie : celles que tu n'as jamais vues passent en premier. Les questions sur l'incendie sont regroupées dans la rubrique <b>Feu</b>, à activer à côté des thèmes. Nouveau thème : <b>Culture BSPP</b> (histoire, traditions, chiffres de la Brigade). Dans « Remets dans l'ordre », fais glisser les étapes par leur poignée."},
  {art:ic(I.book,"#5e5ce6"),t:"Le référentiel à portée de main",p:"Après chaque question, <b>Voir dans le référentiel</b> ouvre la bonne page du document. Le drapeau <b>Marquer</b> garde une question de côté pour la revoir dans Réviser.",n:"Tous les documents sont aussi dans le menu Documents, avec une recherche."},
- {art:`<div class="tpair">${ic(RADIO_IC_T,"#0f1d36")}${ic(MAP_IC_T,"#1f9d55")}</div>`,t:"Tes outils de garde",p:"<b>Messages radio</b> : construis ton message pas à pas avec ton indicatif. <b>Codes CRI</b>, <b>Carte des secteurs</b> (adresses des CS et téléphones des PVO), <b>Hôpitaux</b> (le plus proche, filtré par spécialité), <b>Grades</b> et <b>Documents</b>.",n:"Tout est accessible depuis le menu en haut à droite."},
+ {art:`<div class="tpair">${ic(RADIO_IC_T,"#0f1d36")}${ic(MAP_IC_T,"#1f9d55")}</div>`,t:"Tes outils de garde",p:"<b>Messages radio</b> : construis ton message pas à pas avec ton indicatif. <b>Codes CRI</b>, <b>Carte des secteurs</b> (adresses des CS et téléphones des PVO), <b>Hôpitaux</b> (le plus proche, filtré par spécialité), <b>Grades</b>, <b>Documents</b> et <b>Évaluations</b> (la synthèse de tes vacations).",n:"Tout est accessible depuis le menu en haut à droite."},
  {art:ic(I.user,"#ff9f0a"),t:"Classements et équipes",p:"Rejoins ou crée ton équipe dans Profil › Équipe : ta demande doit être acceptée par un membre, et l'équipe peut fixer un nombre maximum de joueurs. Touche une <b>équipe</b> pour voir ses membres (Points, Défi, Fiches, Duels), puis un <b>membre</b> pour voir sa fiche et le défier. Les points de la semaine repartent de zéro chaque lundi.",n:"Le menu Statistiques montre ton total depuis ton arrivée, tes courbes semaine par semaine et ton évaluation par fiche."},
+ {id:"new500",art:ic('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2.5"/><path d="M9 3.5h6v3H9z"/><path d="m8.5 13 2 2 4-4.5"/></svg>',"#1f7a3f"),t:"Évaluations de vacation",p:"En mode <b>CI BSPP</b>, la tuile <b>Évaluations</b> remplit avec ton encadrant la <b>synthèse de vacation CIR BSPP</b>. Date, nom, numéro de vacation et nombre de victimes (UA, UR, DCD, sans suite) se remplissent tout seuls. Tu saisis tes interventions et ton avis ; ton encadrant note les 8 compétences (<b>Non acquis, En cours, Acquis, Maîtrisé</b>) depuis son compte ou sur ton téléphone.",n:"Le bouton <b>Générer le PDF</b> sort la fiche officielle remplie. Ta progression vacation par vacation est dans Statistiques › Vacations, et en mode Apprenti les exercices insistent sur tes points à travailler. Avec les notifications activées, ton encadrant est prévenu quand une fiche l'attend, et toi quand il l'a validée. Fiches visibles par toi, ton encadrant et les administrateurs."},
+ {id:"radio500",art:ic(RADIO_IC_T,"#0f1d36"),t:"Message radio à pièges",p:"Nouveau jeu au niveau <b>Officier</b> : compose le message radio, mais attention, des morceaux <b>pièges</b> se glissent parmi les bons (mauvais indicatif, formule interdite, information en trop…). À toi de les écarter.",n:"À la correction, chaque piège choisi est expliqué. Le jeu se trouve dans Messages radio › S'entraîner."},
  {id:"new340",art:`<div class="tpair">${ic(I.bolt,"#d0021b")}${ic(I.list,"#ff7a00")}<div class="tdeco" style="font-size:30px">⚔</div></div>`,t:"Nouveaux jeux",p:"<b>Mort subite</b> : des questions jusqu'à la première erreur, avec ton record et celui de ton équipe. <b>Bilan express</b> : une prise en charge à remettre dans l'ordre en 90 secondes. <b>Duel en direct</b> : défie un membre connecté, vous jouez en même temps et tu vois son score évoluer.",n:"Le duel en direct se lance avec le bouton ⚔ en choisissant « En direct » ; ton adversaire a une minute pour accepter."},
  {id:"team340",art:ic(I.user,"#1d2b4a"),t:"La vie de l'équipe",p:"Pour entrer dans une équipe, envoie une <b>demande</b> : un membre doit l'accepter. L'équipe fixe son <b>nombre maximum</b> de joueurs. Ses membres peuvent aussi <b>voter l'exclusion</b> d'un joueur : il faut la majorité des autres membres, en 48 h.",n:"Tout se gère dans Profil › Équipe, sur la page de ton équipe."},
- {id:"duel",art:`<div class="tpair"><div><span class="tdeco">${DECO_IC.medal}</span><b>Gagnant</b></div><div><span class="tdeco">${DECO_IC.broom}</span><b>Perdant</b></div><div><span class="tdeco">${DECO_IC.run}</span><b>Refus</b></div></div>`,t:"Les duels",p:"Défie un membre sur <b>10 questions chronométrées</b>, au thème et au niveau de ton choix : tuile <b>Duels</b> de l'accueil ou bouton ⚔ dans les classements. Ton adversaire a 48 h pour jouer les mêmes questions ; plus on répond vite, plus on marque. Le gagnant porte la <b>médaille</b>, choisit un <b>surnom</b> au perdant, qui passe <b>le balai</b>, et peut lui infliger un <b>gage</b> d'une heure (réponses qui s'enfuient, questions à l'envers…). Refuser ? Tu deviens le <b>pompier qui se défile</b> !",n:"Décorations et surnom s'affichent 24 h, le gage dure 1 h (jamais en examen, défi ou duel). Victoire +30 points, nul +15, défaite +10. Active les <b>notifications de duel</b> dans Profil › Moi pour savoir quand on te défie."},
+ {id:"duel",art:`<div class="tpair"><div><span class="tdeco">${DECO_IC.medal}</span><b>Gagnant</b></div><div><span class="tdeco">${DECO_IC.broom}</span><b>Perdant</b></div><div><span class="tdeco">${DECO_IC.run}</span><b>Refus</b></div></div>`,t:"Les duels",p:"Défie un membre sur <b>10 questions chronométrées</b>, au thème et au niveau de ton choix : tuile <b>Duels</b> de l'accueil ou bouton ⚔ dans les classements. Ton adversaire a 48 h pour jouer les mêmes questions ; plus on répond vite, plus on marque. Le gagnant porte la <b>médaille</b> et le perdant passe <b>le balai</b>. Le gagnant choisit ensuite un <b>surnom</b> pour le perdant <b>ou</b> lui inflige un <b>gage</b> d'une heure (réponses qui s'enfuient, questions à l'envers…) ; avec un <b>sans-faute (10/10)</b>, il a droit aux deux. Refuser ? Tu deviens le <b>pompier qui se défile</b> !",n:"Décorations et surnom s'affichent 24 h, le gage dure 1 h (jamais en examen, défi ou duel). Victoire +30 points, nul +15, défaite +10. Pas de limite au nombre de défis en cours. Active les <b>notifications</b> dans Profil › Moi pour savoir quand on te défie."},
  {id:"rank",art:`<div class="tpair"><div>${gradeSvg("SAP","tgr")}<b>Sapeur 2e cl.</b></div><div>${gradeSvg("1CL","tgr")}<b>1re classe</b></div><div>${gradeSvg("CPL","tgr")}<b>Caporal</b></div></div>`,t:"Monte en grade",p:"Tu débutes <b>Sapeur de 2e classe</b>. Chaque exercice d'au moins 5 questions réussi à <b>50 % ou plus</b> fait avancer ta barre de progression. Une fois la barre pleine, l'<b>examen de passage</b> se débloque : 15 questions, <b>12 bonnes réponses</b> pour être promu, avec feu d'artifice et ton nouveau galon.",n:"Il faut 3 exercices réussis pour les premiers grades, un peu plus à mesure que tu montes. Examen raté : nouvel essai après 3 exercices réussis."},
  {art:`<div class="tpair"><div>${gradeSvg("SCH","tgr")}<b>Sergent-chef</b></div><div><span class="tgr">${LTN_HELM}</span><b>Niveau Officier</b></div></div>`,t:"Garde tes galons",p:"<b>3 exercices d'affilée sous 50 %</b> et tu redescends d'un grade : l'appli te prévient dès le 2e. Au-delà de <b>Sergent-chef</b>, seuls les exercices du <b>niveau Officier</b> font progresser : pour viser Adjudant, Lieutenant ou Général, il faut maîtriser les questions expertes.",n:"Ton grade, ta barre de progression et le bouton de l'examen sont dans Profil › Moi et en haut du menu Statistiques. Ton galon s'affiche aussi devant ton pseudo dans les classements."},
  {art:`<div class="tpair">${ic(FLAME_IC,"#ff6a00")}${ic(I.refresh,"#0f1d36")}</div>`,t:"Ton profil, tes réglages",p:"Dans Profil › Moi : choisis ton ambiance : <b>Normal</b>, <b>Braise</b> (messages de sergent-chef énervé, sans effets) ou <b>On Fire</b> (en plus, thème enflammé et animations : 5 bonnes réponses d'affilée déclenchent la lance, 3 erreurs l'alarme, et 10 de suite la médaille <b>Soldat du feu</b>). Et si l'appli semble ancienne, touche <b>Forcer la mise à jour</b> pour charger la dernière version.",n:"Ta version et la dernière version en ligne y sont affichées. Ta progression est conservée."},
  {art:ic(I.plus,"#e3051b"),t:"À toi de jouer !",p:"Sur iPhone, ajoute l'appli à ton écran d'accueil : bouton <b>Partager</b> puis <b>Sur l'écran d'accueil</b>. Le menu se trouve en haut à droite de chaque page.",n:"Tu pourras revoir cette présentation à tout moment dans Profil › Moi › Tutoriel."}]}
 const NEWS={rank:{n:2,t:"Nouveau dans la version 3.2",p:"Deux nouveautés : un <b>grade de progression</b> qui évolue avec tes résultats, et un menu <b>Statistiques</b> à part. Voici comment ça marche."},
+ new500:{n:2,t:"Nouveau dans la version 5.0",p:"Les <b>Évaluations de vacation</b> arrivent en mode CI BSPP, avec le PDF de la fiche officielle, et un nouveau jeu radio à pièges. Côté duels : plus de limite de défis, et un sans-faute donne droit au surnom <b>et</b> au gage."},
  new340:{n:3,t:"Nouveau dans la version 3.4",p:"Trois nouveaux jeux, un thème Culture BSPP, des gages pour les duels, des notifications de défi et des équipes mieux organisées. Voici l'essentiel."},
  duel:{n:1,t:"Nouveau dans la version 3.3",p:"Les <b>duels</b> arrivent : défie tes collègues, gagne la médaille… ou passe le balai. Et le menu <b>Statistiques</b> a été refait, avec ses onglets Résumé, Évolution et Fiches."}};
 function openTuto(onDone,from){let S=tutoSlides();if(from&&NEWS[from]){const k=S.findIndex(x=>x.id===from);const N=NEWS[from];if(k>0)S=[{art:`<div class="tlogos">${LOGOS}</div>`,t:N.t,p:N.p,n:"Tu pourras revoir tout le tutoriel dans Profil › Moi › Tutoriel."},...S.slice(k,k+N.n)]}let i=0;const el=document.createElement("div");el.className="tuto";el.setAttribute("role","dialog");el.setAttribute("aria-modal","true");document.body.appendChild(el);
@@ -1505,6 +1678,8 @@ function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
   const bb=store.get("radioBuildBest",null);
   body=`<div class="card"><h2 style="font-size:20px;margin:0 0 6px">Construis le message</h2><p class="small" style="margin:0 0 12px">Remets les morceaux du message radio dans le bon ordre : appel, demande de moyens, renseignement, statuts, message de rentrée… Idéal pour débuter.</p>
    ${bb!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${bb}/8</b></p>`:""}<button class="btn full" id="buildGo">Jouer</button></div>
+   <div class="card" style="margin-top:12px"><h2 style="font-size:20px;margin:0 0 6px">Message radio à pièges <span class="pill warn" style="vertical-align:3px">Officier</span></h2><p class="small" style="margin:0 0 12px">Même principe, mais des morceaux pièges se glissent parmi les bons : « Police d'urgence » au lieu de « Police », « faites partir » au lieu de « je demande », « accident de la voie publique »… Les pièges choisis sont expliqués à la correction.</p>
+   ${store.get("radioTrapBest",null)!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${store.get("radioTrapBest",0)}/8</b></p>`:""}<button class="btn full" id="trapGo">Jouer</button></div>
    <div class="card" style="margin-top:12px"><h2 style="font-size:20px;margin:0 0 6px">Simulateur radio</h2><p class="small" style="margin:0 0 12px">10 situations tirées au hasard : statut à passer, moyen à demander, bon message à transmettre, réponse au CSO, CRI… Chaque bonne réponse rapporte des points au classement.</p>
    ${st!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${st}/10</b></p>`:""}<button class="btn full" id="simGo">Commencer</button></div>
    <div class="card" style="margin-top:12px"><b>Écouter les messages</b><p class="small" style="margin:6px 0 0">Dans le constructeur et le simulateur, le bouton « Écouter » lit le message à voix haute : pratique pour s'habituer au rythme de la phonie.</p></div>`}
@@ -1517,7 +1692,7 @@ function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
  app.querySelectorAll("[data-rt]").forEach(b=>b.onclick=()=>{radioTab=b.dataset.rt;store.set("radioTab",radioTab);viewRadio()});
  app.querySelectorAll("[data-rb]").forEach(b=>b.onclick=()=>runBuilder(b.dataset.rb));
  app.querySelectorAll("[data-gp]").forEach(b=>b.onclick=()=>openDoc("guide",+b.dataset.gp,["message","radio"]));
- const sg=$("#simGo");if(sg)sg.onclick=runRadioSim;const bg=$("#buildGo");if(bg)bg.onclick=()=>runRadioBuild();
+ const sg=$("#simGo");if(sg)sg.onclick=runRadioSim;const bg=$("#buildGo");if(bg)bg.onclick=()=>runRadioBuild();const tg=$("#trapGo");if(tg)tg.onclick=()=>runRadioBuild(null,true);
  if(!radioId.num&&!store.get("ridAsked",false)){store.set("ridAsked",true);indicSheet()}
 }
 function phonieHtml(r,pvo){if(!r.lines.length)return "";
@@ -1675,30 +1850,68 @@ function rbClean(t){let s=String(t).replace(/[«»"“”]/g,"").replace(/\s*[,.
  const w=s.split(" ")[0]||"";const keep=["Golf","Croix-Rouge","Necker","Hôpital",...R_HOP,radioId.cs||"",gameRid().cs].filter(Boolean);
  if(/^[A-ZÀ-Ý0-9/]{2,}$/.test(w.replace(/[-'’]/g,""))||/^\d/.test(w)||keep.some(k=>s.startsWith(k)))return s;
  return s.charAt(0).toLocaleLowerCase("fr")+s.slice(1)}
-function runRadioBuild(back){back=back||(()=>{radioTab="train";store.set("radioTab","train");go("radio")});
- if((!radioId.num||!radioId.cs)&&!rbAsked){rbAsked=true;indicSheet(()=>runRadioBuild(back));const f=$("#ridF");if(f){const t=document.createElement("p");t.className="small";t.style.margin="4px 0 0";t.textContent="Renseigne ton indicatif : le jeu l'utilisera dans tous les messages.";f.prepend(t);const b=document.createElement("button");b.type="button";b.className="btn sec full";b.textContent="Plus tard : jouer avec l'indicatif d'exemple";b.onclick=()=>{closeSheet();runRadioBuild(back)};f.appendChild(b)}return}
+// 5.0.0 : niveau Officier du jeu radio : des morceaux pièges, très proches des bons, pour travailler les cas particuliers
+const RB_TRAPS=[
+ [/^je demande Police d'urgence/,"je demande Police","« Police d'urgence » est réservée à un danger imminent pour l'équipe ; sinon c'est « Police »."],
+ [/^je demande Police(?! d'urgence)/,"je demande Police d'urgence","« Police d'urgence » ne se demande qu'en cas d'agression avec danger imminent pour l'équipe."],
+ [/^je demande un engin de prompt secours/,"je demande un engin pompe","Renfort brancardage à 3 ou renfort massage : engin de prompt secours ; l'engin pompe, c'est 6 personnels."],
+ [/^je demande un engin pompe/,"je demande un engin de prompt secours","Ouverture de porte, reconnaissance, CO, renfort à 6 : c'est un engin pompe."],
+ [/^je demande un moyen de transport non médicalisé/,"je demande une ambulance privée","Le terme BSPP est « moyen de transport non médicalisé »."],
+ [/^faites partir (un autre engin|les secours)/,"je demande $1","Pour une autre intervention (ou si tu ne peux pas honorer la tienne), c'est « faites partir », pas « je demande »."],
+ [/^je demande (un complément|le complément|complément) de départ/,"je demande un renfort","Le message « joker » est « complément de départ »."],
+ [/et attendons équipe médicale/,"et demandons équipe médicale","La formule est « et attendons équipe médicale » (l'équipe est déclenchée par la coordination)."],
+ [/accident de la circulation/,"accident de la voie publique","À la BSPP on dit « accident de la circulation », pas AVP."],
+ [/^dénombrement terrain provisoire/,"bilan provisoire","On ne parle pas de bilan mais de « dénombrement terrain »."],
+ [/^dénombrement terrain définitif/,"bilan définitif","On ne parle pas de bilan mais de « dénombrement terrain »."],
+ [/urgence absolue/,"urgence relative","Lis bien la situation : la gravité annoncée doit correspondre."],
+ [/^urgence relative/,"urgence absolue","Lis bien la situation : la gravité annoncée doit correspondre."],
+ [/personne agressive envers les secours/,"équipage pris à partie par la foule","Une personne seule = « personne agressive envers les secours » (une patrouille) ; la foule déclenche plusieurs patrouilles."],
+ [/équipage pris à partie par la foule/,"personne agressive envers les secours","Un groupe hostile = « équipage pris à partie par la foule »."],
+ [/se présente/,"est présentée","On dit « se présente » à l'arrivée du moyen ; « présentée à (heure) » seulement en fin d'intervention."],
+ [/présentée? à (\d{4})/,"se présente","En fin d'intervention, on donne l'heure : « présentée à (heure) »."],
+ [/^(Golf \S+) parlez\.$/,"terminé.","On rend la parole au Golf : « Golf…, parlez »."],
+ [/^parlez\.$/,"à vous.","À la BSPP, on termine par « parlez », jamais « à vous »."],
+ [/^De la /,"Ici la ","Le message commence par « De la Croix-Rouge française… »."],
+ [/^ici la /,"de la ","Pour l'appel : « Golf…, ici la Croix-Rouge française…, parlez »."],
+ [/^correction,/,"négatif,","« Correction » corrige ton propre message ; « négatif » corrige le collationnement du CSO."],
+ [/^Négatif,/,"Correction,","« Négatif » répond au CSO qui a mal collationné."],
+ [/est disponible/,"est libre","Le statut 7 se dit « est disponible »."],
+ [/quitte l'hôpital/,"sort de l'hôpital","Statut 25 : « quitte l'hôpital »."],
+ [/se dirige vers l'hôpital/,"part vers l'hôpital","Statut 5 : « se dirige vers l'hôpital »."],
+ [/^partie$/,"est partie","Statut 1 : « partie » suivi du motif et de l'adresse."],
+ [/décès certain/,"décès probable","Seul un décès certain (rigidité, putréfaction…) se signale ainsi."],
+ [/^et restons à disposition/,"et attendons","Sur les voies : « et restons à disposition »."],
+ [/indisponible mécanique/,"en panne","La formule est « indisponible mécanique »."],
+ [/^voie publique,?$/,"sur la rue,","Le terme consacré est « voie publique »."]];
+function rbTraps(q,n){const D=q.parts.map(rbClean);const out=[];const seen=new Set(D);
+ shuffle(q.parts.map((t,k)=>({t,k}))).forEach(({t})=>{for(const [re,rep,why] of RB_TRAPS){if(!re.test(t))continue;const v=t.replace(re,rep);const d=rbClean(v);if(d&&!seen.has(d)){seen.add(d);out.push({t:v,k:-1,d,why});break}}});
+ const gen=[["terminé.","Ici on rend la parole : « parlez »."],["à vous.","À la BSPP, on termine par « parlez »."],["urgent,","« Urgent » est réservé aux situations exceptionnelles."]];
+ for(const [t,why] of shuffle(gen)){if(out.length>=2)break;const d=rbClean(t);if(!seen.has(d)){seen.add(d);out.push({t,k:-1,d,why})}}
+ return shuffle(out).slice(0,n)}
+function runRadioBuild(back,hard){back=back||(()=>{radioTab="train";store.set("radioTab","train");go("radio")});
+ if((!radioId.num||!radioId.cs)&&!rbAsked){rbAsked=true;indicSheet(()=>runRadioBuild(back,hard));const f=$("#ridF");if(f){const t=document.createElement("p");t.className="small";t.style.margin="4px 0 0";t.textContent="Renseigne ton indicatif : le jeu l'utilisera dans tous les messages.";f.prepend(t);const b=document.createElement("button");b.type="button";b.className="btn sec full";b.textContent="Plus tard : jouer avec l'indicatif d'exemple";b.onclick=()=>{closeSheet();runRadioBuild(back,hard)};f.appendChild(b)}return}
  const all=buildScenarios();const qs=fresh(all.map(x=>({...x,_id:"s:rb:"+x.id}))).slice(0,8);let i=0,score=0;cleanup=stopSpeak;
- const show=()=>{const q=qs[i];const D=q.parts.map(rbClean);const pool=shuffle(q.parts.map((t,k)=>({t,k,d:D[k]})));const chosen=[];let done=false;
-  const draw=()=>{app.innerHTML=push("Construis le message",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
-    <div class="qhead"><span class="qtag">Jeu radio${gameRid().ex?" · indicatif d'exemple":""}</span></div><p class="qtext rbsit">${esc(q.sit)}</p>
+ const show=()=>{const q=qs[i];const D=q.parts.map(rbClean);const traps=hard?rbTraps(q,Math.min(4,Math.max(2,Math.ceil(q.parts.length/2)))):[];const pool=shuffle([...q.parts.map((t,k)=>({t,k,d:D[k]})),...traps]);const chosen=[];let done=false;
+  const draw=()=>{app.innerHTML=push(hard?"Message radio · pièges":"Construis le message",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
+    <div class="qhead"><span class="qtag">Jeu radio${hard?" · niveau Officier":""}${gameRid().ex?" · indicatif d'exemple":""}</span></div><p class="qtext rbsit">${esc(q.sit)}</p>
     <div class="sect" style="margin-top:6px">Ton message</div><div class="rbmsg ${done?(chosen.map(c=>c.d).join("|")===D.join("|")?"good":"bad"):""}">${chosen.length?chosen.map((c,j)=>`<button class="rbp in" data-out="${j}" ${done?"disabled":""}>${esc(c.d)}</button>`).join(""):`<span class="small">Touche les morceaux ci-dessous dans le bon ordre.</span>`}</div>
-    ${done?"":`<div class="sect">Morceaux</div><div class="rbpool">${pool.map((p,j)=>chosen.includes(p)?"":`<button class="rbp" data-in="${j}">${esc(p.d)}</button>`).join("")}</div>
+    ${done?"":`<div class="sect">Morceaux${hard?` · ${q.parts.length} à placer`:""}</div>${chosen.length>=q.parts.length&&pool.length>q.parts.length?`<p class="small" style="margin:0 4px 6px">Message complet : valide, ou touche un morceau de ton message pour le retirer.</p>`:""}<div class="rbpool">${pool.map((p,j)=>chosen.includes(p)?"":`<button class="rbp" data-in="${j}" ${chosen.length>=q.parts.length?"disabled":""}>${esc(p.d)}</button>`).join("")}</div>
     <div class="actions"><button class="btn sec" id="rbHint">Indice</button><button class="btn" id="rbOk" ${chosen.length===q.parts.length?"":"disabled"} style="flex:1">Valider</button></div>`}<div id="after"></div>`;
    bindBack(()=>{stopSpeak();back()});
-   app.querySelectorAll("[data-in]").forEach(b=>b.onclick=()=>{chosen.push(pool[+b.dataset.in]);draw()});
+   app.querySelectorAll("[data-in]").forEach(b=>b.onclick=()=>{if(chosen.length>=q.parts.length)return;chosen.push(pool[+b.dataset.in]);draw()});
    app.querySelectorAll("[data-out]").forEach(b=>b.onclick=()=>{chosen.splice(+b.dataset.out,1);draw()});
    const hi=$("#rbHint");if(hi)hi.onclick=()=>{let n=0;while(n<chosen.length&&chosen[n].k===n)n++;chosen.length=n;const nx=pool.find(p=>p.k===n);if(nx)chosen.push(nx);toast("Le morceau suivant est placé.");draw()};
    const ok=$("#rbOk");if(ok)ok.onclick=()=>{done=true;const good=chosen.map(c=>c.d).join("|")===D.join("|");if(good)score++;record(q._id,good);draw();
-    const full=q.parts.join(" ");$("#after").innerHTML=`<div class="fb ${good?"good":"bad"}"><b>${cheer(good)}</b>${good?"":`<div class="rbright">${esc(full)}</div>`}${esc(q.e)}
+    const full=q.parts.join(" ");$("#after").innerHTML=`<div class="fb ${good?"good":"bad"}"><b>${cheer(good)}</b>${good?"":`<div class="rbright">${esc(full)}</div>`}${(()=>{const T=chosen.filter(c=>c.k<0);return T.length?`<div class="rbtraps"><b>Piège${T.length>1?"s":""} :</b>${T.map(c=>`<div>« ${esc(c.d)} » : ${esc(c.why)}</div>`).join("")}</div>`:""})()}${esc(q.e)}
      <div style="display:flex;gap:14px;flex-wrap:wrap"><button class="srcbtn" id="say">${SPK}<span>Écouter</span></button><button class="srcbtn" id="gsrc">${I.doc}<span>Guide pratique CI, p. ${q.p}</span></button></div></div>
      <div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Message suivant":"Voir le score"}</button></div>`;
     $("#say").onclick=()=>speak(full);$("#gsrc").onclick=()=>openDoc("guide",q.p,["message"]);
     const n=$("#next");n.onclick=()=>{stopSpeak();i++;i<qs.length?show():end()};n.scrollIntoView({behavior:"smooth",block:"nearest"})}};
   draw()};
- const end=()=>{const b=store.get("radioBuildBest",null);if(b==null||score>b)store.set("radioBuildBest",score);setTimeout(syncSoon,50);
+ const end=()=>{const bk=hard?"radioTrapBest":"radioBuildBest";const b=store.get(bk,null);if(b==null||score>b)store.set(bk,score);setTimeout(syncSoon,50);
   app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${grade(score/qs.length*100)}</div><p class="small">messages parfaitement construits · +${score*5} points</p></div>
    <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="toB">Constructeur</button></div>`;
-  bindBack(back);$("#again").onclick=()=>runRadioBuild(back);$("#toB").onclick=()=>{radioTab="build";store.set("radioTab","build");go("radio")};window.scrollTo(0,0)};
+  bindBack(back);$("#again").onclick=()=>runRadioBuild(back,hard);$("#toB").onclick=()=>{radioTab="build";store.set("radioTab","build");go("radio")};window.scrollTo(0,0)};
  show()}
 
 /* ---- Simulateur ---- */
@@ -2091,12 +2304,12 @@ function usageCard(){return `<div class="sect">Mode d'utilisation</div><div clas
   <div class="seg usage"><button data-usage="apprenti" aria-pressed="${usage==="apprenti"}">${CROSS_IC}<span>Apprenti</span></button><button data-usage="ci" aria-pressed="${usage==="ci"}">${HELMET_IC}<span>CI BSPP</span></button></div>
   <p class="small" style="margin:10px 0 0">${usage==="ci"?"<b>Mode CI BSPP</b> : l'appli garde le défi de la semaine et tes outils de garde (documents, codes CRI, messages radio, grades, carte des secteurs). L'entraînement est masqué, ta progression est conservée. Ce choix suit ton compte sur tous tes appareils.":"<b>Mode Apprenti</b> : tout l'entraînement (quiz, niveaux Sapeur et Officier, révisions, évaluation par fiche) en plus des outils. Passe en mode CI BSPP une fois ta formation validée."}</p></div>`}
 function bindUsage(){app.querySelectorAll("[data-usage]").forEach(b=>b.onclick=()=>{if(usage===b.dataset.usage)return;setUsage(b.dataset.usage);renderTabs();viewProfile();toast(usage==="ci"?"Mode CI BSPP activé.":"Mode Apprenti activé.")})}
-// 3.4.0 : notifications de duel (« untel t'a défié »), rien d'autre
+// notifications : duels, évaluations (5.0.0), mises à jour — rien d'autre
 const pushOK=()=>"serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;
 const pushIOSHint=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)&&!(matchMedia("(display-mode: standalone)").matches||navigator.standalone);
 function pushCard(){if(!me||me.expired)return"";const on=pushOK()&&store.get("pushOn",false)&&Notification.permission==="granted";
  const hint=!pushOK()?(pushIOSHint()?"Sur iPhone, installe d'abord l'appli sur l'écran d'accueil (Partager › Sur l'écran d'accueil), puis reviens ici.":"Ce navigateur ne gère pas les notifications."):Notification.permission==="denied"?"Les notifications sont bloquées pour cette appli dans les réglages du téléphone.":"";
- return `<div class="sect">Notifications</div><div class="card"><b>Défis et mises à jour</b><p class="small" style="margin:6px 0 10px">Deux notifications seulement : quand quelqu'un te défie en duel (différé ou en direct), et quand une nouvelle version de l'appli est disponible. Rien d'autre.</p>${hint?`<p class="small" style="margin:0">${hint}</p>`:`<button class="btn ${on?"sec ":""}full" id="pushT">${on?"Désactiver les notifications":"Activer les notifications"}</button>`}<p class="small" id="pushM" style="margin:6px 0 0"></p></div>`}
+ return `<div class="sect">Notifications</div><div class="card"><b>Défis, évaluations et mises à jour</b><p class="small" style="margin:6px 0 10px">Seulement l'essentiel : quand quelqu'un te défie en duel (différé ou en direct), quand une fiche d'évaluation t'attend (tu es encadrant) ou que ton encadrant a validé la tienne, et quand une nouvelle version de l'appli est disponible. Rien d'autre.</p>${hint?`<p class="small" style="margin:0">${hint}</p>`:`<button class="btn ${on?"sec ":""}full" id="pushT">${on?"Désactiver les notifications":"Activer les notifications"}</button>`}<p class="small" id="pushM" style="margin:6px 0 0"></p></div>`}
 const ub64k=s=>{const b=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((s.length+3)%4));return Uint8Array.from(b,c=>c.charCodeAt(0))};
 function bindPush(){const b=$("#pushT");if(!b)return;b.onclick=async()=>{const m=$("#pushM");b.disabled=true;try{const reg=await navigator.serviceWorker.ready;
  if(store.get("pushOn",false)&&Notification.permission==="granted"){const sub=await reg.pushManager.getSubscription();if(sub){await api("push/unsub","POST",{endpoint:sub.endpoint}).catch(()=>{});await sub.unsubscribe()}store.set("pushOn",false);toast("Notifications désactivées.")}
@@ -2138,13 +2351,17 @@ function scoreCard(){const T=cntTotal(),W=wkTotal();const since=days.length?new 
 // ====== Statistiques : écran à part, avec ses propres onglets (Résumé · Évolution · Fiches) ======
 let statTab=store.get("statTab","sum");
 function viewStats(){const ci=usage==="ci";if(ci&&statTab==="fiches")statTab="sum";
- const tabs=[["sum","Résumé"],["evo","Évolution"],...(ci?[]:[["fiches","Fiches"]])];
+ const tabs=[["sum","Résumé"],["evo","Évolution"],...(ci?[]:[["fiches","Fiches"]]),["vac","Vacations"]];
  app.innerHTML=`${backLink()}<h1 class="big">Statistiques</h1><p class="sub">${ci?"Tes points et leur évolution.":"Ton grade, tes points, ton évolution et ta maîtrise de chaque fiche."}</p>
   <div class="seg sttabs">${tabs.map(([k,l])=>`<button data-st="${k}" aria-pressed="${k===statTab}">${l}</button>`).join("")}</div><div id="stBody"></div>`;
  bindTabBack();bindRank();
  app.querySelectorAll("[data-st]").forEach(b=>b.onclick=()=>{statTab=b.dataset.st;store.set("statTab",statTab);app.querySelectorAll("[data-st]").forEach(x=>x.setAttribute("aria-pressed",x===b));drawStats();window.scrollTo({top:0})});
  drawStats()}
-function drawStats(){const el=$("#stBody");if(!el)return;({sum:statSummary,evo:statEvolution,fiches:statFiches}[statTab]||statSummary)(el)}
+function drawStats(){const el=$("#stBody");if(!el)return;({sum:statSummary,evo:statEvolution,fiches:statFiches,vac:statVac}[statTab]||statSummary)(el)}
+function statVac(el){el.innerHTML=statVacations();const b=()=>{el.querySelectorAll("[data-evs]").forEach(x=>x.onclick=()=>evOpen(x.dataset.evs,()=>go("stats")));
+  el.querySelectorAll("[data-evper]").forEach(x=>x.onclick=()=>{evPer=x.dataset.evper;store.set("evPer",evPer);el.innerHTML=statVacations();b()});
+  el.querySelectorAll("[data-evcmp]").forEach(x=>x.onclick=()=>{evCmp=x.dataset.evcmp;store.set("evCmp",evCmp);el.innerHTML=statVacations();b()})};b();
+ evLoad().then(()=>{if(statTab==="vac"&&$("#stBody")===el){el.innerHTML=statVacations();b()}}).catch(()=>{})}
 function statSummary(el){const T=cntTotal(),W=wkTotal(),ci=usage==="ci";const w=isoWeek(),dd=defiDone[w];
  const scored=ALL.filter(x=>SCORED.has(x._k));const seen=scored.filter(x=>hist[x._id]&&hist[x._id].length).length;
  const rate=T.answered?Math.round(T.correct/T.answered*100):0;const since=days.length?new Date(days[0]+"T12:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}):null;
@@ -2559,14 +2776,27 @@ function memberSheet(m){const A=adminData;const canAdmin=A.superAdmin&&m.email&&
     ${m.nick&&m.nick.u>Date.now()?`<button class="btn sec full" data-act="unnick">Retirer le surnom « ${esc(m.nick.n)} »</button>`:""}
     ${m.superAdmin?"":`<button class="btn sec full" data-act="${m.blocked?"unblock":"block"}">${m.blocked?"Débloquer le compte":"Bloquer le compte"}</button>`}
     ${canAdmin?`<button class="btn sec full" data-act="${m.admin?"unadmin":"admin"}">${m.admin?"Retirer les droits d'administrateur":"Nommer administrateur"}</button>`:""}
+    <button class="btn sec full" id="mEv">Évaluations de vacation…</button>
     ${m.superAdmin?"":`<button class="btn sec full" data-act="delete" style="color:var(--ko)">Supprimer le profil</button>`}
     <button class="btn full" data-close>Fermer</button></div><p class="small" id="mMsg"></p>`);
   const act=async(action,extra)=>{const msg=sh.querySelector("#mMsg");msg.textContent="…";try{await api("admin/member","PUT",{target:m.id,action,...extra});closeSheet();toast("Modification enregistrée.");adminData=await api("admin/members");drawAdmin();loadBoard(true)}catch(e){msg.textContent=e.error||"Erreur."}};
   sh.querySelector("#rnf").onsubmit=e=>{e.preventDefault();act("rename",{pseudo:sh.querySelector("#rnP").value})};
+  sh.querySelector("#mEv").onclick=()=>admEvals(m);
   sh.querySelectorAll("[data-zx]").forEach(c=>c.onchange=()=>act((c.dataset.zx)+(c.checked?"on":"off")));
   sh.querySelectorAll("[data-zmo]").forEach(c=>c.onchange=()=>act("zmo-"+c.dataset.zmo+"-"+(c.checked?"on":"off")));
   sh.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{const a=b.dataset.act;if((a==="delete"||a==="reset"||a==="block")&&!b.dataset.c){b.dataset.c="1";b.textContent="Confirmer : "+b.textContent.toLowerCase();return}act(a)});
 }
+
+// 5.0.0 : les administrateurs consultent et suppriment les évaluations d'un membre (fiches et statistiques associées)
+async function admEvals(m){let L=[];try{L=(await api("ev/list?cand="+encodeURIComponent(m.id))).mine||[]}catch(e){toast(e.error||"Erreur.");return}
+ const draw=()=>{const sh=sheet(`<h2 style="margin:0 0 4px">Évaluations · ${esc(m.pseudo)}</h2><p class="small" style="margin:0 0 12px">${L.length?`${L.length} fiche${L.length>1?"s":""}. Supprimer une fiche efface aussi sa trace dans les statistiques de progression.`:"Aucune fiche d'évaluation."}</p>
+  ${L.length?`<div class="list">${L.slice().sort((a,b)=>b.num-a.num).map(e=>`<div class="row evadm"><span class="ic" style="background:${e.status==="done"?"#1f9d55":"#ff9f0a"}">${e.num}</span><span class="tx"><b>Vacation n°${e.num}</b><span>${esc(evDate(e.date))} · ${e.status==="done"?"clôturée":"brouillon"}${e.enc&&e.enc.name?" · "+esc(e.enc.name):""}</span></span><button class="btn sec small" data-eo="${esc(e.id)}">Voir</button><button class="btn sec small" data-ed="${esc(e.id)}" style="color:var(--ko)">Suppr.</button></div>`).join("")}</div>`:""}
+  <div class="actions" style="flex-direction:column">${L.length>1?`<button class="btn sec full" id="evDelAll" style="color:var(--ko)">Supprimer toutes ses évaluations</button>`:""}<button class="btn full" data-close>Fermer</button></div><p class="small" id="eaMsg"></p>`);
+  const del=async ids=>{const msg=sh.querySelector("#eaMsg");msg.textContent="Suppression…";try{for(const id of ids)await api("ev/delete","POST",{eid:id});L=L.filter(e=>!ids.includes(e.id));toast(ids.length>1?"Évaluations supprimées.":"Fiche supprimée.");alog("admin","évaluations supprimées",{membre:m.pseudo,n:ids.length});draw()}catch(e){msg.textContent=e.error||"Erreur."}};
+  sh.querySelectorAll("[data-eo]").forEach(b=>b.onclick=()=>{closeSheet();evOpen(b.dataset.eo,()=>go("profile"))});
+  sh.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{if(!b.dataset.c){b.dataset.c="1";b.textContent="Confirmer";return}del([b.dataset.ed])});
+  const da=sh.querySelector("#evDelAll");if(da)da.onclick=()=>{if(!da.dataset.c){da.dataset.c="1";da.textContent="Confirmer : tout supprimer ("+L.length+" fiches)";return}del(L.map(e=>e.id))}};
+ draw()}
 
 /* ============ Démarrage ============ */
 const LOGOS=window.QLOGOS||"";
@@ -2577,9 +2807,11 @@ alog("demarrage",APP_VER,{chargement:Math.round(performance.now())+" ms",langue:
 if(me&&me.id){const o=store.get("progOwner",null);if(o&&o!==me.id)applyProgress({resetAt:0});store.set("progOwner",me.id)}
 go(tab);{const wel=store.get("welcome",false);if(wel)store.del("welcome");const tk="tutoSeen_"+(me&&me.id||"x");
  const afterTuto=()=>{if(wel){profTab="moi";go("profile");profileSheet(true,true)}};
- const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x");
- if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
+ const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x");
+ if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
  else if(me&&!me.expired&&!store.get(nk,false))setTimeout(()=>openTuto(()=>store.set(nk,true),"rank"),600);
- else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
- else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>store.set(nk3,true),"new340"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
-if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});
+ else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
+ else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true)},"new340"),600)
+ else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>store.set(nk4,true),"new500"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
+if("serviceWorker" in navigator&&location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").catch(()=>{});navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.openEv&&me&&!me.expired)evOpen(e.data.openEv,()=>{evLoad().catch(()=>{});viewEvals()})})}
+{const m=/^#ev=([\w-]+)/.exec(location.hash);if(m&&me&&!me.expired){history.replaceState(null,"",location.pathname+location.search);setTimeout(()=>evOpen(m[1],()=>viewEvals()),700)}}
