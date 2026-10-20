@@ -681,3 +681,6 @@ body.zmir .qtext,body.zmir .opt>span:last-child,body.zmir .vf .opt{transform:sca
 .evx{font:500 9.5px var(--font);fill:var(--muted);text-anchor:middle}
 .evchart>b{display:block;font-size:16px}.evchart>.small{display:block}
 .evchart .chips.wrap{gap:6px}.evchart .chips.wrap .chip{font-size:12.5px;padding:4px 10px;min-height:30px;height:auto}
+.evgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.evform input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;min-height:42px;text-align:left}
+.evform input[type=date]::-webkit-date-and-time-value{text-align:left}

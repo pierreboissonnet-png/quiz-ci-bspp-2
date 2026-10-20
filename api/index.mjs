@@ -152,7 +152,7 @@ function evClean(ev, patch, role) {
     if ("equip" in patch) ev.equip = ["ul", "ext", "mixte"].includes(patch.equip) ? patch.equip : "";
     if ("autoCi" in patch && patch.autoCi) ev.autoCi = { v: ["oui", "non"].includes(patch.autoCi.v) ? patch.autoCi.v : "", c: s(patch.autoCi.c, 1500) };
   }
-  if ((role === "cand" || role === "enc") && Array.isArray(patch.inter)) ev.inter = patch.inter.slice(0, 20).map((x) => ({ t: ["UA", "UR", "DCD", "SS"].includes(x.t) ? x.t : "", motif: s(x.motif, 120), pos: s(x.pos, 1200), axes: s(x.axes, 1200) }));
+  if (encPart && Array.isArray(patch.inter)) ev.inter = patch.inter.slice(0, 20).map((x) => ({ t: ["UA", "UR", "DCD", "SS"].includes(x.t) ? x.t : "", motif: s(x.motif, 120), pos: s(x.pos, 1200), axes: s(x.axes, 1200) }));
   if (encPart) {
     if (patch.comps && typeof patch.comps === "object") { ev.comps = ev.comps || {}; for (const k of EV_COMPS) if (patch.comps[k]) ev.comps[k] = { lvl: lvl(patch.comps[k].lvl), obs: s(patch.comps[k].obs, 1500) }; }
     if ("autoEnc" in patch && patch.autoEnc) ev.autoEnc = { v: ["oui", "non"].includes(patch.autoEnc.v) ? patch.autoEnc.v : "", c: s(patch.autoEnc.c, 1500) };
@@ -305,7 +305,7 @@ async function verifyGoogle(idToken) {
 }
 
 // 3.4.0 : notification « nouvelle version disponible » envoyée une seule fois par version (verrou Redis SET NX)
-const APP_VERSION = "5.0.0"; let announced = false;
+const APP_VERSION = "5.0.1"; let announced = false;
 async function announceVersion(st) {
   try {
     const r = await redis(["SET", NS + "ver/announced/" + APP_VERSION, "1", "NX"]); if (r !== "OK") return;
