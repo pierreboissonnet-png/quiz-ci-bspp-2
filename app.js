@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="5.0.1";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="5.0.2";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -165,7 +165,7 @@ function renderTabs(){const cur=TABS.find(t=>t[0]===tab);const TABS_V=visTabs();
   const btn=$("#menuBtn"),pan=$("#menuPanel");
   const close=()=>{pan.hidden=true;btn.setAttribute("aria-expanded","false")};
   btn.onclick=e=>{e.stopPropagation();pan.hidden=!pan.hidden;btn.setAttribute("aria-expanded",String(!pan.hidden))};
-  pan.querySelectorAll("button").forEach(b=>b.onclick=()=>{close();go(b.dataset.tab)});
+  pan.querySelectorAll("button").forEach(b=>b.onclick=()=>{close();if(b.dataset.tab==="profile"){profTab="moi";store.set("profTab",profTab);rkNav={v:"top"}}go(b.dataset.tab)});
   if(!renderTabs.bound){renderTabs.bound=true;document.addEventListener("click",e=>{const p=$("#menuPanel");if(p&&!p.hidden&&!e.target.closest("#tabbar")){p.hidden=true;const b=$("#menuBtn");if(b)b.setAttribute("aria-expanded","false")}});
     document.addEventListener("keydown",e=>{if(e.key==="Escape"){const p=$("#menuPanel");if(p)p.hidden=true}})}}
 let navStack=[];
@@ -283,7 +283,7 @@ async function liveRun(r,srvNow){liveBusy=true;if(r.level==="simple")await loadS
  const checkEnd=()=>{if(over)return;const quiet=Date.now()-oppAt>60000;if(!opp.done&&!quiet){const e=$("#lvWait");if(e)e.textContent=`On attend ${oppN} : question ${Math.min(opp.i+1,qs.length)}/${qs.length}…`;return}
   over=true;stopAll();cleanup=null;liveBusy=false;const win=pts>opp.pts||(pts===opp.pts&&ok>(opp.ok||0)),draw=pts===opp.pts&&ok===(opp.ok||0);alog("duel","duel en direct",{contre:oppN,points:pts,adversaire:opp.pts});
   app.innerHTML=push("Résultat du duel")+`<div class="result"><div class="dltag">DUEL EN DIRECT</div><div class="score">${pts} – ${opp.pts}</div><div class="grade">${draw?"Match nul !":win?"Victoire !":"Défaite…"}</div><p class="small">${quiet&&!opp.done?`${esc(oppN)} a quitté la partie.`:`${ok}/${qs.length} bonnes réponses pour toi.`}</p></div><div class="actions"><button class="btn" id="lvRe">Revanche</button><button class="btn sec" id="home2">Accueil</button></div>`;
-  if(win&&!draw&&typeof confetti==="function")confetti(app);$("#home2").onclick=()=>go("home");$("#lvRe").onclick=()=>duelSheet(oppId,r.level,"all",true)};
+  bindBack(()=>go("home"));if(win&&!draw&&typeof confetti==="function")confetti(app);$("#home2").onclick=()=>go("home");$("#lvRe").onclick=()=>duelSheet(oppId,r.level,"all",true)};
  if(srvNow||r.start)countdown();else show()}
 /* ============ 3.4.0 : autres modes Z (miroir, escargot, radio grésillante, fuite) ============ */
 let zmoState=store.get("zmoState",null)||{};
@@ -342,8 +342,15 @@ function gameLog(title){try{qShownAt=Date.now();if(title==="Résultat"){if(curGa
  if(!curGame||curGame.title!==title){if(curGame&&curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame={title,t0:Date.now(),n:0,ok:0,nL:0,nS:0}}}catch(e){}}
 try{history.scrollRestoration="manual"}catch(e){}
 function push(title,right,onBack){if(title!==lastEcran){alog("ecran",title,right||"");lastEcran=title;window.scrollTo({top:0,left:0,behavior:"instant"});if(typeof ponReset==="function")ponReset();if(title==="Résultat"&&typeof zFaked!=="undefined"&&zFaked)setTimeout(zReveal,450)}gameLog(title);if(!document.body.classList.contains("pushed"))history.pushState({app:1},"");if(cleanup){cleanup();cleanup=null}document.body.classList.add("pushed");$("#composer").hidden=true;app.className="view push";
+  backFn=null;
   return `<div class="nav"><button class="back" id="back">${I.back}Retour</button><div class="ttl">${esc(title)}</div><div class="right" id="navr">${right||""}</div></div>`}
-function bindBack(fn){const b=$("#back");if(b)b.onclick=()=>{if(cleanup){cleanup();cleanup=null}fn?fn():go(tab)}}
+// 5.0.2 : bouton Retour géré par délégation globale. push() remet l'action par défaut (retour à l'onglet),
+// bindBack() fixe l'action de l'écran ; un écran redessiné sans bindBack garde donc un Retour qui marche.
+let backFn=null;
+function bindBack(fn){backFn=fn||null}
+function doBack(){const fn=backFn;try{if(cleanup){const c=cleanup;cleanup=null;c()}}catch(e){logErr("retour/cleanup",e&&e.message,e&&e.stack)}
+ try{fn?fn():go(tab)}catch(e){logErr("retour",e&&e.message,e&&e.stack);try{go(tab==="home"?"home":tab)}catch(x){go("home")}}}
+document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("#back");if(!b)return;e.preventDefault();e.stopPropagation();doBack()},true);
 function setRight(t){const r=$("#navr");if(r)r.textContent=t}
 
 /* ============ Installation ============ */
