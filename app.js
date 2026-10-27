@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="5.1.0";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="5.1.1";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -37,7 +37,8 @@ document.addEventListener("click",e=>{try{const el=e.target.closest&&e.target.cl
  if(el.classList.contains("opt"))lastPick={txt:(el.textContent||"").replace(/\s+/g," ").trim().replace(/^[A-D]\s+/,""),t:Date.now()};const bt=el.querySelector&&el.querySelector("b");const lab=el.classList.contains("opt")?"réponse "+(el.dataset.k||""):(el.getAttribute("aria-label")||(bt&&bt.textContent)||el.textContent||"").replace(/\s+/g," ").trim().slice(0,50);
  alog("clic",lab||(el.id?"#"+el.id:"(sans libellé)"),attrs?{"détails":attrs+(el.id?" · id="+el.id:"")}:(el.id?{id:el.id}:""))}catch(err){}},true);
 let selected=new Set(store.get("themes",DATA.filter(t=>t.id!=="pse").map(t=>t.id)));
-if(!store.get("cultAdded",false)){selected.add("culture");store.set("themes",[...selected]);store.set("cultAdded",true)} // 3.4.0 : nouveau thème activé une fois
+if(!store.get("cultAdded",false)){selected.add("culture");store.set("themes",[...selected]);store.set("cultAdded",true)}
+if(!store.get("p26Added",false)){selected.add("pse26");store.set("themes",[...selected]);store.set("p26Added",true)} // 5.1.1 : nouveautés PSE 2026 activées une fois // 3.4.0 : nouveau thème activé une fois
 let review=new Set(store.get("review",[]));
 let best=store.get("best",{});
 let hist=store.get("hist",{});          // id -> [1,0,1…] (5 derniers résultats)
@@ -47,7 +48,7 @@ const $=s=>document.querySelector(s);
 const app=$("#app");
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
-const SHORT={guide:"Métier de CI",ssuap:"Bilans & SSUAP",acr:"ACR · DAE · chaleur",efibi:"eFiBi & procédures",ops:"Opérations BSP 115",orga:"Organisation · NRBC",pse:"Bonus PSE",culture:"Culture BSPP"};
+const SHORT={guide:"Métier de CI",ssuap:"Bilans & SSUAP",acr:"ACR · DAE · chaleur",efibi:"eFiBi & procédures",ops:"Opérations BSP 115",orga:"Organisation · NRBC",pse:"Bonus PSE",culture:"Culture BSPP",pse26:"PSE 2026"};
 const short=t=>SHORT[t.id]||t.theme;
 const ALL=[];DATA.forEach(t=>["qcm","vf","flashcards","ordre","cas"].forEach(k=>t[k].forEach((it,i)=>ALL.push(Object.assign(it,{_t:t,_k:k,_id:t.id+":"+k+":"+i,type:k})))));
 const BYID=Object.fromEntries(ALL.map(x=>[x._id,x]));
@@ -379,11 +380,11 @@ function closeSheet(){const s=$("#sheet");if(s)s.remove()}
 function sheetSwap(html){const bg=$("#sheet");if(!bg)return sheet(html);const sh=bg.querySelector(".sheet");const y=sh.scrollTop;sh.innerHTML=`<div class="grab"></div>${html}`;sh.scrollTop=y;return bg}
 
 /* ============ Défi de la semaine ============ */
-const NON_PSE=DATA.filter(t=>t.id!=="pse");
+const NON_PSE=DATA.filter(t=>t.id!=="pse"&&t.id!=="pse26");
 function isoWeek(d=new Date()){const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const y=new Date(Date.UTC(x.getUTCFullYear(),0,1));return x.getUTCFullYear()+"-S"+String(Math.ceil(((x-y)/864e5+1)/7)).padStart(2,"0")}
 function rng(seed){let h=1779033703^seed.length;for(let i=0;i<seed.length;i++){h=Math.imul(h^seed.charCodeAt(i),3432918353);h=h<<13|h>>>19}return()=>{h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);h^=h>>>16;return(h>>>0)/4294967296}}
 function sshuffle(a,r){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function defiQuestions(){const r=rng("defi-"+isoWeek());const all=ALL.filter(q=>(q._k==="qcm"||q._k==="vf")&&q._t.id!=="pse"&&q._t.id!=="culture"&&!isFeu(q));const picked=[];
+function defiQuestions(){const r=rng("defi-"+isoWeek());const all=ALL.filter(q=>(q._k==="qcm"||q._k==="vf")&&q._t.id!=="pse"&&q._t.id!=="pse26"&&q._t.id!=="culture"&&!isFeu(q));const picked=[];
   NON_PSE.forEach(t=>picked.push(...sshuffle(all.filter(q=>q._t===t),r).slice(0,3)));
   picked.push(...sshuffle(all.filter(q=>!picked.includes(q)),r).slice(0,20-picked.length));return sshuffle(picked,r)}
 const fmtTime=ms=>{const s=Math.round(ms/1000);return Math.floor(s/60)+" min "+String(s%60).padStart(2,"0")+" s"};
@@ -425,8 +426,8 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
     ${tile("sudden",I.bolt,"#d0021b","Mort subite","Jusqu'à la première erreur"+(typeof best.sudden==="number"?` · record ${best.sudden}`:""))}
     ${tile("bilanx",I.list,"#ff7a00","Bilan express","Une prise en charge à remettre en ordre en 90 s")}
     <button class="tile" data-m="radio"><span class="ic" style="background:#0f1d36">${RADIO_IC_T}</span><b>Messages radio</b><span>Constructeur et simulateur phonie</span></button>
-    <button class="tile wide" data-m="rentree"><span class="ic" style="background:#3a4a6b">${I.doc}</span><div><b>Message de rentrée</b><br><span>Compose ton message au PVO et le CRI${typeof store.get("rentreeBest")==="number"?` · record ${store.get("rentreeBest")}/5`:""}</span></div></button>
     <button class="tile" data-m="carte"><span class="ic" style="background:#1f9d55">${MAP_IC_T}</span><b>Carte des secteurs</b><span>CS, Golf, voisins, quiz carte</span></button>
+    <button class="tile wide" data-m="rentree"><span class="ic" style="background:#3a4a6b">${I.doc}</span><div><b>Message de rentrée</b><br><span>Compose ton message au PVO et le CRI${typeof store.get("rentreeBest")==="number"?` · record ${store.get("rentreeBest")}/5`:""}</span></div></button>
     ${duelTile()}
     <button class="tile wide" data-m="hosp"><span class="ic" style="background:#d92d20">${H_IC}</span><div><b>Les hôpitaux</b><br><span>Urgences spécialisées, SAU, hôpital le plus proche d'un CS</span></div></button>
     <button class="tile wide" data-m="grades"><span class="ic gic">${gradeSvg("CNE","")}</span><div><b>Les grades</b><br><span>Galons, abréviations, hiérarchie et services</span></div></button>
@@ -792,6 +793,7 @@ function loadSimple(){if(SIMPLE)return Promise.resolve(SIMPLE);if(simpleP)return
   sc.onerror=()=>{simpleP=null;rej()};document.body.appendChild(sc)});return simpleP}
 let sSel=new Set(store.get("sThemes",["guide","ssuap","acr","efibi","bsp"]));
 if(!store.get("sCultAdded",false)){sSel.add("culture");store.set("sThemes",[...sSel]);store.set("sCultAdded",true)}
+if(!store.get("sP26Added",false)){sSel.add("pse26");store.set("sThemes",[...sSel]);store.set("sP26Added",true)}
 // documents découverts : une bonne réponse sur une question simple qui s'y rapporte
 function discovered(){const set=new Set();if(!SIMPLE)return set;Object.entries(hist).forEach(([id,h])=>{if(!h.includes(1))return;
   if(id.startsWith("doc:"))set.add(id.split(":")[1]);else if(id.startsWith("s:")&&BYID[id]&&BYID[id].ref)set.add(BYID[id].ref.d)});return set}
@@ -1329,7 +1331,7 @@ function evCharts(L){if(!L.length)return"";const S=evSeries(L);const per=`<div c
   <div class="card evchart" style="margin-top:10px"><b>Interventions</b><span class="small">${T.UA+T.UR+T.DCD+T.SS} au total · UA ${T.UA} · UR ${T.UR} · DCD ${T.DCD} · sans suite ${T.SS}</span>
   ${evStackSvg(S)}<div class="evleg">${[["UA","UA"],["UR","UR"],["DCD","DCD"],["SS","Sans suite"]].map(([k,l])=>`<span><i style="background:${EV_TC[k]}"></i>${l}</span>`).join("")}</div></div>`}
 // ---- Mode Apprenti : on insiste sur les points à travailler de la dernière vacation notée
-const EV_FOCUS={base:{th:["ssuap","acr","pse"]},orga:{th:["orga"],re:/CSO|PVO|\bGolf\b|groupement|stationnaire|sergent de jour|chef de garde|Onyx|centre de secours|\bCS\b/i},garde:{re:/prise de garde|vacation|stationnaire|PVO|perception|consignes|ronfleur|matériel/i},depart:{re:/ordre de départ|parcellaire|carroyage|départ|statut|itinéraire|trajet|présent/i},renforts:{re:/je demande|renfort|demande de moyens|\bpolice\b|engin pompe|prompt secours|complément de départ|équipe médicale|tiroir|escorte/i},admin:{th:["efibi"],re:/ADAGIO|message de rentrée|\bCRI\b|eFiBi|fiche bilan|rapport|décharge/i},cat:{re:/arrêt cardio|ACR|décès|mineur|arme|monoxyde|\bCO\b|vide|hauteur|métro|voies|plan rouge|accident de travail|corpulence|VTBA|escorte|policier|militaire/i},radio:{re:/radio|phonie|message|parlez|\bGolf\b|statut|ANTARES|collation|transmission/i}};
+const EV_FOCUS={base:{th:["ssuap","acr","pse","pse26"]},orga:{th:["orga"],re:/CSO|PVO|\bGolf\b|groupement|stationnaire|sergent de jour|chef de garde|Onyx|centre de secours|\bCS\b/i},garde:{re:/prise de garde|vacation|stationnaire|PVO|perception|consignes|ronfleur|matériel/i},depart:{re:/ordre de départ|parcellaire|carroyage|départ|statut|itinéraire|trajet|présent/i},renforts:{re:/je demande|renfort|demande de moyens|\bpolice\b|engin pompe|prompt secours|complément de départ|équipe médicale|tiroir|escorte/i},admin:{th:["efibi"],re:/ADAGIO|message de rentrée|\bCRI\b|eFiBi|fiche bilan|rapport|décharge/i},cat:{re:/arrêt cardio|ACR|décès|mineur|arme|monoxyde|\bCO\b|vide|hauteur|métro|voies|plan rouge|accident de travail|corpulence|VTBA|escorte|policier|militaire/i},radio:{re:/radio|phonie|message|parlez|\bGolf\b|statut|ANTARES|collation|transmission/i}};
 function evWeak(){const L=((evCache&&evCache.mine)||[]).filter(e=>EV_C.some(([k])=>e.comps&&e.comps[k])).sort((a,b)=>b.num-a.num);const e=L[0];if(!e)return [];const w=EV_C.filter(([k])=>e.comps[k]&&e.comps[k]<=2).map(([k,l])=>[k,l]);w.num=e.num;return w}
 function evFocusItems(k,simple){const f=EV_FOCUS[k];if(!f)return [];const base=simple?(SIMPLE&&SIMPLE.items||[]).filter(x=>x._k==="qcm"||x._k==="vf"):ALL.filter(x=>x._k==="qcm"||x._k==="vf");
  return base.filter(x=>{const th=simple?x.g:x._t.id;if(f.th&&f.th.includes(th))return true;return f.re?f.re.test(x.q||""):false})}
@@ -1506,7 +1508,7 @@ function runRentree(back,n=5){back=back||(()=>{radioTab="train";store.set("radio
  const show=()=>{const q=qs[i];const x=mrExp(q);
   const hops=shuffle([...new Set([...x.v.map(v=>v.h).filter(Boolean),...shuffle(MR_HOP.filter(h=>!x.v.some(v=>v.h===h))).slice(0,4-Math.min(2,new Set(x.v.map(v=>v.h).filter(Boolean)).size))])]);
   const cris=shuffle([q.cri,...q.alt.filter(c=>c!==q.cri),...shuffle(["320","310","356","343","399","004","919"].filter(c=>c!==q.cri&&!q.alt.includes(c))).slice(0,2)]).slice(0,6);if(!cris.includes(q.cri))cris[0]=q.cri;
-  const a={act:"",mat:[],contact:"",dech:false,v:[],dae:false,deg:"Néant",dif:"Néant",srv:"Néant",cri:""};let done=false;
+  const a={act:"",mat:[],contact:"",dech:false,v:[],dae:false,deg:"Néant",dif:"Néant",srv:"Néant",cri:""};let done=false,first=true;
   const nv=()=>a.v.length,blank=()=>({s:"",a:"",id:null,e:"",d:"",h:"",mil:false,sdf:false});
   const seg=(k,opts,val,dis)=>`<div class="seg evseg" data-mrk="${k}">${opts.map(([v,l])=>`<button type="button" data-v="${esc(v)}" aria-pressed="${val===v}" ${dis?"disabled":""}>${l}</button>`).join("")}</div>`;
   const chips=(k,opts,vals)=>`<div class="chips wrap mrchips" data-mc="${k}">${opts.map(o=>`<button type="button" class="chip" data-v="${esc(o)}" aria-pressed="${vals.includes(o)}">${esc(o)}</button>`).join("")}</div>`;
@@ -1536,7 +1538,7 @@ function runRentree(back,n=5){back=back||(()=>{radioTab="train";store.set("radio
     <div class="sect">Ton message</div><pre class="mrmsg">${esc(mrMsg(a))}</pre>
     <div class="actions"><button class="btn full" id="mrOk" ${a.act&&a.cri?"":"disabled"}>Valider mon message</button></div>
     <p class="small" style="margin:6px 4px 0">${a.act&&a.cri?"":"Choisis au moins l'action (point 1) et le CRI."}</p></div>`;
-   window.scrollTo(0,sc);bindBack(()=>{stopSpeak();back()});bind()};
+   window.scrollTo({top:first?0:sc,left:0,behavior:"instant"});first=false;bindBack(()=>{stopSpeak();back()});bind()};
   const bind=()=>{
    app.querySelectorAll("[data-mrk] button").forEach(b=>b.onclick=()=>{const k=b.closest("[data-mrk]").dataset.mrk,v=b.dataset.v;
     if(k==="act"){a.act=v;if(v==="Néant"){a.mat=[];a.contact="";a.dech=false}}
@@ -1579,10 +1581,11 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {art:`<div class="tlogos">${LOGOS}</div>`,t:"Bienvenue dans le Quiz CI BSPP",p:"L'appli pour se former au parcours Chef d'Intervention en réseau de secours BSPP, et garder la main une fois en poste. En quelques écrans, voici comment elle fonctionne.",n:"Application non officielle, développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française."},
  {art:`<div class="tpair"><div>${CROSS_IC}<b>Apprenti</b></div><div>${HELMET_IC}<b>CI BSPP</b></div></div>`,t:"Deux modes d'utilisation",p:"<b>Apprenti</b> : tout l'entraînement pour préparer le parcours. <b>CI BSPP</b> : une fois formé, l'appli devient ton assistant de garde, avec le défi de la semaine et tes outils.",n:"Tu changes de mode quand tu veux dans Profil › Moi. Ton choix suit ton compte."},
  {art:`<div class="tpair"><div>${gradeSvg("1CL","tgr")}<b>Sapeur</b></div><div><span class="tgr">${LTN_HELM}</span><b>Officier</b></div></div>`,t:"Deux niveaux de questions",p:"<b>Sapeur</b> : des questions faciles pour découvrir les documents (5 points). <b>Officier</b> : des questions expertes, tirées des référentiels (20 points).",n:"Le niveau se choisit en haut de l'accueil, en mode Apprenti."},
- {art:ic(I.quiz,"#0a84ff"),t:"Des jeux pour réviser",p:"Quiz, vrai ou faux en 60 secondes, flashcards, séquences à remettre dans l'ordre, cas pratiques, examen blanc, mort subite, bilan express, message de rentrée… et chaque semaine un <b>défi</b> : les mêmes 20 questions pour tout le monde.",n:"Les questions changent à chaque partie : celles que tu n'as jamais vues passent en premier. Les questions sur l'incendie sont regroupées dans la rubrique <b>Feu</b>, à activer à côté des thèmes. Nouveau thème : <b>Culture BSPP</b> (histoire, traditions, chiffres de la Brigade). Dans « Remets dans l'ordre », fais glisser les étapes par leur poignée."},
+ {art:ic(I.quiz,"#0a84ff"),t:"Des jeux pour réviser",p:"Quiz, vrai ou faux en 60 secondes, flashcards, séquences à remettre dans l'ordre, cas pratiques, examen blanc, mort subite, bilan express, message de rentrée… et chaque semaine un <b>défi</b> : les mêmes 20 questions pour tout le monde.",n:"Les questions changent à chaque partie : celles que tu n'as jamais vues passent en premier. Les questions sur l'incendie sont regroupées dans la rubrique <b>Feu</b>, à activer à côté des thèmes. Nouveaux thèmes : <b>Culture BSPP</b> (histoire, traditions, chiffres de la Brigade) et <b>PSE 2026</b> (nouveautés du référentiel Croix-Rouge). Dans « Remets dans l'ordre », fais glisser les étapes par leur poignée."},
  {art:ic(I.book,"#5e5ce6"),t:"Le référentiel à portée de main",p:"Après chaque question, <b>Voir dans le référentiel</b> ouvre la bonne page du document. Le drapeau <b>Marquer</b> garde une question de côté pour la revoir dans Réviser.",n:"Tous les documents sont aussi dans le menu Documents, avec une recherche."},
  {art:`<div class="tpair">${ic(RADIO_IC_T,"#0f1d36")}${ic(MAP_IC_T,"#1f9d55")}</div>`,t:"Tes outils de garde",p:"<b>Messages radio</b> : construis ton message pas à pas avec ton indicatif. <b>Codes CRI</b>, <b>Carte des secteurs</b> (adresses des CS et téléphones des PVO), <b>Hôpitaux</b> (le plus proche, filtré par spécialité), <b>Grades</b>, <b>Documents</b> et <b>Évaluations</b> (la synthèse de tes vacations).",n:"Tout est accessible depuis le menu en haut à droite."},
  {art:ic(I.user,"#ff9f0a"),t:"Classements et équipes",p:"Rejoins ou crée ton équipe dans Profil › Équipe : ta demande doit être acceptée par un membre, et l'équipe peut fixer un nombre maximum de joueurs. Touche une <b>équipe</b> pour voir ses membres (Points, Défi, Fiches, Duels), puis un <b>membre</b> pour voir sa fiche et le défier. Les points de la semaine repartent de zéro chaque lundi.",n:"Le menu Statistiques montre ton total depuis ton arrivée, tes courbes semaine par semaine et ton évaluation par fiche."},
+ {id:"new511",art:ic(I.book,"#e3051b"),t:"Nouveautés PSE 2026",p:"Les 12 fiches mises à jour du référentiel PSE de la Croix-Rouge sont dans <b>Documents › Nouveautés PSE 2026</b> : arrêt cardiaque de l'enfant et du nourrisson, compressions thoraciques, DAE, perte de connaissance, amputation, accouchement inopiné, massage utérin, chaleur et refroidissement, tri des déchets. Un nouveau thème de questions <b>PSE 2026</b> les accompagne, aux niveaux Sapeur et Officier.",n:"Le thème est activé automatiquement ; tu peux le décocher comme les autres. Il ne compte pas dans le défi de la semaine."},
  {id:"new510",art:ic(I.doc,"#3a4a6b"),t:"Message de rentrée",p:"Nouveau jeu : une intervention de secours à personne est racontée, à toi de composer ton <b>message de rentrée</b> au PVO (actions, victimes, défibrillateur public, dégâts, difficultés…) et de choisir le <b>CRI</b>. La correction reprend chaque point et montre le message attendu.",n:"Tuile « Message de rentrée » de l'accueil, ou Messages radio › S'entraîner. En mode CI BSPP : Messages radio › Construire."},
  {id:"new500",art:ic('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2.5"/><path d="M9 3.5h6v3H9z"/><path d="m8.5 13 2 2 4-4.5"/></svg>',"#1f7a3f"),t:"Évaluations de vacation",p:"En mode <b>CI BSPP</b>, la tuile <b>Évaluations</b> remplit avec ton encadrant la <b>synthèse de vacation CIR BSPP</b>. Date, nom, numéro de vacation et nombre de victimes (UA, UR, DCD, sans suite) se remplissent tout seuls. Tu remplis l'en-tête et ton avis ; ton encadrant saisit les interventions et note les 8 compétences (<b>Non acquis, En cours, Acquis, Maîtrisé</b>) depuis son compte ou sur ton téléphone.",n:"Le bouton <b>Générer le PDF</b> sort la fiche officielle remplie. Ta progression vacation par vacation est dans Statistiques › Vacations, et en mode Apprenti les exercices insistent sur tes points à travailler. Avec les notifications activées, ton encadrant est prévenu quand une fiche l'attend, et toi quand il l'a validée. Fiches visibles par toi, ton encadrant et les administrateurs."},
  {id:"radio500",art:ic(RADIO_IC_T,"#0f1d36"),t:"Message radio à pièges",p:"Nouveau jeu au niveau <b>Officier</b> : compose le message radio, mais attention, des morceaux <b>pièges</b> se glissent parmi les bons (mauvais indicatif, formule interdite, information en trop…). À toi de les écarter.",n:"À la correction, chaque piège choisi est expliqué. Le jeu se trouve dans Messages radio › S'entraîner."},
@@ -1594,6 +1597,7 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {art:`<div class="tpair">${ic(FLAME_IC,"#ff6a00")}${ic(I.refresh,"#0f1d36")}</div>`,t:"Ton profil, tes réglages",p:"Dans Profil › Moi : choisis ton ambiance : <b>Normal</b>, <b>Braise</b> (messages de sergent-chef énervé, sans effets) ou <b>On Fire</b> (en plus, thème enflammé et animations : 5 bonnes réponses d'affilée déclenchent la lance, 3 erreurs l'alarme, et 10 de suite la médaille <b>Soldat du feu</b>). Et si l'appli semble ancienne, touche <b>Forcer la mise à jour</b> pour charger la dernière version.",n:"Ta version et la dernière version en ligne y sont affichées. Ta progression est conservée."},
  {art:ic(I.plus,"#e3051b"),t:"À toi de jouer !",p:"Sur iPhone, ajoute l'appli à ton écran d'accueil : bouton <b>Partager</b> puis <b>Sur l'écran d'accueil</b>. Le menu se trouve en haut à droite de chaque page.",n:"Tu pourras revoir cette présentation à tout moment dans Profil › Moi › Tutoriel."}]}
 const NEWS={rank:{n:2,t:"Nouveau dans la version 3.2",p:"Deux nouveautés : un <b>grade de progression</b> qui évolue avec tes résultats, et un menu <b>Statistiques</b> à part. Voici comment ça marche."},
+ new511:{n:1,t:"Nouveau dans la version 5.1.1",p:"Les nouveautés du <b>référentiel PSE 2026</b> de la Croix-Rouge arrivent dans l'appli, avec leur thème de questions."},
  new510:{n:1,t:"Nouveau dans la version 5.1",p:"Un nouveau jeu pour t'entraîner au <b>message de rentrée</b> et au <b>CRI</b>, et une visionneuse de documents mieux adaptée à l'écran du téléphone."},
  new500:{n:2,t:"Nouveau dans la version 5.0",p:"Les <b>Évaluations de vacation</b> arrivent en mode CI BSPP, avec le PDF de la fiche officielle, et un nouveau jeu radio à pièges. Côté duels : plus de limite de défis, et un sans-faute donne droit au surnom <b>et</b> au gage."},
  new340:{n:3,t:"Nouveau dans la version 3.4",p:"Trois nouveaux jeux, un thème Culture BSPP, des gages pour les duels, des notifications de défi et des équipes mieux organisées. Voici l'essentiel."},
@@ -2449,7 +2453,7 @@ function runHospQuiz(expert,back){back=back||(()=>go("home"));loadSect().catch((
  show()})}
 
 /* ============ Documents ============ */
-const GROUPS=[["Le parcours CI",["guide","groupes"]],["Règlements BSPP",["b1151","b1152","b1153","b118","b112","b30016","b20020"]],["Secours à personne (BSP 200.2)",["b2002","bilan","acr72","drepano","victime","deces","noncontact","noncontact2","maj2025","maj2024"]],["Fiches et notes",["ft231","daecivil","dsa","chaleur","chaleur2","lifevest","chiens","reveil","ambu","police","ambassade","papillon","vie","mcori","tph","grimp"]],["MACA / formations",["macaintro","trauma","macaacr","chutes","macaefibi","nnn"]],["eFiBi",["efibi","recap","ircs","md5","tutoarr","tutobil","suppr"]],["Bonus",["pse"]]];
+const GROUPS=[["Le parcours CI",["guide","groupes"]],["Règlements BSPP",["b1151","b1152","b1153","b118","b112","b30016","b20020"]],["Secours à personne (BSP 200.2)",["b2002","bilan","acr72","drepano","victime","deces","noncontact","noncontact2","maj2025","maj2024"]],["Fiches et notes",["ft231","daecivil","dsa","chaleur","chaleur2","lifevest","chiens","reveil","ambu","police","ambassade","papillon","vie","mcori","tph","grimp"]],["MACA / formations",["macaintro","trauma","macaacr","chutes","macaefibi","nnn"]],["eFiBi",["efibi","recap","ircs","md5","tutoarr","tutobil","suppr"]],["Nouveautés PSE 2026 (CRF)",["p26acr","p26ct1m","p26ct2d","p26ctnour","p26dae","p26pdc","p26amput","p26accou","p26uterin","p26chaleur","p26refroid","p26dechets"]],["Bonus",["pse"]]];
 let docQ="";
 function viewDocs(){
   app.innerHTML=`${backLink()}<h1 class="big">Documents</h1><p class="sub">Les référentiels du parcours, consultables et cherchables hors réseau.</p>
@@ -3061,12 +3065,13 @@ alog("demarrage",APP_VER,{chargement:Math.round(performance.now())+" ms",langue:
 if(me&&me.id){const o=store.get("progOwner",null);if(o&&o!==me.id)applyProgress({resetAt:0});store.set("progOwner",me.id)}
 go(tab);{const wel=store.get("welcome",false);if(wel)store.del("welcome");const tk="tutoSeen_"+(me&&me.id||"x");
  const afterTuto=()=>{if(wel){profTab="moi";go("profile");profileSheet(true,true)}};
- const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x"),nk5="news510_"+(me&&me.id||"x");
- if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
+ const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x"),nk5="news510_"+(me&&me.id||"x"),nk6="news511_"+(me&&me.id||"x");
+ if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
  else if(me&&!me.expired&&!store.get(nk,false))setTimeout(()=>openTuto(()=>store.set(nk,true),"rank"),600);
- else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
- else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true);store.set(nk5,true)},"new340"),600)
- else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>{store.set(nk4,true);store.set(nk5,true)},"new500"),600)
- else if(me&&!me.expired&&!store.get(nk5,false))setTimeout(()=>openTuto(()=>store.set(nk5,true),"new510"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
+ else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
+ else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true)},"new340"),600)
+ else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>{store.set(nk4,true);store.set(nk5,true);store.set(nk6,true)},"new500"),600)
+ else if(me&&!me.expired&&!store.get(nk5,false))setTimeout(()=>openTuto(()=>{store.set(nk5,true);store.set(nk6,true)},"new510"),600)
+ else if(me&&!me.expired&&!store.get(nk6,false))setTimeout(()=>openTuto(()=>store.set(nk6,true),"new511"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
 if("serviceWorker" in navigator&&location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").catch(()=>{});navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.openEv&&me&&!me.expired)evOpen(e.data.openEv,()=>{evLoad().catch(()=>{});viewEvals()})})}
 {const m=/^#ev=([\w-]+)/.exec(location.hash);if(m&&me&&!me.expired){history.replaceState(null,"",location.pathname+location.search);setTimeout(()=>evOpen(m[1],()=>viewEvals()),700)}}
