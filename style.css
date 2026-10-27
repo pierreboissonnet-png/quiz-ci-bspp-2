@@ -196,7 +196,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .vbar .ttl{font-weight:600;font-size:15px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vbar button{color:var(--red);font-size:16px;min-height:40px;padding:0 4px}
 .vbody{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px var(--gut)}
-.vpage{background:#fff;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.12);margin:0 auto;max-width:100%;display:block}
+.vpage{background:#fff;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.12);margin:0 auto;display:block}
 .vtext{overflow-wrap:anywhere;background:var(--card);border-radius:14px;padding:14px;white-space:pre-wrap;font-size:14.5px;line-height:1.5}
 .passage{background:var(--warn-soft);border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .passage b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn)}
@@ -684,3 +684,16 @@ body.zmir .qtext,body.zmir .opt>span:last-child,body.zmir .vf .opt{transform:sca
 .evgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .evform input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;min-height:42px;text-align:left}
 .evform input[type=date]::-webkit-date-and-time-value{text-align:left}
+/* 5.1.0 : message de rentrée */
+.mrsit{margin-top:10px}.mrsit .qtext{font-size:16px;line-height:1.45}
+.mrmsg{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--card);border-radius:14px;padding:12px 14px;font:500 14px/1.5 var(--mono);margin:0;border-left:4px solid var(--navy2)}
+.mrmsg.good{border-left-color:var(--ok)}
+.mrform .chips.wrap{gap:6px}.mrform .chips.wrap .chip{font-size:13px;padding:5px 11px;min-height:32px;background:var(--card2)}
+.mrform .chips.wrap .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.mrtog{display:grid;gap:6px;margin-top:10px}
+.mrform .vacard>b{margin-bottom:8px}
+.mrcri[aria-pressed="true"]{background:var(--ink);color:var(--bg)}.mrcri[aria-pressed="true"] .tx b{color:var(--bg)}
+.mrcri .stc{flex:none}
+.mrv{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff}.mrv.ok{background:var(--ok)}.mrv.ko{background:var(--ko)}
+.mrchk .row .tx span b{color:var(--ink)}
+.mrci .btn{width:auto}

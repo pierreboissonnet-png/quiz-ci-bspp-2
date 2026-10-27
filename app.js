@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="5.0.2";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="5.1.0";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -425,6 +425,7 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
     ${tile("sudden",I.bolt,"#d0021b","Mort subite","Jusqu'à la première erreur"+(typeof best.sudden==="number"?` · record ${best.sudden}`:""))}
     ${tile("bilanx",I.list,"#ff7a00","Bilan express","Une prise en charge à remettre en ordre en 90 s")}
     <button class="tile" data-m="radio"><span class="ic" style="background:#0f1d36">${RADIO_IC_T}</span><b>Messages radio</b><span>Constructeur et simulateur phonie</span></button>
+    <button class="tile wide" data-m="rentree"><span class="ic" style="background:#3a4a6b">${I.doc}</span><div><b>Message de rentrée</b><br><span>Compose ton message au PVO et le CRI${typeof store.get("rentreeBest")==="number"?` · record ${store.get("rentreeBest")}/5`:""}</span></div></button>
     <button class="tile" data-m="carte"><span class="ic" style="background:#1f9d55">${MAP_IC_T}</span><b>Carte des secteurs</b><span>CS, Golf, voisins, quiz carte</span></button>
     ${duelTile()}
     <button class="tile wide" data-m="hosp"><span class="ic" style="background:#d92d20">${H_IC}</span><div><b>Les hôpitaux</b><br><span>Urgences spécialisées, SAU, hôpital le plus proche d'un CS</span></div></button>
@@ -445,7 +446,7 @@ function viewHome(){if(typeof loadDuels==="function"&&me&&!me.expired)setTimeout
   const ds=$("#defiShare");if(ds)ds.onclick=()=>shareText(`Défi CI BSPP ${w} : ${dd.score}/20 en ${fmtTime(dd.ms)}. À toi de jouer !`,$("#defiMsg"));
   app.querySelectorAll("[data-fiche]").forEach(b=>b.onclick=()=>reviseFiche(b.dataset.fiche));bindFocus(false);
   app.querySelectorAll(".tile[data-m]").forEach(m=>m.onclick=()=>({qcm:()=>runQuiz(evFocusMix(fresh(pool("qcm")),false).slice(0,10),"qcm",true),chrono:runChrono,flash:()=>runFlash(fresh(pool("flashcards"))),ordre:()=>runOrdre(fresh(pool("ordre"))),cas:()=>runCas(fresh(pool("cas"))),
-    exam:()=>runQuiz(fresh([...pool("qcm"),...pool("vf")]).slice(0,30),"exam",false),review:runReview,sudden:()=>runSudden(),bilanx:()=>runBilanExpress(),radio:()=>go("radio"),carte:()=>go("carte"),grades:()=>viewGrades(true),hosp:()=>runHospQuiz(true),marks:()=>{revTab="marks";go("revise")}})[m.dataset.m]());
+    exam:()=>runQuiz(fresh([...pool("qcm"),...pool("vf")]).slice(0,30),"exam",false),review:runReview,sudden:()=>runSudden(),bilanx:()=>runBilanExpress(),radio:()=>go("radio"),rentree:()=>runRentree(()=>go("home")),carte:()=>go("carte"),grades:()=>viewGrades(true),hosp:()=>runHospQuiz(true),marks:()=>{revTab="marks";go("revise")}})[m.dataset.m]());
 }
 
 /* ============ Jeux ============ */
@@ -1336,17 +1337,253 @@ function evFocusMix(list,simple,n=10){const w=evWeak();if(!w.length)return list;
  const take=Math.min(Math.round(n*.4),foc.length);const out=foc.slice(0,take);const ids=new Set(out.map(x=>x._id));for(const x of list){if(out.length>=Math.max(n,list.length))break;if(!ids.has(x._id)){out.push(x);ids.add(x._id)}}return shuffle(out.slice(0,n)).concat(list.filter(x=>!ids.has(x._id)))}
 function evFocusCard(simple){const w=evWeak();if(!w.length)return"";return `<div class="card evfocus"><b>Tes axes de travail</b><p class="small" style="margin:4px 0 10px">D'après ta synthèse de vacation n°${w.num}. Touche un point pour un quiz ciblé ; les autres exercices y reviennent aussi plus souvent.</p><div class="chips wrap">${w.map(([k,l])=>`<button class="chip" data-focus="${k}">${esc(l)}</button>`).join("")}</div></div>`}
 function bindFocus(simple){app.querySelectorAll("[data-focus]").forEach(b=>b.onclick=()=>{const k=b.dataset.focus;const L=fresh(evFocusItems(k,simple)).map(mixQ).slice(0,10);if(L.length<3){toast("Pas assez de questions sur ce point.");return}
- if(k==="radio"&&!simple&&Math.random()<.5){runRadioBuild(()=>go("home"),true);return}simple?runSimple(L,"Axe de travail"):runQuiz(L,"qcm",true)})}
+ if(k==="radio"&&!simple&&Math.random()<.5){runRadioBuild(()=>go("home"),true);return}if(k==="admin"&&Math.random()<.6){runRentree(()=>go("home"));return}simple?runSimple(L,"Axe de travail"):runQuiz(L,"qcm",true)})}
+/* ============ 5.1.0 : jeu « Message de rentrée » (Guide pratique CI p. 35-36, 50-51) ============
+   Une situation de secours à personne est racontée ; le joueur compose son message de rentrée au PVO
+   (points 1, 2, 3, 5, 6, 7) et choisit le CRI. Correction point par point et message attendu. */
+const MR_DEG=["Néant","Vêtements découpés","Tenue de motard découpée","Vitre cassée"];
+const MR_DIF=["Néant","Retard dû à une circulation dense","Un véhicule a refusé de céder la priorité aux secours","Refus de l'IAO de signer la fiche d'intervention","Différend avec le médecin de l'UMH"];
+const MR_SRV=["Néant","EDF (Enedis)","GDF (GRDF)"];
+const MR_HOP=["SAU Lariboisière","SAU Bichat","SAU Pitié-Salpêtrière","SAU Saint-Antoine","SAU Cochin","SAU Hôpital européen Georges-Pompidou","SAU Tenon","SAU Saint-Louis","urgences pédiatriques Robert-Debré","urgences pédiatriques Necker","urgences pédiatriques Trousseau","maternité Port-Royal","maternité Lariboisière"];
+// v : victimes [sexe, âge ("" = inconnu), identité connue, état, devenir (crf|em|lsp), hôpital, options {mil, sdf}]
+const MR=[
+ {id:"malaise",sit:"Malaise chez un homme de 58 ans, douleur dans la poitrine depuis une heure. Il te donne son nom et son âge. Vous le mettez sous oxygène et réalisez un ECG. Au téléphone, le médecin coordinateur décide du transport : vous l'emmenez au SAU de Lariboisière. Rien n'a été abîmé.",
+  act:"Bilan",mat:["Oxygénothérapie","ECG"],contact:"médecin coordinateur",v:[["un homme","58",1,"UR","crf","SAU Lariboisière"]],cri:"320",alt:["310","399","356"],e:"Affection médicale : CRI 320. Le contact avec la coordination se précise avec le niveau de l'interlocuteur (ici le médecin coordinateur)."},
+ {id:"releve",sit:"Une dame de 82 ans est tombée de sa hauteur chez elle dans la nuit et n'arrive pas à se relever. Aucune blessure, elle va bien. Vous la relevez et la recouchez. Tu passes le bilan à l'opérateur de coordination, qui accepte qu'elle reste chez elle. Sa fille est présente.",
+  act:"Bilan",mat:["Relevage"],contact:"opérateur coordination",v:[["une femme","82",1,"UR","lsp",""]],cri:"343",alt:["356","320","402"],e:"Personne impotente relevée sans blessure : CRI 343 (relevage). Laissée sur place avec l'accord de la coordination : « laissée sur place », sans décharge."},
+ {id:"chute",sit:"Une femme de 79 ans a chuté dans l'escalier de son immeuble : plaie au cuir chevelu et douleur du poignet. Vous immobilisez le poignet avec une attelle. L'opérateur de coordination vous oriente vers le SAU Cochin, où vous la transportez.",
+  act:"Bilan",mat:["Attelle"],contact:"opérateur coordination",v:[["une femme","79",1,"UR","crf","SAU Cochin"]],cri:"356",alt:["343","359","320"],e:"Blessée par chute : CRI 356. L'attelle fait partie du matériel cité au point 1."},
+ {id:"ivre",sit:"Sur la voie publique, un homme en état d'ébriété avancée. Aucun papier sur lui, il est incapable de donner son nom ni son âge. Tu passes le bilan à l'opérateur de coordination ; transport au SAU Saint-Antoine.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","",0,"UR","crf","SAU Saint-Antoine"]],cri:"310",alt:["320","399","451"],e:"Exemple du Guide (p. 50) : « Un homme d'âge et d'identité inconnus, UR, transporté par CRF… », CRI 310 (intoxication, dont l'alcool)."},
+ {id:"recherche",sit:"Départ pour une personne au sol. Sur place, personne. Le CSO confirme l'appel et l'adresse ; vous cherchez dans la rue et le hall de l'immeuble sans trouver de victime. Pas de fiche bilan.",
+  act:"Recherche",mat:[],contact:"",v:[],cri:"919",alt:["001","009","939"],e:"Exemple du Guide (p. 50) : « 1/ Recherche – 5/ Néant – CRI 919 », sans remplir de fiche bilan."},
+ {id:"annule",sit:"Vous êtes en route pour un malaise quand le CSO vous fait faire demi-tour : l'intervention est annulée par le centre opérationnel.",
+  act:"Néant",mat:[],contact:"",v:[],cri:"004",alt:["001","009","300"],e:"Exemple du Guide (p. 50) : « 1/ Néant – 5/ Néant – CRI 004 »."},
+ {id:"sec",sit:"Vous êtes engagés en renfort d'un VSAV pour descendre une victime du 6e étage sans ascenseur. Le VSAV s'occupe de la victime et la transporte ; vous n'avez fait que le brancardage.",
+  act:"Brancardage",mat:[],contact:"",v:[],cri:"SEC",alt:["341","342","343"],e:"Message de rentrée secondaire (Guide p. 50) : « 1/ Brancardage – 2/ Néant – CRI SEC »."},
+ {id:"acr_dae",sit:"Un homme de 61 ans s'effondre dans une pharmacie. À votre arrivée, un passant a déjà posé le défibrillateur de la pharmacie et délivré un choc. Vous poursuivez le massage cardiaque, les insufflations et branchez votre DSA ; vous découpez sa chemise. L'équipe médicale le récupère et l'évacue vers l'HEGP. Bilan passé au médecin coordinateur.",
+  act:"Bilan",mat:["DSA","MCE","Insufflation"],contact:"médecin coordinateur",v:[["un homme","61",1,"UA","em","SAU Hôpital européen Georges-Pompidou"]],dae:1,deg:"Vêtements découpés",cri:"320",alt:["380","399","300"],e:"Point 3 : utilisation d'un défibrillateur public. Victime évacuée par l'équipe médicale = UA. Vêtements découpés au point 5."},
+ {id:"dcd",sit:"Appel pour une dame âgée qui ne répond plus. Vous la trouvez dans son lit, décédée depuis plusieurs heures avec des signes évidents de mort : pas de réanimation. Tu contactes le médecin coordinateur. Son identité est connue (82 ans).",
+  act:"Bilan",mat:[],contact:"médecin coordinateur",v:[["une femme","82",1,"DCD","",""]],cri:"380",alt:["320","300","399"],e:"Personne trouvée décédée, constat sans autre indication : CRI 380. Pas de vecteur ni d'hôpital pour une victime DCD."},
+ {id:"scooter",sit:"Un homme de 26 ans a chuté seul en scooter dans une rue du 11e. Douleur de la jambe ; vous réalisez une immobilisation générale et découpez son blouson de moto pour l'examiner. L'opérateur de coordination vous oriente vers la Pitié-Salpêtrière.",
+  act:"Bilan",mat:["Immobilisation générale"],contact:"opérateur coordination",v:[["un homme","26",1,"UR","crf","SAU Pitié-Salpêtrière"]],deg:"Tenue de motard découpée",cri:"224",alt:["221","228","356"],e:"Deux-roues seul sur une voie ordinaire : CRI 224. Une tenue de motard découpée a une valeur importante : à signaler au point 5."},
+ {id:"pieton",sit:"Une piétonne de 34 ans a été renversée par une voiture sur un passage piéton. Douleur au genou ; vous posez une attelle. Bilan à l'opérateur de coordination, transport au SAU Tenon. Une voiture a refusé de vous laisser passer en route, ce qui vous a retardés.",
+  act:"Bilan",mat:["Attelle"],contact:"opérateur coordination",v:[["une femme","34",1,"UR","crf","SAU Tenon"]],dif:"Un véhicule a refusé de céder la priorité aux secours",cri:"220",alt:["225","228","356"],e:"Piéton victime d'un accident : CRI 220. Le véhicule qui n'a pas cédé le passage se signale au point 6 (difficultés)."},
+ {id:"gendarme",sit:"Un gendarme de 34 ans, en service, fait un malaise. Il te donne son grade, son matricule, son unité et sa fonction. Bilan au médecin coordinateur, transport au SAU Bichat.",
+  act:"Bilan",mat:[],contact:"médecin coordinateur",v:[["un homme","34",1,"UR","crf","SAU Bichat",{mil:1}]],cri:"320",alt:["399","310","301"],e:"Victime militaire ou gendarme : grade, matricule, corps, affectation et fonction au point 2, et compte rendu immédiat au PVO pour l'officier de garde (Guide p. 50)."},
+ {id:"asthme",sit:"À l'école, un enfant de 8 ans fait une crise d'asthme. Vous le mettez sous oxygène. Le médecin coordinateur demande un transport aux urgences pédiatriques Robert-Debré.",
+  act:"Bilan",mat:["Oxygénothérapie"],contact:"médecin coordinateur",v:[["un enfant","8",1,"UR","crf","urgences pédiatriques Robert-Debré"]],cri:"320",alt:["310","399","360"],e:"Crise d'asthme = affection médicale : CRI 320. Précise le service quand ce ne sont pas les urgences générales (ici pédiatriques)."},
+ {id:"refus",sit:"Malaise sans gravité chez une femme de 30 ans dans le métro. Elle va mieux et refuse d'être transportée. Tu passes le bilan à l'opérateur de coordination et elle signe une décharge ; elle reste sur place.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",dech:1,v:[["une femme","30",1,"UR","lsp",""]],cri:"320",alt:["336","452","399"],e:"Refus de transport : « décharge » au point 1, victime « laissée sur place » au point 2."},
+ {id:"co",sit:"Intoxication au monoxyde de carbone dans un appartement : une femme de 41 ans et son fils de 10 ans, tous deux conscients. Oxygène pour les deux. Le médecin coordinateur demande le transport des deux victimes au SAU Saint-Louis.",
+  act:"Bilan",mat:["Oxygénothérapie"],contact:"médecin coordinateur",v:[["une femme","41",1,"UR","crf","SAU Saint-Louis"],["un enfant","10",1,"UR","crf","SAU Saint-Louis"]],cri:"310",alt:["320","369","399"],e:"Monoxyde de carbone = intoxication : CRI 310. Chaque victime est citée au point 2."},
+ {id:"electr",sit:"Un ouvrier de 45 ans s'est électrisé en travaillant sur un coffret électrique de la rue, resté ouvert et endommagé. Il est conscient, brûlure à la main. Bilan au médecin coordinateur, transport au SAU Saint-Antoine.",
+  act:"Bilan",mat:[],contact:"médecin coordinateur",v:[["un homme","45",1,"UR","crf","SAU Saint-Antoine"]],srv:"EDF (Enedis)",cri:"362",alt:["355","359","364"],e:"Électrisation : CRI 362. Coffret endommagé : service à prévenir au point 7 (EDF), après conseil du sergent de jour."},
+ {id:"morsure",sit:"Un enfant de 6 ans mordu au mollet par un chien dans un square. Plaie propre, pansement. L'opérateur de coordination vous oriente vers les urgences pédiatriques Necker.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un enfant","6",1,"UR","crf","urgences pédiatriques Necker"]],cri:"354",alt:["358","359","399"],e:"Blessé par morsure d'animal : CRI 354."},
+ {id:"coupure",sit:"Un homme de 35 ans s'est coupé la main avec une vitre en faisant le ménage. Pansement compressif. Bilan à l'opérateur de coordination, transport au SAU Saint-Antoine.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","35",1,"UR","crf","SAU Saint-Antoine"]],cri:"358",alt:["353","391","359"],e:"Coupure hors arme blanche : CRI 358. Le pansement ne fait pas partie de la liste du point 1."},
+ {id:"couteau",sit:"Un homme de 22 ans blessé au bras par un coup de couteau lors d'une rixe ; la police est sur place. Pansement compressif. Bilan au médecin coordinateur, transport au SAU Lariboisière.",
+  act:"Bilan",mat:[],contact:"médecin coordinateur",v:[["un homme","22",1,"UR","crf","SAU Lariboisière"]],cri:"391",alt:["353","399","358"],e:"Arme blanche avec suspicion d'agression : CRI 391 (353 si accident sans agression)."},
+ {id:"sdf",sit:"Par grand froid, un homme sans domicile fixe d'une cinquantaine d'années, sans papiers, refuse toute aide mais ne présente pas de détresse. Vous réalisez un bilan complet et le passez à l'opérateur de coordination, qui accepte qu'il reste sur place.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","",0,"UR","lsp","",{sdf:1}]],cri:"451",alt:["452","399","320"],e:"Pas une victime mais personne vulnérable (froid, SDF), bilan réalisé : CRI 451. « SDF » se précise au point 2."},
+ {id:"hypo",sit:"Une femme diabétique de 67 ans fait une hypoglycémie. Après resucrage, elle va bien. L'infirmier de coordination accepte qu'elle reste à domicile avec son mari.",
+  act:"Bilan",mat:[],contact:"infirmier coordination",v:[["une femme","67",1,"UR","lsp",""]],cri:"320",alt:["310","343","402"],e:"Hypoglycémie = affection médicale : CRI 320. Laissée sur place avec l'accord de la coordination : pas de décharge."},
+ {id:"enceinte",sit:"Une femme de 28 ans, enceinte de 39 semaines, a des contractions rapprochées. Le médecin coordinateur demande le transport vers la maternité Port-Royal, où elle est suivie.",
+  act:"Bilan",mat:[],contact:"médecin coordinateur",v:[["une femme","28",1,"UR","crf","maternité Port-Royal"]],cri:"320",alt:["340","399","342"],e:"Femme enceinte en travail : affection médicale, CRI 320. Le service (maternité) remplace les urgences générales."},
+ {id:"metro",sit:"Un homme de 40 ans est tombé sur les voies du métro. Dégagé par les sapeurs-pompiers, il est conscient avec une douleur du bassin. Immobilisation générale et oxygène. L'équipe médicale l'évacue vers la Pitié-Salpêtrière. Bilan au médecin coordinateur.",
+  act:"Bilan",mat:["Immobilisation générale","Oxygénothérapie"],contact:"médecin coordinateur",v:[["un homme","40",1,"UA","em","SAU Pitié-Salpêtrière"]],cri:"336",alt:["337","338","356"],e:"Victime tombée sur la voie du métro : CRI 336. Évacuée par l'équipe médicale : UA."},
+ {id:"iao",sit:"Malaise chez un homme de 75 ans. Bilan à l'opérateur de coordination, transport au SAU Bichat. Aux urgences, l'IAO refuse de signer la fiche d'intervention.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","75",1,"UR","crf","SAU Bichat"]],dif:"Refus de l'IAO de signer la fiche d'intervention",cri:"320",alt:["301","399","340"],e:"Le refus de l'IAO de signer est une difficulté particulière : point 6."},
+ {id:"bouchons",sit:"Une dame de 88 ans a chuté sur le trottoir : hématome au front. Vous arrivez avec retard, bloqués dans une circulation très dense. Bilan à l'opérateur de coordination, transport au SAU Saint-Louis.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["une femme","88",1,"UR","crf","SAU Saint-Louis"]],dif:"Retard dû à une circulation dense",cri:"356",alt:["343","220","359"],e:"Le retard dû à la circulation se signale au point 6. Chute : CRI 356."},
+ {id:"vitre",sit:"Une femme de 90 ans a chuté chez elle : douleur de hanche, immobilisation générale. Bilan à l'opérateur de coordination, transport au SAU Tenon. En sortant le brancard par l'entrée étroite de l'immeuble, vous cassez la vitre de la porte du hall.",
+  act:"Bilan",mat:["Immobilisation générale"],contact:"opérateur coordination",v:[["une femme","90",1,"UR","crf","SAU Tenon"]],deg:"Vitre cassée",cri:"356",alt:["343","490","359"],e:"Dégât causé par les secours : vitre cassée au point 5."},
+ {id:"brulure",sit:"Une femme de 45 ans s'est brûlé l'avant-bras avec de l'eau bouillante. Refroidissement, pansement. L'opérateur de coordination demande un transport au SAU Saint-Antoine.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["une femme","45",1,"UR","crf","SAU Saint-Antoine"]],cri:"355",alt:["358","359","320"],e:"Brûlure hors incendie : CRI 355."},
+ {id:"medicalise",sit:"Un homme de 52 ans présente des signes d'AVC. Oxygène. L'équipe médicale arrive et décide de le transporter dans votre véhicule, le médecin à bord, vers la Pitié-Salpêtrière. Bilan au médecin coordinateur.",
+  act:"Bilan",mat:["Oxygénothérapie"],contact:"médecin coordinateur",v:[["un homme","52",1,"UA","crf","SAU Pitié-Salpêtrière"]],cri:"320",alt:["310","399","340"],e:"Victime médicalisée dans le VPSP = UA, même si c'est vous qui la transportez (Guide p. 35)."},
+ {id:"avp2",sit:"Collision entre deux voitures dans une rue. Le conducteur, 45 ans, douleur cervicale : immobilisation générale, transport au SAU Cochin. La passagère, 39 ans, n'est pas blessée et refuse le transport : elle signe une décharge. Bilan à l'opérateur de coordination pour les deux.",
+  act:"Bilan",mat:["Immobilisation générale"],contact:"opérateur coordination",dech:1,v:[["un homme","45",1,"UR","crf","SAU Cochin"],["une femme","39",1,"UR","lsp",""]],cri:"228",alt:["225","227","222"],e:"Deux véhicules sur une voie ordinaire : CRI 228. La décharge de la passagère est citée au point 1, et elle est « laissée sur place »."},
+ {id:"acr_lsp",sit:"Arrêt cardiaque chez un homme de 70 ans à domicile. MCE, insufflations, DSA (2 chocs), vêtements découpés. Malgré la réanimation menée avec l'équipe médicale, le décès est constaté sur place. Bilan au médecin coordinateur.",
+  act:"Bilan",mat:["DSA","MCE","Insufflation"],contact:"médecin coordinateur",v:[["un homme","70",1,"DCD","",""]],deg:"Vêtements découpés",cri:"320",alt:["380","399","300"],e:"Réanimation entreprise sur un arrêt cardiaque : affection médicale (CRI 320). Le 380 concerne un constat de décès sans autre indication."},
+ // 5.1.0 : situations complémentaires
+ {id:"epilepsie",sit:"Un homme de 32 ans, épileptique connu, a fait une crise convulsive dans un magasin. À votre arrivée, il est somnolent mais respire bien ; il a une carte avec son traitement. L'opérateur de coordination demande un transport au SAU Bichat.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","32",1,"UR","crf","SAU Bichat"]],cri:"320",alt:["310","356","399"],e:"Crise convulsive = affection médicale : CRI 320."},
+ {id:"medic",sit:"Une jeune femme de 24 ans a avalé volontairement une boîte de comprimés. Elle est consciente et donne son identité. Le médecin coordinateur demande son transport au SAU Lariboisière.",
+  act:"Bilan",mat:[],contact:"médecin coordinateur",v:[["une femme","24",1,"UR","crf","SAU Lariboisière"]],cri:"310",alt:["320","399","360"],e:"Ingestion de médicaments = intoxication : CRI 310."},
+ {id:"overdose",sit:"Dans un parking, un homme d'une trentaine d'années, sans papiers, en détresse respiratoire après une prise de stupéfiants. Vous assurez insufflations et oxygène. L'équipe médicale le prend en charge et l'évacue vers Lariboisière. Bilan au médecin coordinateur.",
+  act:"Bilan",mat:["Insufflation","Oxygénothérapie"],contact:"médecin coordinateur",v:[["un homme","",0,"UA","em","SAU Lariboisière"]],cri:"310",alt:["320","399","451"],e:"Overdose = intoxication (CRI 310). Âge approximatif et sans papiers : « d'âge et d'identité inconnus ». Évacué par l'équipe médicale : UA."},
+ {id:"trottinette",sit:"Une jeune femme de 19 ans a chuté seule en trottinette électrique dans une rue du 15e. Douleur du poignet : attelle. Bilan à l'opérateur de coordination, transport au SAU Hôpital européen Georges-Pompidou.",
+  act:"Bilan",mat:["Attelle"],contact:"opérateur coordination",v:[["une femme","19",1,"UR","crf","SAU Hôpital européen Georges-Pompidou"]],cri:"224",alt:["221","356","228"],e:"La trottinette est un deux-roues : chute seule sur une voie ordinaire, CRI 224."},
+ {id:"periph",sit:"Sur le boulevard périphérique, une voiture seule a percuté la glissière. Le conducteur, 50 ans, se plaint du cou : immobilisation générale. Bilan à l'opérateur de coordination, transport au SAU Bichat.",
+  act:"Bilan",mat:["Immobilisation générale"],contact:"opérateur coordination",v:[["un homme","50",1,"UR","crf","SAU Bichat"]],cri:"222",alt:["225","227","229"],e:"Véhicule de tourisme seul sur voie rapide (périphérique) : CRI 222 (225 sur une autre voie)."},
+ {id:"motoperiph",sit:"Sur le périphérique, une moto est entrée en collision avec une voiture. Le motard, 29 ans, a une fracture ouverte de jambe : attelle, oxygène, tenue de motard découpée. L'équipe médicale l'évacue vers la Pitié-Salpêtrière. Bilan au médecin coordinateur.",
+  act:"Bilan",mat:["Attelle","Oxygénothérapie"],contact:"médecin coordinateur",v:[["un homme","29",1,"UA","em","SAU Pitié-Salpêtrière"]],deg:"Tenue de motard découpée",cri:"227",alt:["221","228","222"],e:"Véhicules différents (moto et voiture) sur voie rapide : CRI 227. Évacué par l'équipe médicale : UA."},
+ {id:"guepe",sit:"Une femme de 40 ans piquée par une guêpe à une terrasse de café : gonflement du visage, gêne respiratoire. Oxygène. Le médecin coordinateur demande son transport au SAU Saint-Antoine.",
+  act:"Bilan",mat:["Oxygénothérapie"],contact:"médecin coordinateur",v:[["une femme","40",1,"UR","crf","SAU Saint-Antoine"]],cri:"354",alt:["320","310","359"],e:"Blessé par piqûre d'animal : CRI 354, même si la réaction allergique est au premier plan."},
+ {id:"canal",sit:"Un homme de 25 ans est tombé dans le canal Saint-Martin ; des passants l'ont sorti de l'eau. Il est conscient, frissonne et a bu la tasse. Oxygène. Le médecin coordinateur demande son transport au SAU Saint-Louis.",
+  act:"Bilan",mat:["Oxygénothérapie"],contact:"médecin coordinateur",v:[["un homme","25",1,"UR","crf","SAU Saint-Louis"]],cri:"361",alt:["369","310","399"],e:"Noyade, submersion : CRI 361."},
+ {id:"parti",sit:"Départ pour un malaise sur la voie publique. À votre arrivée, la victime est déjà repartie avec un proche ; les témoins confirment qu'elle allait bien. Vous n'avez rien eu à faire.",
+  act:"Néant",mat:[],contact:"",v:[],cri:"300",alt:["919","001","004"],e:"Victime partie, situation réglée avant votre arrivée : CRI 300 (traité avant notre arrivée). Rien à faire : « 1/ Néant – 5/ Néant »."},
+ {id:"smur",sit:"Départ pour un malaise. À votre arrivée, le SMUR est déjà sur place, prend la victime en charge et vous libère sans que vous ayez participé.",
+  act:"Néant",mat:[],contact:"",v:[],cri:"301",alt:["300","302","004"],e:"Victime prise en charge par un service public (SAMU-SMUR) : CRI 301."},
+ {id:"privee",sit:"Départ pour une personne âgée tombée dans une résidence. À votre arrivée, une ambulance privée appelée par la famille est déjà sur place et s'occupe d'elle ; vous repartez sans intervenir.",
+  act:"Néant",mat:[],contact:"",v:[],cri:"302",alt:["301","300","343"],e:"Pris en charge par un organisme privé (ambulance privée) : CRI 302."},
+ {id:"cafe",sit:"Un enfant de 3 ans a renversé une tasse de café brûlant sur son bras. Refroidissement à l'eau, pansement. Le médecin coordinateur demande son transport aux urgences pédiatriques Trousseau.",
+  act:"Bilan",mat:[],contact:"médecin coordinateur",v:[["un enfant","3",1,"UR","crf","urgences pédiatriques Trousseau"]],cri:"355",alt:["358","320","359"],e:"Brûlure hors incendie : CRI 355. Service précisé : urgences pédiatriques."},
+ {id:"balancoire",sit:"Au square, un enfant de 7 ans est tombé de la balançoire : douleur et déformation de l'avant-bras. Attelle. L'opérateur de coordination vous oriente vers les urgences pédiatriques Necker.",
+  act:"Bilan",mat:["Attelle"],contact:"opérateur coordination",v:[["un enfant","7",1,"UR","crf","urgences pédiatriques Necker"]],cri:"356",alt:["359","343","399"],e:"Blessé par chute : CRI 356."},
+ {id:"velo",sit:"Un cycliste de 55 ans a chuté seul dans une rue en pente : plaie au coude et douleur de l'épaule. Attelle. Bilan à l'opérateur de coordination, transport au SAU Cochin.",
+  act:"Bilan",mat:["Attelle"],contact:"opérateur coordination",v:[["un homme","55",1,"UR","crf","SAU Cochin"]],cri:"224",alt:["356","221","220"],e:"Le vélo est un deux-roues : chute seule sur une voie ordinaire, CRI 224."},
+ {id:"vagal",sit:"Une femme de 25 ans a fait un malaise vagal dans une file d'attente. Allongée, elle récupère complètement. L'opérateur de coordination accepte qu'elle reste sur place, accompagnée d'une amie.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["une femme","25",1,"UR","lsp",""]],cri:"320",alt:["452","399","302"],e:"Malaise = CRI 320. Laissée sur place avec l'accord de la coordination : pas de décharge."},
+ {id:"ventre",sit:"Un homme de 40 ans a de violentes douleurs abdominales depuis le matin. Bilan à l'opérateur de coordination, transport au SAU Tenon. En route, une circulation très dense vous a beaucoup retardés.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","40",1,"UR","crf","SAU Tenon"]],dif:"Retard dû à une circulation dense",cri:"320",alt:["399","340","310"],e:"Affection médicale : CRI 320. Le retard est une difficulté particulière : point 6."},
+ {id:"ivre2",sit:"Une jeune femme de 19 ans, très alcoolisée, vomit à la sortie d'une soirée ; son amie donne son nom et son âge. Position latérale de sécurité. Bilan à l'opérateur de coordination, transport à la Pitié-Salpêtrière.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["une femme","19",1,"UR","crf","SAU Pitié-Salpêtrière"]],cri:"310",alt:["320","399","451"],e:"Alcoolisation = intoxication : CRI 310. Ici l'identité est connue grâce à l'amie."},
+ {id:"coups",sit:"Un homme de 45 ans a reçu des coups au visage lors d'une bagarre ; plaie de l'arcade. La police est présente. Bilan à l'opérateur de coordination, transport au SAU Lariboisière.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","45",1,"UR","crf","SAU Lariboisière"]],cri:"399",alt:["391","359","356"],e:"Agression à coups (sans arme) : CRI 399, autre secours à victime."},
+ {id:"balle",sit:"Un homme de 28 ans blessé par balle au thorax lors d'une agression. Compression, oxygène, vêtements découpés. L'équipe médicale l'évacue vers la Pitié-Salpêtrière. Bilan au médecin coordinateur.",
+  act:"Bilan",mat:["Oxygénothérapie"],contact:"médecin coordinateur",v:[["un homme","28",1,"UA","em","SAU Pitié-Salpêtrière"]],deg:"Vêtements découpés",cri:"390",alt:["352","391","399"],e:"Arme à feu avec suspicion d'agression : CRI 390 (352 hors agression). Évacué par l'équipe médicale : UA."},
+ {id:"palette",sit:"Sur un chantier, la jambe d'un ouvrier de 50 ans a été coincée sous une lourde palette ; les sapeurs-pompiers l'ont dégagé. Attelle. Bilan au médecin coordinateur, transport au SAU Hôpital européen Georges-Pompidou.",
+  act:"Bilan",mat:["Attelle"],contact:"médecin coordinateur",v:[["un homme","50",1,"UR","crf","SAU Hôpital européen Georges-Pompidou"]],cri:"364",alt:["351","359","356"],e:"Écrasement, compression par masse importante : CRI 364."},
+ {id:"rer",sit:"Une femme de 36 ans est tombée sur les voies du RER en gare. Dégagée par les sapeurs-pompiers, elle a une plaie de la tête : immobilisation générale. L'équipe médicale l'évacue vers la Pitié-Salpêtrière. Bilan au médecin coordinateur.",
+  act:"Bilan",mat:["Immobilisation générale"],contact:"médecin coordinateur",v:[["une femme","36",1,"UA","em","SAU Pitié-Salpêtrière"]],cri:"337",alt:["336","338","356"],e:"Tombée sur la voie du RER : CRI 337 (336 pour le métro, 338 pour le tramway)."},
+ {id:"obese",sit:"Un homme de 160 kg, 58 ans, est au sol chez lui après un malaise. Il faut le relever puis le descendre avec un renfort. Bilan à l'opérateur de coordination, transport au SAU Bichat.",
+  act:"Bilan",mat:["Relevage"],contact:"opérateur coordination",v:[["un homme","58",1,"UR","crf","SAU Bichat"]],cri:"344",alt:["343","342","320"],e:"Relevage et brancardage d'un patient de plus de 150 kg : CRI 344."},
+ {id:"sapeur",sit:"Un sapeur-pompier de la BSPP, 24 ans, s'est tordu la cheville en descendant de son engin. Il te donne son grade, son matricule, son unité et sa fonction. Attelle. Bilan à l'opérateur de coordination, transport au SAU Saint-Antoine.",
+  act:"Bilan",mat:["Attelle"],contact:"opérateur coordination",v:[["un homme","24",1,"UR","crf","SAU Saint-Antoine",{mil:1}]],cri:"356",alt:["359","399","343"],e:"Le personnel de la BSPP est militaire : grade, matricule, corps, affectation et fonction au point 2, et compte rendu immédiat au PVO (Guide p. 50)."},
+ {id:"policier",sit:"Un policier de 31 ans s'est blessé à la main lors d'une interpellation : plaie profonde. Il te donne son grade, son matricule, son service et sa fonction. Bilan à l'opérateur de coordination, transport au SAU Lariboisière.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","31",1,"UR","crf","SAU Lariboisière",{mil:1}]],cri:"399",alt:["358","391","359"],e:"Victime policier : mêmes précisions qu'un militaire au point 2 (grade, matricule, corps, affectation, fonction)."},
+ {id:"umh",sit:"Malaise avec douleur thoracique chez un homme de 66 ans. Oxygène, ECG. L'équipe médicale arrive ; son médecin conteste vivement ton bilan devant la famille. Elle évacue la victime vers Lariboisière. Bilan au médecin coordinateur.",
+  act:"Bilan",mat:["Oxygénothérapie","ECG"],contact:"médecin coordinateur",v:[["un homme","66",1,"UA","em","SAU Lariboisière"]],dif:"Différend avec le médecin de l'UMH",cri:"320",alt:["399","301","310"],e:"Un différend avec le médecin de l'UMH se signale au point 6. Évacué par l'équipe médicale : UA."},
+ {id:"canicule",sit:"En pleine canicule, une voisine a appelé pour une dame de 85 ans seule chez elle. Elle va bien, boit correctement ; vous réalisez un bilan complet. L'opérateur de coordination accepte qu'elle reste chez elle, la voisine passera la voir.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["une femme","85",1,"UR","lsp",""]],cri:"451",alt:["452","320","402"],e:"Pas une victime, mais personne vulnérable (âge, chaleur) avec bilan réalisé : CRI 451."},
+ {id:"fumees",sit:"Feu de cuisine éteint par les sapeurs-pompiers. Un homme de 60 ans a respiré les fumées : il tousse. Oxygène. Le médecin coordinateur demande son transport au SAU Saint-Louis.",
+  act:"Bilan",mat:["Oxygénothérapie"],contact:"médecin coordinateur",v:[["un homme","60",1,"UR","crf","SAU Saint-Louis"]],cri:"310",alt:["355","320","369"],e:"Inhalation de fumées = intoxication : CRI 310."},
+ {id:"gaz",sit:"Malaise chez une femme de 72 ans. Dans la cage d'escalier, une forte odeur de gaz persiste après votre départ ; le sergent de jour te conseille de le signaler. Bilan à l'opérateur de coordination, transport au SAU Cochin.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["une femme","72",1,"UR","crf","SAU Cochin"]],srv:"GDF (GRDF)",cri:"320",alt:["310","399","369"],e:"Service particulier à prévenir au point 7 (GDF), après conseil du sergent de jour."},
+ {id:"cuisine",sit:"Un cuisinier de 30 ans s'est entaillé profondément la main avec son couteau en travaillant. Pansement compressif. Bilan à l'opérateur de coordination, transport au SAU Saint-Louis.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",v:[["un homme","30",1,"UR","crf","SAU Saint-Louis"]],cri:"353",alt:["358","391","359"],e:"Arme blanche sans suspicion d'agression (accident) : CRI 353."},
+ {id:"metromalaise",sit:"Une femme de 52 ans a fait un malaise sur le quai du métro, sans chute sur les voies. Elle récupère, mais le médecin coordinateur souhaite un transport au SAU Saint-Antoine.",
+  act:"Bilan",mat:[],contact:"médecin coordinateur",v:[["une femme","52",1,"UR","crf","SAU Saint-Antoine"]],cri:"320",alt:["336","356","399"],e:"Malaise sur le quai, sans chute sur les voies : CRI 320 (336 seulement si la victime est tombée sur la voie)."},
+ {id:"refusivre",sit:"Un homme de 48 ans, alcoolisé mais cohérent, a une petite plaie au front après une chute. Il refuse catégoriquement le transport. Bilan à l'opérateur de coordination ; il signe une décharge.",
+  act:"Bilan",mat:[],contact:"opérateur coordination",dech:1,v:[["un homme","48",1,"UR","lsp",""]],cri:"356",alt:["310","399","452"],e:"La blessure vient de la chute : CRI 356. Refus de transport : décharge au point 1, laissé sur place."},
+];
+const mrVic=v=>({s:v[0],a:v[1]||"",id:!!v[2],e:v[3],d:v[4]||"",h:v[5]||"",mil:!!(v[6]&&v[6].mil),sdf:!!(v[6]&&v[6].sdf)});
+const mrExp=q=>({act:q.act,mat:q.mat||[],contact:q.contact||"",dech:!!q.dech,v:(q.v||[]).map(mrVic),dae:!!q.dae,deg:q.deg||"Néant",dif:q.dif||"Néant",srv:q.srv||"Néant",cri:q.cri});
+function mrMsg(a){const L=[];const num=radioId.num||"XXX";
+ if(a.act==="Néant")L.push("1/ Néant");else L.push("1/ "+[a.act,...(a.mat||[]),a.contact?"contact "+a.contact:"",a.dech?"décharge":""].filter(Boolean).join(", "));
+ if(!a.v.length&&a.act==="Brancardage")L.push("2/ Néant");
+ a.v.forEach((v,i)=>{const sx=cap(v.s||"un homme");let s=v.id?`${sx}, (nom, prénom)${v.a?", "+v.a+" ans":""}`:v.a?`${sx} de ${v.a} ans, d'identité inconnue`:`${sx} d'âge et d'identité inconnus`;
+  if(v.sdf)s+=", SDF";if(v.mil)s+=", (grade, matricule, corps, affectation, fonction)";s+=", "+(v.e||"?");
+  if(v.e!=="DCD")s+=v.d==="lsp"?(v.s==="une femme"?", laissée sur place":", laissé sur place"):v.d==="em"?`, évacué${v.s==="une femme"?"e":""} par équipe médicale vers ${v.h||"(hôpital)"}`:v.d==="crf"?`, transporté${v.s==="une femme"?"e":""} par CRF ${num} vers ${v.h||"(hôpital)"}`:", (devenir ?)";
+  L.push((i===0?"2/ ":"      ")+s)});
+ if(a.dae)L.push("3/ Utilisation d'un défibrillateur public");
+ L.push("5/ "+(a.deg||"Néant"));if(a.dif&&a.dif!=="Néant")L.push("6/ "+a.dif);if(a.srv&&a.srv!=="Néant")L.push("7/ "+a.srv);
+ L.push(a.cri?"CRI "+a.cri:"CRI (à choisir)");return L.join("\n")}
+function mrCheck(a,x){const C=[];const same=(l,ok,mine,exp)=>C.push({l,ok,mine,exp});
+ same("1 · Action",a.act===x.act,a.act,x.act);
+ if(x.act!=="Néant"||a.act!=="Néant"){const sa=[...a.mat].sort().join(", "),sx=[...x.mat].sort().join(", ");same("1 · Matériel / technique",sa===sx,sa||"aucun",sx||"aucun");
+  same("1 · Contact coordination",a.contact===x.contact,a.contact||"aucun",x.contact||"aucun");same("1 · Décharge",a.dech===x.dech,a.dech?"oui":"non",x.dech?"oui":"non")}
+ same("2 · Nombre de victimes",a.v.length===x.v.length,String(a.v.length),String(x.v.length));
+ x.v.forEach((v,i)=>{const m=a.v[i];if(!m)return;const P=x.v.length>1?`2 · Victime ${i+1} · `:"2 · ";
+  same(P+"sexe / âge",m.s===v.s&&String(+m.a||"")===String(+v.a||""),`${m.s}${m.a?", "+m.a+" ans":", âge inconnu"}`,`${v.s}${v.a?", "+v.a+" ans":", âge inconnu"}`);
+  same(P+"identité",m.id===v.id,m.id?"connue":"inconnue",v.id?"connue":"inconnue");
+  if(v.mil||m.mil)same(P+"militaire / policier",m.mil===v.mil,m.mil?"oui":"non",v.mil?"oui":"non");
+  if(v.sdf||m.sdf)same(P+"SDF",m.sdf===v.sdf,m.sdf?"oui":"non",v.sdf?"oui":"non");
+  same(P+"état",m.e===v.e,m.e||"?",v.e);
+  if(v.e!=="DCD"){const D={crf:"transport CRF",em:"équipe médicale",lsp:"laissé sur place"};same(P+"devenir",m.d===v.d,D[m.d]||"?",D[v.d]);if(v.d!=="lsp")same(P+"hôpital",m.h===v.h,m.h||"?",v.h)}});
+ same("3 · Défibrillateur public",a.dae===x.dae,a.dae?"oui":"non",x.dae?"oui":"non");
+ same("5 · Dégâts",a.deg===x.deg,a.deg,x.deg);
+ if(a.dif!=="Néant"||x.dif!=="Néant")same("6 · Difficultés",a.dif===x.dif,a.dif,x.dif);
+ if(a.srv!=="Néant"||x.srv!=="Néant")same("7 · Services à prévenir",a.srv===x.srv,a.srv,x.srv);
+ same("CRI",a.cri===x.cri,a.cri?`${a.cri} (${(CRI.find(c=>c[0]===a.cri)||[,""])[1]})`:"aucun",`${x.cri} (${(CRI.find(c=>c[0]===x.cri)||[,""])[1]})`);
+ return C}
+function runRentree(back,n=5){back=back||(()=>{radioTab="train";store.set("radioTab","train");go("radio")});
+ const qs=fresh(MR.map(q=>({...q,_id:"radio:mr:"+q.id}))).slice(0,n);let i=0,score=0,pts=0;cleanup=stopSpeak;
+ const show=()=>{const q=qs[i];const x=mrExp(q);
+  const hops=shuffle([...new Set([...x.v.map(v=>v.h).filter(Boolean),...shuffle(MR_HOP.filter(h=>!x.v.some(v=>v.h===h))).slice(0,4-Math.min(2,new Set(x.v.map(v=>v.h).filter(Boolean)).size))])]);
+  const cris=shuffle([q.cri,...q.alt.filter(c=>c!==q.cri),...shuffle(["320","310","356","343","399","004","919"].filter(c=>c!==q.cri&&!q.alt.includes(c))).slice(0,2)]).slice(0,6);if(!cris.includes(q.cri))cris[0]=q.cri;
+  const a={act:"",mat:[],contact:"",dech:false,v:[],dae:false,deg:"Néant",dif:"Néant",srv:"Néant",cri:""};let done=false;
+  const nv=()=>a.v.length,blank=()=>({s:"",a:"",id:null,e:"",d:"",h:"",mil:false,sdf:false});
+  const seg=(k,opts,val,dis)=>`<div class="seg evseg" data-mrk="${k}">${opts.map(([v,l])=>`<button type="button" data-v="${esc(v)}" aria-pressed="${val===v}" ${dis?"disabled":""}>${l}</button>`).join("")}</div>`;
+  const chips=(k,opts,vals)=>`<div class="chips wrap mrchips" data-mc="${k}">${opts.map(o=>`<button type="button" class="chip" data-v="${esc(o)}" aria-pressed="${vals.includes(o)}">${esc(o)}</button>`).join("")}</div>`;
+  const draw=()=>{const sc=window.scrollY;
+   app.innerHTML=push("Message de rentrée",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
+    <div class="qhead"><span class="qtag">Message de rentrée · au PVO</span></div><div class="card mrsit"><p class="qtext" style="margin:0">${esc(q.sit)}</p></div>
+    <div class="evform mrform">
+    <div class="sect">1 · Actions de l'équipage</div><div class="card vacard">
+     ${seg("act",[["Bilan","Bilan"],["Recherche","Recherche"],["Brancardage","Brancardage"],["Néant","Néant"]],a.act)}
+     ${a.act&&a.act!=="Néant"?`<div class="small" style="margin:10px 0 4px">Matériel / technique utilisé</div>${chips("mat",MATERIEL,a.mat)}
+     <div class="small" style="margin:10px 0 4px">Contact coordination</div>${seg("contact",[["","Aucun"],["opérateur coordination","Opérateur"],["infirmier coordination","Infirmier"],["médecin coordinateur","Médecin"]],a.contact)}
+     <label class="zxrow" style="margin-top:10px"><input type="checkbox" data-mt="dech" ${a.dech?"checked":""}><span>Décharge signée</span></label>`:""}</div>
+    <div class="sect">2 · Victimes</div><div class="card vacard">${seg("nv",[["0","Aucune"],["1","1"],["2","2"]],String(nv()))}</div>
+    ${a.v.map((v,j)=>`<div class="card vacard" data-vi="${j}">${a.v.length>1?`<b>Victime ${j+1}</b>`:""}
+     ${seg("s"+j,[["un homme","Homme"],["une femme","Femme"],["un enfant","Enfant"]],v.s)}
+     <div class="evgrid" style="margin-top:8px"><label>Âge (vide = inconnu)<input data-mf="a" data-j="${j}" inputmode="numeric" maxlength="3" value="${esc(v.a)}" placeholder="inconnu"></label><label>Identité${seg("id"+j,[["1","Connue"],["0","Inconnue"]],v.id==null?"":v.id?"1":"0")}</label></div>
+     <div class="mrtog"><label class="zxrow"><input type="checkbox" data-mv="mil" data-j="${j}" ${v.mil?"checked":""}><span>Militaire, gendarme ou policier</span></label><label class="zxrow"><input type="checkbox" data-mv="sdf" data-j="${j}" ${v.sdf?"checked":""}><span>SDF</span></label></div>
+     <div class="small" style="margin:10px 0 4px">État</div>${seg("e"+j,[["UR","UR"],["UA","UA"],["DCD","DCD"]],v.e)}
+     ${v.e&&v.e!=="DCD"?`<div class="small" style="margin:10px 0 4px">Devenir</div>${seg("d"+j,[["crf","Transport CRF"],["em","Équipe médicale"],["lsp","Laissé sur place"]],v.d)}
+      ${v.d&&v.d!=="lsp"?`<label>Hôpital (et service)<select data-mh="${j}"><option value="">— choisir —</option>${hops.map(h=>`<option ${v.h===h?"selected":""}>${esc(h)}</option>`).join("")}</select></label>`:""}`:""}</div>`).join("")}
+    <div class="sect">3, 5, 6, 7</div><div class="card vacard">
+     <label class="zxrow"><input type="checkbox" data-mt="dae" ${a.dae?"checked":""}><span>3 · Un défibrillateur public a été utilisé</span></label>
+     <label>5 · Dégâts provoqués par les secours<select data-ms="deg">${MR_DEG.map(o=>`<option ${a.deg===o?"selected":""}>${esc(o)}</option>`).join("")}</select></label>
+     <label>6 · Difficultés particulières<select data-ms="dif">${MR_DIF.map(o=>`<option ${a.dif===o?"selected":""}>${esc(o)}</option>`).join("")}</select></label>
+     <label>7 · Services à prévenir<select data-ms="srv">${MR_SRV.map(o=>`<option ${a.srv===o?"selected":""}>${esc(o)}</option>`).join("")}</select></label></div>
+    <div class="sect">Code retour intervention</div><div class="list">${cris.map(c=>`<button type="button" class="row mrcri" data-cri="${c}" aria-pressed="${a.cri===c}"><span class="stc">${c}</span><span class="tx"><b>${esc((CRI.find(x=>x[0]===c)||[,""])[1])}</b></span></button>`).join("")}</div>
+    <div class="sect">Ton message</div><pre class="mrmsg">${esc(mrMsg(a))}</pre>
+    <div class="actions"><button class="btn full" id="mrOk" ${a.act&&a.cri?"":"disabled"}>Valider mon message</button></div>
+    <p class="small" style="margin:6px 4px 0">${a.act&&a.cri?"":"Choisis au moins l'action (point 1) et le CRI."}</p></div>`;
+   window.scrollTo(0,sc);bindBack(()=>{stopSpeak();back()});bind()};
+  const bind=()=>{
+   app.querySelectorAll("[data-mrk] button").forEach(b=>b.onclick=()=>{const k=b.closest("[data-mrk]").dataset.mrk,v=b.dataset.v;
+    if(k==="act"){a.act=v;if(v==="Néant"){a.mat=[];a.contact="";a.dech=false}}
+    else if(k==="contact")a.contact=v;
+    else if(k==="nv"){const n=+v;while(a.v.length<n)a.v.push(blank());a.v.length=n}
+    else{const j=+k.replace(/\D/g,"");const f=k.replace(/\d/g,"");const vv=a.v[j];if(!vv)return;
+     if(f==="id")vv.id=v==="1";else if(f==="e"){vv.e=v;if(v==="DCD"){vv.d="";vv.h=""}}else if(f==="d"){vv.d=v;if(v==="lsp")vv.h=""}else vv[f]=v}
+    draw()});
+   app.querySelectorAll("[data-mc] .chip").forEach(b=>b.onclick=()=>{const v=b.dataset.v;a.mat=a.mat.includes(v)?a.mat.filter(x=>x!==v):[...a.mat,v];b.setAttribute("aria-pressed",a.mat.includes(v));upd()});
+   app.querySelectorAll("[data-mt]").forEach(c=>c.onchange=()=>{a[c.dataset.mt]=c.checked;upd()});
+   app.querySelectorAll("[data-mv]").forEach(c=>c.onchange=()=>{a.v[+c.dataset.j][c.dataset.mv]=c.checked;upd()});
+   app.querySelectorAll("[data-mf]").forEach(c=>c.oninput=()=>{c.value=c.value.replace(/\D/g,"");a.v[+c.dataset.j].a=c.value;upd()});
+   app.querySelectorAll("[data-mh]").forEach(c=>c.onchange=()=>{a.v[+c.dataset.mh].h=c.value;upd()});
+   app.querySelectorAll("[data-ms]").forEach(c=>c.onchange=()=>{a[c.dataset.ms]=c.value;upd()});
+   app.querySelectorAll("[data-cri]").forEach(b=>b.onclick=()=>{a.cri=b.dataset.cri;draw()});
+   const ok=$("#mrOk");if(ok)ok.onclick=correct};
+  const upd=()=>{const m=app.querySelector(".mrmsg");if(m)m.textContent=mrMsg(a)};
+  const correct=()=>{if(done)return;done=true;const C=mrCheck(a,x);const nOk=C.filter(c=>c.ok).length,ratio=nOk/C.length,perfect=nOk===C.length;
+   if(perfect)score++;const good=ratio>=.85;record(q._id,good,perfect?10:0);if(good)pts+=Math.round((10+(perfect?10:0))*ptsMult(q._id));
+   const full=mrMsg(x);
+   app.innerHTML=push("Message de rentrée",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${(i+1)/qs.length*100}%"></i></div>
+    <div class="fb ${good?"good":"bad"}" style="margin-top:12px"><b>${cheer(good)}</b><div>${nOk}/${C.length} éléments justes${perfect?" : message parfait !":""}</div></div>
+    <div class="sect">Message attendu</div><pre class="mrmsg good">${esc(full)}</pre>
+    <div class="sect">Ton message</div><pre class="mrmsg">${esc(mrMsg(a))}</pre>
+    <div class="sect">Correction point par point</div><div class="list mrchk">${C.map(c=>`<div class="row"><span class="mrv ${c.ok?"ok":"ko"}">${c.ok?"✓":"✗"}</span><span class="tx"><b>${esc(c.l)}</b><span>${c.ok?esc(c.exp):`Toi : ${esc(c.mine)} · attendu : <b>${esc(c.exp)}</b>`}</span></span></div>`).join("")}</div>
+    <div class="card" style="margin-top:12px"><p style="margin:0">${esc(q.e)}</p><div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px"><button class="srcbtn" id="say">${SPK}<span>Écouter</span></button><button class="srcbtn" id="g35">${I.doc}<span>Guide pratique CI, p. 35</span></button><button class="srcbtn" id="g50">${I.doc}<span>Exemples, p. 50</span></button></div></div>
+    <div class="actions"><button class="btn full" id="next">${i+1<qs.length?"Situation suivante":"Voir le score"}</button></div>`;
+   bindBack(()=>{stopSpeak();back()});window.scrollTo(0,0);
+   $("#say").onclick=()=>speak(full.replace(/\n\s*/g," ; ").replace(/(\d)\//g,"$1 :"));$("#g35").onclick=()=>openDoc("guide",35,["message de rentrée"]);$("#g50").onclick=()=>openDoc("guide",50,["message de rentrée"]);
+   $("#next").onclick=()=>{stopSpeak();i++;i<qs.length?show():end()}};
+  draw()};
+ const end=()=>{const b=store.get("rentreeBest",null);if(b==null||score>b)store.set("rentreeBest",score);setTimeout(syncSoon,50);
+  app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${grade(score/qs.length*100)}</div><p class="small">messages parfaits · +${pts} points</p></div>
+   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="toB">Constructeur</button></div>`;
+  bindBack(back);$("#again").onclick=()=>runRentree(back,n);$("#toB").onclick=()=>runBuilder("rentree");window.scrollTo(0,0)};
+ show()}
 /* ============ Tutoriel / présentation ============ */
 const TUTO_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.9"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>';
 function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${bg}">${svg}</span>`;return [
  {art:`<div class="tlogos">${LOGOS}</div>`,t:"Bienvenue dans le Quiz CI BSPP",p:"L'appli pour se former au parcours Chef d'Intervention en réseau de secours BSPP, et garder la main une fois en poste. En quelques écrans, voici comment elle fonctionne.",n:"Application non officielle, développée par l'Unité Locale de Paris XVIII de la Croix-Rouge française."},
  {art:`<div class="tpair"><div>${CROSS_IC}<b>Apprenti</b></div><div>${HELMET_IC}<b>CI BSPP</b></div></div>`,t:"Deux modes d'utilisation",p:"<b>Apprenti</b> : tout l'entraînement pour préparer le parcours. <b>CI BSPP</b> : une fois formé, l'appli devient ton assistant de garde, avec le défi de la semaine et tes outils.",n:"Tu changes de mode quand tu veux dans Profil › Moi. Ton choix suit ton compte."},
  {art:`<div class="tpair"><div>${gradeSvg("1CL","tgr")}<b>Sapeur</b></div><div><span class="tgr">${LTN_HELM}</span><b>Officier</b></div></div>`,t:"Deux niveaux de questions",p:"<b>Sapeur</b> : des questions faciles pour découvrir les documents (5 points). <b>Officier</b> : des questions expertes, tirées des référentiels (20 points).",n:"Le niveau se choisit en haut de l'accueil, en mode Apprenti."},
- {art:ic(I.quiz,"#0a84ff"),t:"Des jeux pour réviser",p:"Quiz, vrai ou faux en 60 secondes, flashcards, séquences à remettre dans l'ordre, cas pratiques, examen blanc, mort subite, bilan express… et chaque semaine un <b>défi</b> : les mêmes 20 questions pour tout le monde.",n:"Les questions changent à chaque partie : celles que tu n'as jamais vues passent en premier. Les questions sur l'incendie sont regroupées dans la rubrique <b>Feu</b>, à activer à côté des thèmes. Nouveau thème : <b>Culture BSPP</b> (histoire, traditions, chiffres de la Brigade). Dans « Remets dans l'ordre », fais glisser les étapes par leur poignée."},
+ {art:ic(I.quiz,"#0a84ff"),t:"Des jeux pour réviser",p:"Quiz, vrai ou faux en 60 secondes, flashcards, séquences à remettre dans l'ordre, cas pratiques, examen blanc, mort subite, bilan express, message de rentrée… et chaque semaine un <b>défi</b> : les mêmes 20 questions pour tout le monde.",n:"Les questions changent à chaque partie : celles que tu n'as jamais vues passent en premier. Les questions sur l'incendie sont regroupées dans la rubrique <b>Feu</b>, à activer à côté des thèmes. Nouveau thème : <b>Culture BSPP</b> (histoire, traditions, chiffres de la Brigade). Dans « Remets dans l'ordre », fais glisser les étapes par leur poignée."},
  {art:ic(I.book,"#5e5ce6"),t:"Le référentiel à portée de main",p:"Après chaque question, <b>Voir dans le référentiel</b> ouvre la bonne page du document. Le drapeau <b>Marquer</b> garde une question de côté pour la revoir dans Réviser.",n:"Tous les documents sont aussi dans le menu Documents, avec une recherche."},
  {art:`<div class="tpair">${ic(RADIO_IC_T,"#0f1d36")}${ic(MAP_IC_T,"#1f9d55")}</div>`,t:"Tes outils de garde",p:"<b>Messages radio</b> : construis ton message pas à pas avec ton indicatif. <b>Codes CRI</b>, <b>Carte des secteurs</b> (adresses des CS et téléphones des PVO), <b>Hôpitaux</b> (le plus proche, filtré par spécialité), <b>Grades</b>, <b>Documents</b> et <b>Évaluations</b> (la synthèse de tes vacations).",n:"Tout est accessible depuis le menu en haut à droite."},
  {art:ic(I.user,"#ff9f0a"),t:"Classements et équipes",p:"Rejoins ou crée ton équipe dans Profil › Équipe : ta demande doit être acceptée par un membre, et l'équipe peut fixer un nombre maximum de joueurs. Touche une <b>équipe</b> pour voir ses membres (Points, Défi, Fiches, Duels), puis un <b>membre</b> pour voir sa fiche et le défier. Les points de la semaine repartent de zéro chaque lundi.",n:"Le menu Statistiques montre ton total depuis ton arrivée, tes courbes semaine par semaine et ton évaluation par fiche."},
+ {id:"new510",art:ic(I.doc,"#3a4a6b"),t:"Message de rentrée",p:"Nouveau jeu : une intervention de secours à personne est racontée, à toi de composer ton <b>message de rentrée</b> au PVO (actions, victimes, défibrillateur public, dégâts, difficultés…) et de choisir le <b>CRI</b>. La correction reprend chaque point et montre le message attendu.",n:"Tuile « Message de rentrée » de l'accueil, ou Messages radio › S'entraîner. En mode CI BSPP : Messages radio › Construire."},
  {id:"new500",art:ic('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2.5"/><path d="M9 3.5h6v3H9z"/><path d="m8.5 13 2 2 4-4.5"/></svg>',"#1f7a3f"),t:"Évaluations de vacation",p:"En mode <b>CI BSPP</b>, la tuile <b>Évaluations</b> remplit avec ton encadrant la <b>synthèse de vacation CIR BSPP</b>. Date, nom, numéro de vacation et nombre de victimes (UA, UR, DCD, sans suite) se remplissent tout seuls. Tu remplis l'en-tête et ton avis ; ton encadrant saisit les interventions et note les 8 compétences (<b>Non acquis, En cours, Acquis, Maîtrisé</b>) depuis son compte ou sur ton téléphone.",n:"Le bouton <b>Générer le PDF</b> sort la fiche officielle remplie. Ta progression vacation par vacation est dans Statistiques › Vacations, et en mode Apprenti les exercices insistent sur tes points à travailler. Avec les notifications activées, ton encadrant est prévenu quand une fiche l'attend, et toi quand il l'a validée. Fiches visibles par toi, ton encadrant et les administrateurs."},
  {id:"radio500",art:ic(RADIO_IC_T,"#0f1d36"),t:"Message radio à pièges",p:"Nouveau jeu au niveau <b>Officier</b> : compose le message radio, mais attention, des morceaux <b>pièges</b> se glissent parmi les bons (mauvais indicatif, formule interdite, information en trop…). À toi de les écarter.",n:"À la correction, chaque piège choisi est expliqué. Le jeu se trouve dans Messages radio › S'entraîner."},
  {id:"new340",art:`<div class="tpair">${ic(I.bolt,"#d0021b")}${ic(I.list,"#ff7a00")}<div class="tdeco" style="font-size:30px">⚔</div></div>`,t:"Nouveaux jeux",p:"<b>Mort subite</b> : des questions jusqu'à la première erreur, avec ton record et celui de ton équipe. <b>Bilan express</b> : une prise en charge à remettre dans l'ordre en 90 secondes. <b>Duel en direct</b> : défie un membre connecté, vous jouez en même temps et tu vois son score évoluer.",n:"Le duel en direct se lance avec le bouton ⚔ en choisissant « En direct » ; ton adversaire a une minute pour accepter."},
@@ -1357,6 +1594,7 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {art:`<div class="tpair">${ic(FLAME_IC,"#ff6a00")}${ic(I.refresh,"#0f1d36")}</div>`,t:"Ton profil, tes réglages",p:"Dans Profil › Moi : choisis ton ambiance : <b>Normal</b>, <b>Braise</b> (messages de sergent-chef énervé, sans effets) ou <b>On Fire</b> (en plus, thème enflammé et animations : 5 bonnes réponses d'affilée déclenchent la lance, 3 erreurs l'alarme, et 10 de suite la médaille <b>Soldat du feu</b>). Et si l'appli semble ancienne, touche <b>Forcer la mise à jour</b> pour charger la dernière version.",n:"Ta version et la dernière version en ligne y sont affichées. Ta progression est conservée."},
  {art:ic(I.plus,"#e3051b"),t:"À toi de jouer !",p:"Sur iPhone, ajoute l'appli à ton écran d'accueil : bouton <b>Partager</b> puis <b>Sur l'écran d'accueil</b>. Le menu se trouve en haut à droite de chaque page.",n:"Tu pourras revoir cette présentation à tout moment dans Profil › Moi › Tutoriel."}]}
 const NEWS={rank:{n:2,t:"Nouveau dans la version 3.2",p:"Deux nouveautés : un <b>grade de progression</b> qui évolue avec tes résultats, et un menu <b>Statistiques</b> à part. Voici comment ça marche."},
+ new510:{n:1,t:"Nouveau dans la version 5.1",p:"Un nouveau jeu pour t'entraîner au <b>message de rentrée</b> et au <b>CRI</b>, et une visionneuse de documents mieux adaptée à l'écran du téléphone."},
  new500:{n:2,t:"Nouveau dans la version 5.0",p:"Les <b>Évaluations de vacation</b> arrivent en mode CI BSPP, avec le PDF de la fiche officielle, et un nouveau jeu radio à pièges. Côté duels : plus de limite de défis, et un sans-faute donne droit au surnom <b>et</b> au gage."},
  new340:{n:3,t:"Nouveau dans la version 3.4",p:"Trois nouveaux jeux, un thème Culture BSPP, des gages pour les duels, des notifications de défi et des équipes mieux organisées. Voici l'essentiel."},
  duel:{n:1,t:"Nouveau dans la version 3.3",p:"Les <b>duels</b> arrivent : défie tes collègues, gagne la médaille… ou passe le balai. Et le menu <b>Statistiques</b> a été refait, avec ses onglets Résumé, Évolution et Fiches."}};
@@ -1679,7 +1917,7 @@ function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
  const head=`${backLink()}<h1 class="big">Messages radio</h1><p class="sub">Construis tes messages phonie BSPP, entraîne-toi au dialogue avec le CSO et révise les statuts.</p>${indicCard()}
   <div class="seg" style="margin:14px 0">${[["build","Construire"],["train","S'entraîner"],["statuts","Statuts"]].filter(x=>usage!=="ci"||x[0]!=="train").map(([k,l])=>`<button data-rt="${k}" aria-pressed="${k===radioTab}">${l}</button>`).join("")}</div>`;
  let body="";
- if(radioTab==="build")body=`<div class="list">${Object.entries(RB).map(([k,b])=>`<button class="row" data-rb="${k}"><span class="ic" style="background:${b.c}">${k==="rentree"?I.doc:k==="danger"?I.siren:RADIO_IC}</span><span class="tx"><b>${esc(b.t)}</b><span>${esc(b.s)}</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div>
+ if(radioTab==="build")body=(usage==="ci"?`<div class="card mrci" style="margin-bottom:12px"><b>S'entraîner au message de rentrée</b><p class="small" style="margin:4px 0 10px">Des interventions racontées : compose ton message et choisis le CRI.</p><button class="btn small" id="mrGo">Jouer</button></div>`:"")+`<div class="list">${Object.entries(RB).map(([k,b])=>`<button class="row" data-rb="${k}"><span class="ic" style="background:${b.c}">${k==="rentree"?I.doc:k==="danger"?I.siren:RADIO_IC}</span><span class="tx"><b>${esc(b.t)}</b><span>${esc(b.s)}</span></span><span class="chev">${I.chev}</span></button>`).join("")}</div>
    <div class="card" style="margin-top:14px"><b>Règles d'or</b><ul class="rrules"><li>Fréquence <b>SGAP-OPS</b> du groupement où tu te trouves.</li><li>Vérifie qu'aucun échange n'est en cours avant de transmettre.</li><li>Appuie sur la pédale, attends environ <b>3 secondes</b> (relais) puis parle.</li><li>Interlocuteur principal : le CSO (« Golf »). Radio en panne : téléphone au CSO, à défaut au PVO.</li><li>La victime d'abord : mieux vaut un message imparfait qu'une victime délaissée.</li></ul><button class="srcbtn" data-gp="8">${I.doc}<span>Guide pratique CI, p. 8-16</span></button></div>`;
  else if(radioTab==="train"){const st=store.get("radioBest",null);
   const bb=store.get("radioBuildBest",null);
@@ -1687,6 +1925,8 @@ function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
    ${bb!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${bb}/8</b></p>`:""}<button class="btn full" id="buildGo">Jouer</button></div>
    <div class="card" style="margin-top:12px"><h2 style="font-size:20px;margin:0 0 6px">Message radio à pièges <span class="pill warn" style="vertical-align:3px">Officier</span></h2><p class="small" style="margin:0 0 12px">Même principe, mais des morceaux pièges se glissent parmi les bons : « Police d'urgence » au lieu de « Police », « faites partir » au lieu de « je demande », « accident de la voie publique »… Les pièges choisis sont expliqués à la correction.</p>
    ${store.get("radioTrapBest",null)!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${store.get("radioTrapBest",0)}/8</b></p>`:""}<button class="btn full" id="trapGo">Jouer</button></div>
+   <div class="card" style="margin-top:12px"><h2 style="font-size:20px;margin:0 0 6px">Message de rentrée</h2><p class="small" style="margin:0 0 12px">5 interventions de secours à personne racontées : compose ton message de rentrée au PVO (actions, victimes, défibrillateur public, dégâts, difficultés…) et choisis le CRI. Correction point par point.</p>
+   ${store.get("rentreeBest",null)!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${store.get("rentreeBest",0)}/5</b> messages parfaits</p>`:""}<button class="btn full" id="mrGo">Jouer</button></div>
    <div class="card" style="margin-top:12px"><h2 style="font-size:20px;margin:0 0 6px">Simulateur radio</h2><p class="small" style="margin:0 0 12px">10 situations tirées au hasard : statut à passer, moyen à demander, bon message à transmettre, réponse au CSO, CRI… Chaque bonne réponse rapporte des points au classement.</p>
    ${st!=null?`<p class="small" style="margin:0 0 12px">Ton record : <b>${st}/10</b></p>`:""}<button class="btn full" id="simGo">Commencer</button></div>
    <div class="card" style="margin-top:12px"><b>Écouter les messages</b><p class="small" style="margin:6px 0 0">Dans le constructeur et le simulateur, le bouton « Écouter » lit le message à voix haute : pratique pour s'habituer au rythme de la phonie.</p></div>`}
@@ -1699,7 +1939,7 @@ function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
  app.querySelectorAll("[data-rt]").forEach(b=>b.onclick=()=>{radioTab=b.dataset.rt;store.set("radioTab",radioTab);viewRadio()});
  app.querySelectorAll("[data-rb]").forEach(b=>b.onclick=()=>runBuilder(b.dataset.rb));
  app.querySelectorAll("[data-gp]").forEach(b=>b.onclick=()=>openDoc("guide",+b.dataset.gp,["message","radio"]));
- const sg=$("#simGo");if(sg)sg.onclick=runRadioSim;const bg=$("#buildGo");if(bg)bg.onclick=()=>runRadioBuild();const tg=$("#trapGo");if(tg)tg.onclick=()=>runRadioBuild(null,true);
+ const sg=$("#simGo");if(sg)sg.onclick=runRadioSim;const bg=$("#buildGo");if(bg)bg.onclick=()=>runRadioBuild();const tg=$("#trapGo");if(tg)tg.onclick=()=>runRadioBuild(null,true);const mg=$("#mrGo");if(mg)mg.onclick=()=>runRentree(usage==="ci"?()=>go("radio"):null);
  if(!radioId.num&&!store.get("ridAsked",false)){store.set("ridAsked",true);indicSheet()}
 }
 function phonieHtml(r,pvo){if(!r.lines.length)return "";
@@ -2267,13 +2507,20 @@ function openDoc(id,page,terms){const d=DOC[id];if(!d)return;let p=Math.max(1,Ma
     if(!pdf){body.innerHTML=passHTML+`<div class="loading"><div>Chargement du document…</div><div class="lbar"><i id="vlb"></i></div><div class="small">${d.kb>8000?"Document volumineux : le premier chargement peut prendre un moment.":""}</div></div>`;
       try{pdf=await fetchPdf(id,f=>{const b=v.querySelector("#vlb");if(b)b.style.width=Math.round(f*100)+"%"})}
       catch(e){mode="text";v.querySelector("#vmode").textContent="Page";body.innerHTML=passHTML+`<p class="small">Le PDF n'est pas disponible hors réseau. Voici le texte de la page.</p><div class="vtext">${highlight(txt,terms||[])}</div>`;return}}
-    const pg=await pdf.getPage(p);const w=body.clientWidth-2;const vp0=pg.getViewport({scale:1});const scale=w/vp0.width*zoom;const dpr=Math.min(window.devicePixelRatio||1,2.5);
-    const vp=pg.getViewport({scale:scale*dpr});const cv=document.createElement("canvas");cv.className="vpage";cv.width=vp.width;cv.height=vp.height;cv.style.width=(vp.width/dpr)+"px";cv.style.maxWidth=zoom>1?"none":"100%";
+    // 5.0.3 : largeur mesurée sur la zone utile (sans les marges), bornée par l'écran, et taille CSS imposée (largeur ET hauteur)
+    const pg=await pdf.getPage(p);const cs=getComputedStyle(body);const inner=body.clientWidth-parseFloat(cs.paddingLeft||0)-parseFloat(cs.paddingRight||0);
+    const scr=Math.min(window.innerWidth||9999,document.documentElement.clientWidth||9999,(window.visualViewport&&window.visualViewport.width)||9999);
+    const w=Math.max(200,Math.min(inner>50?inner:scr-32,scr-16));const vp0=pg.getViewport({scale:1});const cssW=w*zoom,cssH=cssW*vp0.height/vp0.width;
+    let dpr=Math.min(window.devicePixelRatio||1,2.5);const maxPx=4096;if(cssW*dpr>maxPx)dpr=maxPx/cssW;if(cssH*dpr>maxPx)dpr=Math.min(dpr,maxPx/cssH);
+    const vp=pg.getViewport({scale:cssW/vp0.width*dpr});const cv=document.createElement("canvas");cv.className="vpage";cv.width=Math.floor(vp.width);cv.height=Math.floor(vp.height);
+    cv.style.width=cssW+"px";cv.style.height=cssH+"px";cv.style.maxWidth="none";
     if(renderTask)try{renderTask.cancel()}catch(e){}
     renderTask=pg.render({canvasContext:cv.getContext("2d"),viewport:vp});
     try{await renderTask.promise}catch(e){return}
     body.innerHTML=passHTML;body.appendChild(cv);body.scrollTop=0}
-  draw();
+  let rsz=null;const onR=()=>{clearTimeout(rsz);rsz=setTimeout(()=>{if(document.body.contains(v)&&mode==="pdf"&&pdf)draw()},250)};window.addEventListener("resize",onR);
+  const cl0=close;v.querySelector("#vclose").onclick=()=>{window.removeEventListener("resize",onR);cl0()};
+  requestAnimationFrame(()=>draw());
 }
 
 /* ============ Profil ============ */
@@ -2814,11 +3061,12 @@ alog("demarrage",APP_VER,{chargement:Math.round(performance.now())+" ms",langue:
 if(me&&me.id){const o=store.get("progOwner",null);if(o&&o!==me.id)applyProgress({resetAt:0});store.set("progOwner",me.id)}
 go(tab);{const wel=store.get("welcome",false);if(wel)store.del("welcome");const tk="tutoSeen_"+(me&&me.id||"x");
  const afterTuto=()=>{if(wel){profTab="moi";go("profile");profileSheet(true,true)}};
- const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x");
- if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
+ const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x"),nk5="news510_"+(me&&me.id||"x");
+ if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
  else if(me&&!me.expired&&!store.get(nk,false))setTimeout(()=>openTuto(()=>store.set(nk,true),"rank"),600);
- else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
- else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true)},"new340"),600)
- else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>store.set(nk4,true),"new500"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
+ else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
+ else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true);store.set(nk5,true)},"new340"),600)
+ else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>{store.set(nk4,true);store.set(nk5,true)},"new500"),600)
+ else if(me&&!me.expired&&!store.get(nk5,false))setTimeout(()=>openTuto(()=>store.set(nk5,true),"new510"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
 if("serviceWorker" in navigator&&location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").catch(()=>{});navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.openEv&&me&&!me.expired)evOpen(e.data.openEv,()=>{evLoad().catch(()=>{});viewEvals()})})}
 {const m=/^#ev=([\w-]+)/.exec(location.hash);if(m&&me&&!me.expired){history.replaceState(null,"",location.pathname+location.search);setTimeout(()=>evOpen(m[1],()=>viewEvals()),700)}}
