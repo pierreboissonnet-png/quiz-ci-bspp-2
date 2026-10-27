@@ -2768,14 +2768,86 @@ function syncSoon(delay){if(!me||me.expired)return;dirty=true;clearTimeout(syncT
 document.addEventListener("visibilitychange",()=>{if(document.hidden){if(dirty)syncNow()}else if(me&&!me.expired){syncNow()}});
 window.addEventListener("online",()=>{if(me&&!me.expired)syncNow()});
 setInterval(()=>{if(!document.hidden&&me&&!me.expired)syncNow()},5*60e3);
-async function syncNow(){if(!me||me.expired||syncing)return;syncing=true;dirty=false;const sT0=Date.now();
-  try{const before=JSON.stringify(localProgress());
-    const pr=await api("progress","PUT",{progress:localProgress()});
-    if(pr&&pr.progress){applyProgress(pr.progress);progLoaded=true;if(JSON.stringify(localProgress())!==before)refreshLocalViews()}
+function mergeProg(a, b) { // 5.1.1 : même fusion que le serveur (api/index.mjs mergeProgress)
+  a = a || {}; b = b || {};
+  const rdA = a.radio, rdB = b.radio; // l'indicatif radio survit aux remises à zéro
+  const usA = a.usage, usB = b.usage; // le mode d'utilisation aussi
+  const wkA = a.wk, wkB = b.wk; // points de la semaine (par appareil)
+  const dpA = a.dp, dpB = b.dp; // points par jour et par appareil (historique des graphiques)
+  const ra = Number(a.resetAt) || 0, rb = Number(b.resetAt) || 0;
+  if (rb > ra) a = { resetAt: rb }; else if (ra > rb) b = { resetAt: ra };
+  const out = { v: 1, resetAt: Math.max(ra, rb), hist: {}, histT: {}, best: {}, days: [], defi: {}, cntDev: {}, marks: {} };
+  const okId = (k) => typeof k === "string" && k.length <= 60;
+  const ha = a.hist || {}, hb = b.hist || {}, ta = a.histT || {}, tb = b.histT || {};
+  for (const id of new Set([...Object.keys(ha), ...Object.keys(hb)])) {
+    if (!okId(id)) continue;
+    const x = Array.isArray(ha[id]) ? ha[id] : null, y = Array.isArray(hb[id]) ? hb[id] : null;
+    const tx = Number(ta[id]) || 0, ty = Number(tb[id]) || 0;
+    const pick = !x ? y : !y ? x : ty > tx ? y : tx > ty ? x : (y.length >= x.length ? y : x);
+    if (!pick || !pick.length) continue;
+    out.hist[id] = pick.slice(-5).map((v) => (v ? 1 : 0)); out.histT[id] = Math.max(tx, ty);
+  }
+  for (const s of [a.best || {}, b.best || {}]) for (const [k, v] of Object.entries(s)) if (typeof v === "number" && okId(k) && !(out.best[k] >= v)) out.best[k] = Math.min(v, 1000);
+  out.days = [...new Set([...(a.days || []), ...(b.days || [])].filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort().slice(-400);
+  for (const s of [b.defi || {}, a.defi || {}]) for (const [w, v] of Object.entries(s)) if (/^\d{4}-S\d{2}$/.test(w) && v && typeof v.score === "number") out.defi[w] = { score: v.score, ms: Number(v.ms) || 0 };
+  for (const s of [a.cntDev || {}, b.cntDev || {}]) for (const [d, c] of Object.entries(s)) {
+    if (!okId(d) || !c) continue; const o = out.cntDev[d] || { points: 0, answered: 0, correct: 0 };
+    for (const k of ["points", "answered", "correct"]) o[k] = Math.max(o[k], Number(c[k]) || 0);
+    out.cntDev[d] = o;
+  }
+  const ma = a.marks || {}, mb = b.marks || {};
+  for (const id of new Set([...Object.keys(ma), ...Object.keys(mb)])) {
+    if (!okId(id)) continue; const x = ma[id], y = mb[id];
+    const pick = !x ? y : !y ? x : (Number(y.t) || 0) >= (Number(x.t) || 0) ? y : x;
+    if (pick) out.marks[id] = { on: !!pick.on, t: Number(pick.t) || 0 };
+  }
+  const rd = [rdA, rdB].filter((x) => x && typeof x === "object").sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
+  const us = [usA, usB].filter((x) => x && typeof x === "object" && (x.v === "ci" || x.v === "apprenti")).sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
+  if (us) out.usage = { v: us.v, t: Number(us.t) || 0 };
+  {
+    const dp = {};
+    for (const src of [dpA, dpB]) if (src && typeof src === "object") for (const [day, devs] of Object.entries(src)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !devs || typeof devs !== "object") continue;
+      const o = dp[day] || (dp[day] = {});
+      for (const [dev, v] of Object.entries(devs)) { if (typeof dev !== "string" || dev.length > 60 || !Array.isArray(v)) continue; const c = o[dev] || [0, 0, 0]; o[dev] = [0, 1, 2].map((i) => Math.max(c[i], Math.min(1e6, Number(v[i]) || 0))); }
+    }
+    const days = Object.keys(dp).sort().slice(-400); if (days.length) { out.dp = {}; for (const d of days) out.dp[d] = dp[d]; }
+  }
+  {
+    const ok = (x) => x && typeof x === "object" && /^\d{4}-S\d{2}$/.test(x.w || "");
+    const list = [wkA, wkB].filter(ok);
+    if (list.length) {
+      const w = list.map((x) => x.w).sort().pop(); const d = {};
+      for (const x of list.filter((x) => x.w === w)) for (const [dev, c] of Object.entries(x.d || {})) {
+        if (typeof dev !== "string" || dev.length > 60 || !c) continue; const o = d[dev] || { points: 0, answered: 0, correct: 0 };
+        for (const k of ["points", "answered", "correct"]) o[k] = Math.max(o[k], Number(c[k]) || 0); d[dev] = o;
+      }
+      out.wk = { w, d };
+    }
+  }
+  {
+    const rk = [a.rank, b.rank].filter((x) => x && typeof x === "object").sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
+    const n = (v, m) => Math.max(0, Math.min(m, Math.floor(Number(v) || 0)));
+    if (rk) out.rank = { g: n(rk.g, 16), ex: n(rk.ex, 999), bad: n(rk.bad, 10), wait: n(rk.wait, 20), t: Number(rk.t) || 0, h: (Array.isArray(rk.h) ? rk.h : []).slice(-30).map((x) => ({ g: n(x && x.g, 16), t: Number(x && x.t) || 0, d: x && x.d < 0 ? -1 : 1 })) };
+  }
+  {
+    const dc = {}; for (const src of [a.dcr, b.dcr]) if (src && typeof src === "object") for (const [k, v] of Object.entries(src)) if (/^[a-f0-9]{6,20}$/.test(k)) dc[k] = Math.max(dc[k] || 0, [1, 10, 15, 30].includes(v) ? v : 1);
+    const ks = Object.keys(dc).slice(-300); if (ks.length) { out.dcr = {}; for (const k of ks) out.dcr[k] = dc[k]; }
+  }
+  if (rd) out.radio = { num: String(rd.num || "").slice(0, 6), cs: String(rd.cs || "").slice(0, 40), golf: String(rd.golf || "").slice(0, 3), t: Number(rd.t) || 0 };
+  return out;
+}
+// 5.1.1 : pendant l'aller-retour réseau, le joueur continue de répondre (défi, quiz…). La réponse du serveur
+// ne doit pas écraser ces nouveautés : on la refusionne avec l'état local du moment (sinon points et défi perdus).
+let syncAgain=false;
+async function syncNow(){if(!me||me.expired)return;if(syncing){syncAgain=true;return}syncing=true;dirty=false;const sT0=Date.now();
+  try{const sent=localProgress();const before=JSON.stringify(sent);
+    const pr=await api("progress","PUT",{progress:sent});
+    if(pr&&pr.progress){const now=localProgress(),moved=JSON.stringify(now)!==before;applyProgress(moved?mergeProg(pr.progress,now):pr.progress);progLoaded=true;if(moved)syncAgain=true;if(JSON.stringify(localProgress())!==before)refreshLocalViews()}
     let j=await api("profile","PUT",{stats:buildStats()});if(j&&j.profile)setFx(fxFrom(j.profile));if(typeof zxSet==="function")zxSet(j);
     if(typeof j.admin==="boolean"&&j.admin!==me.admin){me.admin=j.admin;saveMe()}
     store.set("lastSync",Date.now());await loadBoard(true);alog("sync","ok",{duree:Date.now()-sT0+" ms",points:typeof cntTotal==="function"?cntTotal().points:""})}
-  catch(e){dirty=true;alog("sync","échec",{erreur:String(e&&(e.error||e.message)||e).slice(0,160),duree:Date.now()-sT0+" ms"})}finally{syncing=false}}
+  catch(e){dirty=true;alog("sync","échec",{erreur:String(e&&(e.error||e.message)||e).slice(0,160),duree:Date.now()-sT0+" ms"})}finally{syncing=false;if(syncAgain){syncAgain=false;syncSoon(1500)}}}
 function refreshLocalViews(){if(document.body.classList.contains("pushed")||$("#sheet"))return;if(tab==="home")viewHome();else if(tab==="profile")viewProfile();else if(tab==="revise")viewRevise()}
 async function loadBoard(silent){if(!me||me.expired)return null;
   try{const j=await api("board");board={profiles:j.profiles,teams:j.teams||[],at:Date.now()};store.set("board",board);try{const mine=j.profiles.find(p=>me&&p.id===me.id);if(mine&&typeof setFx==="function")setFx(fxFrom(mine))}catch(e){}refreshTeamViews();return board}
