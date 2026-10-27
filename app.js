@@ -1560,7 +1560,7 @@ function runRentree(back,n=5){back=back||(()=>{radioTab="train";store.set("radio
    if(perfect)score++;const good=ratio>=.85;record(q._id,good,perfect?10:0);if(good)pts+=Math.round((10+(perfect?10:0))*ptsMult(q._id));
    const full=mrMsg(x);
    app.innerHTML=push("Message de rentrée",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${(i+1)/qs.length*100}%"></i></div>
-    <div class="fb ${good?"good":"bad"}" style="margin-top:12px"><b>${cheer(good)}</b><div>${nOk}/${C.length} éléments justes${perfect?" : message parfait !":""}</div></div>
+    <div class="fb ${ratio>2/3?"good":ratio>=1/3?"mid":"bad"}" style="margin-top:12px"><b>${cheer(ratio>2/3)}</b><div>${nOk}/${C.length} éléments justes${perfect?" : message parfait !":""}</div></div>
     <div class="sect">Message attendu</div><pre class="mrmsg good">${esc(full)}</pre>
     <div class="sect">Ton message</div><pre class="mrmsg">${esc(mrMsg(a))}</pre>
     <div class="sect">Correction point par point</div><div class="list mrchk">${C.map(c=>`<div class="row"><span class="mrv ${c.ok?"ok":"ko"}">${c.ok?"✓":"✗"}</span><span class="tx"><b>${esc(c.l)}</b><span>${c.ok?esc(c.exp):`Toi : ${esc(c.mine)} · attendu : <b>${esc(c.exp)}</b>`}</span></span></div>`).join("")}</div>
@@ -1572,8 +1572,8 @@ function runRentree(back,n=5){back=back||(()=>{radioTab="train";store.set("radio
   draw()};
  const end=()=>{const b=store.get("rentreeBest",null);if(b==null||score>b)store.set("rentreeBest",score);setTimeout(syncSoon,50);
   app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${grade(score/qs.length*100)}</div><p class="small">messages parfaits · +${pts} points</p></div>
-   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="toB">Constructeur</button></div>`;
-  bindBack(back);$("#again").onclick=()=>runRentree(back,n);$("#toB").onclick=()=>runBuilder("rentree");window.scrollTo(0,0)};
+   <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="toB">Terminer</button></div>`;
+  bindBack(back);$("#again").onclick=()=>runRentree(back,n);$("#toB").onclick=()=>back();window.scrollTo(0,0)};
  show()}
 /* ============ Tutoriel / présentation ============ */
 const TUTO_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.9"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>';

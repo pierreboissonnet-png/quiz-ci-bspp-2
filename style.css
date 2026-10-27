@@ -697,3 +697,4 @@ body.zmir .qtext,body.zmir .opt>span:last-child,body.zmir .vf .opt{transform:sca
 .mrv{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff}.mrv.ok{background:var(--ok)}.mrv.ko{background:var(--ko)}
 .mrchk .row .tx span b{color:var(--ink)}
 .mrci .btn{width:auto}
+.fb.mid{background:var(--warn-soft)}
