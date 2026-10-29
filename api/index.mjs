@@ -305,11 +305,11 @@ async function verifyGoogle(idToken) {
 }
 
 // 3.4.0 : notification « nouvelle version disponible » envoyée une seule fois par version (verrou Redis SET NX)
-const APP_VERSION = "5.1.1"; let announced = false;
+const APP_VERSION = "5.2.0"; let announced = false;
 async function announceVersion(st) {
   try {
     const r = await redis(["SET", NS + "ver/announced/" + APP_VERSION, "1", "NX"]); if (r !== "OK") return;
-    for (const p of await allProfiles(st)) if (Array.isArray(p.push) && p.push.length && !p.blocked) await pushTo(st, p.id, { title: "Quiz CI BSPP", body: `La version ${APP_VERSION} est disponible : ouvre l'appli pour en profiter.`, tag: "update" });
+    for (const p of await allProfiles(st)) if (Array.isArray(p.push) && p.push.length && !p.blocked) await pushTo(st, p.id, { title: "Quiz CI BSPP", body: `La version ${APP_VERSION} est disponible : ouvre l'appli pour en profiter.`, tag: "update", nav: "maj" });
   } catch (e) {}
 }
 async function handler(req) {
@@ -425,7 +425,7 @@ async function handler(req) {
       if (d.from === me.id ? d.status !== "draft" : d.status !== "pending") return json({ error: "Ce duel n'est plus jouable." }, 409);
       const n = (v, m) => Math.max(0, Math.min(m, Math.round(Number(v) || 0)));
       d.res[me.id] = { pts: n(body.pts, 1000), ok: n(body.ok, 10), ms: n(body.ms, 36e5), at: Date.now() };
-      if (d.from === me.id) { d.status = "pending"; d.exp = Date.now() + DUEL_TTL; await pushTo(st, d.to, { title: "⚔ Nouveau duel", body: `${d.fromN} t'a défié en duel${d.themeN ? " (" + d.themeN + ")" : ""}.`, tag: "duel-" + d.id }); }
+      if (d.from === me.id) { d.status = "pending"; d.exp = Date.now() + DUEL_TTL; await pushTo(st, d.to, { title: "⚔ Nouveau duel", body: `${d.fromN} t'a défié en duel${d.themeN ? " (" + d.themeN + ")" : ""}.`, tag: "duel-" + d.id, nav: "duels" }); }
       await st.setJSON("duel/" + d.id, d);
       return json({ duel: duelPub(await duelSettle(st, d), me.id) });
     }
@@ -573,7 +573,7 @@ async function handler(req) {
       if (qids.length < 5) return json({ error: "Pas assez de questions." }, 400);
       const r = { id: randomBytes(6).toString("hex"), a: me.id, aN: me.pseudo, b: to, bN: op.pseudo, qids, level: body.level === "simple" ? "simple" : "expert", themeN: clean(body.themeN, 40), status: "wait", created: Date.now() };
       await st.setJSON("live/" + r.id, r, 900); await st.setJSON("livein/" + to, { id: r.id, at: r.created }, 120);
-      await pushTo(st, to, { title: "⚔ Duel en direct", body: `${me.pseudo} te défie maintenant ! Tu as une minute pour accepter.`, tag: "live-" + r.id });
+      await pushTo(st, to, { title: "⚔ Duel en direct", body: `${me.pseudo} te défie maintenant ! Tu as une minute pour accepter.`, tag: "live-" + r.id, nav: "live" });
       return json({ room: r });
     }
     if (route === "live/inbox" && req.method === "GET") {
@@ -662,6 +662,23 @@ async function handler(req) {
     if (route === "profile" && req.method === "DELETE") { if (me.email === SUPER) return json({ error: "Le super administrateur ne peut pas supprimer son profil." }, 400); await st.delete("p/" + me.id); await st.delete("u/" + me.id); if (me.sub) await st.delete("g/" + me.sub); return json({ ok: true }); }
 
     // ---- journal d'activité (pour analyser les bugs a posteriori)
+    // ---- 5.2.0 : signalements de bugs (description + capture d'écran), lisibles par les seuls administrateurs
+    if (route === "bug/new" && req.method === "POST") {
+      const txt = String(body.text ?? "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "").trim().slice(0, 2000);
+      if (txt.length < 3) return json({ error: "Décris le problème en quelques mots." }, 400);
+      const day = new Date().toISOString().slice(0, 10); const rl = "bugrl/" + me.id + "/" + day; const nrl = Number(await st.get(rl)) || 0;
+      if (nrl >= 30) return json({ error: "Trop de signalements aujourd'hui : réessaie demain." }, 429);
+      await st.setJSON(rl, nrl + 1, 2 * 86400);
+      const img = typeof body.img === "string" && body.img.length <= 900000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(body.img) ? body.img : null;
+      const c = body.ctx && typeof body.ctx === "object" ? body.ctx : {}; const ctx = {};
+      for (const [k, v] of Object.entries(c).slice(0, 30)) ctx[clean(k, 20)] = String(typeof v === "string" ? v : JSON.stringify(v)).replace(/[\u0000-\u001f]/g, " ").slice(0, 600);
+      const no = Number(await redis(["INCR", NS + "bugseq"])) || Math.floor(Date.now() / 1000);
+      const id = randomBytes(6).toString("hex");
+      const bug = { id, no, at: Date.now(), uid: me.id, pseudo: clean(me.pseudo, 24), email: me.email || "", name: nameFromEmail(me), text: txt, ctx, img: !!img, status: "new", note: "" };
+      await st.setJSON("bug/" + id, bug); if (img) await st.set("bugimg/" + id, img);
+      const ids = (await st.get("bugs", { type: "json" })) || []; ids.unshift(id); await st.setJSON("bugs", ids.slice(0, 2000));
+      return json({ ok: true, no });
+    }
     if (route === "log" && req.method === "POST") {
       const evs = Array.isArray(body.events) ? body.events.slice(0, 300) : [];
       if (!evs.length) return json({ ok: true });
@@ -680,6 +697,21 @@ async function handler(req) {
     if (route.startsWith("admin/")) {
       if (!isAdmin(me, cfg)) return json({ error: "Réservé aux administrateurs." }, 403);
       const superMe = me.email === SUPER;
+      if (route === "admin/bugs" && req.method === "GET") {
+        const ids = (await st.get("bugs", { type: "json" })) || [];
+        return json({ bugs: (await st.getMany(ids.map((i) => "bug/" + i), { type: "json" })).filter(Boolean) });
+      }
+      if (route === "admin/bug" && req.method === "GET") {
+        const id = clean(url.searchParams.get("bid"), 20); const b = await st.get("bug/" + id, { type: "json" }); if (!b) return json({ error: "Signalement introuvable." }, 404);
+        return json({ bug: b, img: b.img ? await st.get("bugimg/" + id) : null });
+      }
+      if (route === "admin/bug" && req.method === "POST") {
+        const id = clean(body.bid, 20); const b = await st.get("bug/" + id, { type: "json" }); if (!b) return json({ error: "Signalement introuvable." }, 404);
+        if (body.del) { await st.delete("bug/" + id); await st.delete("bugimg/" + id); await st.setJSON("bugs", ((await st.get("bugs", { type: "json" })) || []).filter((x) => x !== id)); return json({ ok: true }); }
+        if (["new", "doing", "done", "wontfix"].includes(body.status)) b.status = body.status;
+        if ("note" in body) b.note = String(body.note ?? "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "").trim().slice(0, 1000);
+        b.by = clean(me.pseudo, 24); b.upd = Date.now(); await st.setJSON("bug/" + id, b); return json({ bug: b });
+      }
       if (route === "admin/logs" && req.method === "GET") {
         const day = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("day") || "") ? url.searchParams.get("day") : new Date().toISOString().slice(0, 10);
         const n = Math.max(1, Math.min(5000, Number(url.searchParams.get("n")) || 2000));

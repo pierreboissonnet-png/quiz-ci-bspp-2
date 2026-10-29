@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="5.1.1";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="5.2.0";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -143,7 +143,13 @@ function setMark(id,on){marksLog[id]={on,t:Date.now()};store.set("marksLog",mark
   if(typeof toast==="function")toast(on?"Marquée : à retrouver dans Réviser › Marquées.":"Marqueur retiré.")}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-mk]");if(!b)return;e.stopPropagation();e.preventDefault();setMark(b.dataset.mk,!marks[b.dataset.mk])},true);
 document.addEventListener("click",e=>{const b=e.target.closest("[data-unmk]");if(!b)return;setMark(b.dataset.unmk,false);const c=b.closest(".mkcard");if(c)c.remove();const n=$("#mkcount");if(n)n.textContent=Object.keys(marks).length;if(!document.querySelector(".mkcard")&&$("#rl")&&revTab==="marks")viewRevise()});
-const qhead=(q,extra="")=>`<div class="qhead"><span class="qtag">${esc(short(q._t))}${extra}</span>${markBtn(q._id)}</div>`;
+// 5.2.0 : chaque question porte un numéro stable (Q0123 au niveau Officier, S0123 au niveau Sapeur) pour la retrouver et la signaler
+let curQ=null;
+function qcode(q){if(!q)return"";if(q.no)return (/^s:/.test(q._id||"")?"S":"Q")+String(q.no).padStart(4,"0");if(q._mr)return "MR"+String(q._mr).padStart(2,"0");if(q._rb)return "R"+String(q._rb).padStart(3,"0");
+ const id=String(q._id||q.id||"");if(/^doc:/.test(id))return "DOC-"+id.slice(4);return id?id.replace(/^s:/,"").replace(/^[a-z]+:/,"").replace(/[^\w-]/g,"").slice(0,16).toUpperCase():""}
+function qnoTag(q){const c=qcode(q);return c?`<span class="qno" title="Numéro de la question : à indiquer pour signaler une erreur">${esc(c)}</span>`:""}
+function qno(q){curQ=q||null;return qnoTag(q)}
+const qhead=(q,extra="")=>`<div class="qhead"><span class="qtag">${esc(short(q._t))}${extra}</span>${qno(q)}${markBtn(q._id)}</div>`;
 
 /* ============ Navigation ============ */
 const EV_IC=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2.5"/><path d="M9 3.5h6v3H9z"/><path d="m8.5 13 2 2 4-4.5"/></svg>`;
@@ -161,7 +167,7 @@ let tab=store.get("tab","home");if(!visTabs().some(t=>t[0]===tab))tab="home";
 let cleanup=null;
 const MENU_IC='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
 function renderTabs(){const cur=TABS.find(t=>t[0]===tab);const TABS_V=visTabs();
-  $("#tabbar").innerHTML=`<button class="menubtn" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="menuPanel">${cur?cur[2]:""}<span>${cur?esc(cur[1]):""}</span>${MENU_IC}</button>
+  $("#tabbar").innerHTML=`<button class="bugbtn bugtab" data-bug aria-label="Signaler un problème" title="Signaler un problème">${BUG_IC}</button><button class="menubtn" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="menuPanel">${cur?cur[2]:""}<span>${cur?esc(cur[1]):""}</span>${MENU_IC}</button>
    <div class="menupanel" id="menuPanel" hidden>${TABS_V.map(([k,l,ic])=>`<button data-tab="${k}" ${k===tab?'aria-current="page"':""}>${ic}<span>${l}</span></button>`).join("")}</div>`;
   const btn=$("#menuBtn"),pan=$("#menuPanel");
   const close=()=>{pan.hidden=true;btn.setAttribute("aria-expanded","false")};
@@ -170,7 +176,7 @@ function renderTabs(){const cur=TABS.find(t=>t[0]===tab);const TABS_V=visTabs();
   if(!renderTabs.bound){renderTabs.bound=true;document.addEventListener("click",e=>{const p=$("#menuPanel");if(p&&!p.hidden&&!e.target.closest("#tabbar")){p.hidden=true;const b=$("#menuBtn");if(b)b.setAttribute("aria-expanded","false")}});
     document.addEventListener("keydown",e=>{if(e.key==="Escape"){const p=$("#menuPanel");if(p)p.hidden=true}})}}
 let navStack=[];
-function go(t,fromBack){if(cleanup){cleanup();cleanup=null}if(!visTabs().some(x=>x[0]===t))t="home";alog("nav",tabName(tab)+" → "+tabName(t),fromBack?"par le bouton Retour":"");if(curGame){if(curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame=null}lastEcran="";if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
+function go(t,fromBack){curQ=null;if(cleanup){cleanup();cleanup=null}if(!visTabs().some(x=>x[0]===t))t="home";alog("nav",tabName(tab)+" → "+tabName(t),fromBack?"par le bouton Retour":"");if(curGame){if(curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame=null}lastEcran="";if(!fromBack&&t!==tab&&!document.body.classList.contains("pushed")){navStack.push(tab);navStack=navStack.slice(-20)}if(!fromBack&&t!==tab)history.pushState({app:1},"");tab=t;store.set("tab",t);document.body.classList.remove("pushed");$("#composer").hidden=t!=="chat";renderTabs();
   app.className="view";({home:viewHome,revise:viewRevise,chat:viewChat,cri:viewCri,radio:viewRadio,carte:viewCarte,grades:()=>viewGrades(level==="expert",true),lexique:()=>viewLexique(true),docs:viewDocs,stats:viewStatsTab,profile:viewProfile})[t]();bindTabBack();window.scrollTo(0,0)}
 /* ============ 3.3.3 : modes Z et X (activés par un administrateur, 1 h) ============
    Mode Z : piège secret, toutes les réponses s'affichent « faux » ; les vrais résultats sont enregistrés normalement
@@ -216,7 +222,7 @@ const qCorr=q=>q._k==="qcm"?q.answer:(q.answer?1:0);
 async function runSudden(back){back=back||(()=>go("home"));if(level==="simple")await loadSimple().catch(()=>null);
  const qs=fresh(suddenPool()).map(mixQ);if(!qs.length)return;let i=0,n=0;
  const show=()=>{const q=qs[i%qs.length];
-  app.innerHTML=push("Mort subite",`série ${n}`)+`<div class="sdhud"><span class="qtag">Mort subite · niveau ${level==="simple"?"Sapeur":"Officier"}</span><span class="sdn">Série <b>${n}</b></span></div><p class="qtext">${level==="simple"?esc(q.q):qHtml(q)}</p>${qOpts(q)}<div id="after"></div>`;
+  app.innerHTML=push("Mort subite",`série ${n}`)+`<div class="sdhud"><span class="qtag">Mort subite · niveau ${level==="simple"?"Sapeur":"Officier"}</span>${qno(q)}<span class="sdn">Série <b>${n}</b></span></div><p class="qtext">${level==="simple"?esc(q.q):qHtml(q)}</p>${qOpts(q)}<div id="after"></div>`;
   bindBack(back);
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{if(b.disabled)return;const c=qCorr(q),good=+b.dataset.k===c;record(q._id,good);if(navigator.vibrate)navigator.vibrate(good?15:[40,60,40]);
    app.querySelectorAll(".opt").forEach(o=>{o.disabled=true;if(+o.dataset.k===c)o.classList.add("good");else if(o===b)o.classList.add("bad")});
@@ -232,7 +238,7 @@ const bxPool=()=>ALL.filter(x=>x._k==="ordre"&&["ssuap","acr","pse","efibi"].inc
 function runBilanExpress(back){back=back||(()=>go("home"));const it=fresh(bxPool())[0];if(!it)return;markSeen(it._id);
  const N=it.etapes.length,pool=shuffle(it.etapes.map((t,k)=>({t,k})));const chosen=[];let dl=Date.now()+90000,timer=null,done=false;
  const left=()=>Math.max(0,Math.ceil((dl-Date.now())/1000));const stop=()=>{clearInterval(timer);timer=null;lastFive(false)};
- const draw=()=>{app.innerHTML=push("Bilan express",`${left()} s`)+`<div class="sdhud"><span class="qtag">${esc(short(it._t))}</span><span class="timer" id="bxT">${left()} s</span></div><p class="qtext rbsit">${esc((t=>t.charAt(0).toUpperCase()+t.slice(1))(it.titre.replace(/^Remets dans l'ordre\s*:?\s*/i,"")))}</p>
+ const draw=()=>{app.innerHTML=push("Bilan express",`${left()} s`)+`<div class="sdhud"><span class="qtag">${esc(short(it._t))}</span>${qno(it)}<span class="timer" id="bxT">${left()} s</span></div><p class="qtext rbsit">${esc((t=>t.charAt(0).toUpperCase()+t.slice(1))(it.titre.replace(/^Remets dans l'ordre\s*:?\s*/i,"")))}</p>
    <div class="sect" style="margin-top:4px">Ta prise en charge</div><div class="bxlist">${chosen.map((c,j)=>`<button class="bxp in" data-out="${j}"><i>${j+1}</i>${esc(c.t)}</button>`).join("")||`<span class="small">Touche les étapes ci-dessous dans l'ordre.</span>`}</div>
    <div class="sect">Étapes</div><div class="bxlist">${pool.map((p,j)=>chosen.includes(p)?"":`<button class="bxp" data-in="${j}">${esc(p.t)}</button>`).join("")}</div>
    <div class="actions"><button class="btn full" id="check" ${chosen.length===N?"":"disabled"}>Valider</button></div>`;
@@ -274,7 +280,7 @@ async function liveRun(r,srvNow){liveBusy=true;if(r.level==="simple")await loadS
  poll=setInterval(async()=>{if(!app.querySelector(".lvhud")&&!over){stopAll();liveBusy=false;return}try{const j=await api("live/get?id="+r.id);const o=j.prog[oppId];if(o&&(o.i!==opp.i||o.done!==opp.done)){opp=o;oppAt=Date.now()}const e=$("#lvO");if(e)e.textContent=`${opp.pts} pts · ${opp.i}/${qs.length}${opp.done?" ✓":""}`;if(finished)checkEnd()}catch(e){}},1500);
  const countdown=()=>{const s=Math.ceil((r.start-(Date.now()+off))/1000);if(s>0){app.innerHTML=push("Duel en direct")+hud()+`<div class="result"><div class="score">${s}</div><div class="grade">Prépare-toi…</div></div>`;bindBack(abandon);setTimeout(countdown,250)}else show()};
  const show=()=>{const q=qs[i];t0=Date.now();
-  app.innerHTML=push(`Duel en direct · ${oppN}`,`${i+1}/${qs.length}`)+hud()+`<div class="dlhud"><span class="qtag">${esc(r.themeN||"Duel en direct")}</span><span class="dlclock" id="dlC">100</span></div><p class="qtext">${esc(q.q)}</p>${qOpts(q)}<div id="after"></div>`;
+  app.innerHTML=push(`Duel en direct · ${oppN}`,`${i+1}/${qs.length}`)+hud()+`<div class="dlhud"><span class="qtag">${esc(r.themeN||"Duel en direct")}</span>${qno(q)}<span class="dlclock" id="dlC">100</span></div><p class="qtext">${esc(q.q)}</p>${qOpts(q)}<div id="after"></div>`;
   cleanup=()=>clearInterval(tick);bindBack(abandon);clearInterval(tick);tick=setInterval(()=>{const c=$("#dlC");if(c)c.textContent=duelPts((Date.now()-t0)/1000)},250);
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{if(b.disabled)return;clearInterval(tick);const c=qCorr(q),good=+b.dataset.k===c,g=good?duelPts((Date.now()-t0)/1000):0;if(good){ok++;pts+=g}record(q._id,good);
    app.querySelectorAll(".opt").forEach(x=>{x.disabled=true;if(+x.dataset.k===c)x.classList.add("good");else if(x===b)x.classList.add("bad")});
@@ -297,9 +303,13 @@ function zmoApply(){const q=app.querySelector(".qtext");document.body.classList.
  if(zmoOn("escargot")){app.querySelectorAll(".opt > span:last-child, .vf .opt").forEach((s,j)=>{const full=s.textContent;if(!full)return;s.textContent="";let k=0;const t=setInterval(()=>{if(!s.isConnected){clearInterval(t);return}k++;s.textContent=full.slice(0,k);if(k>=full.length)clearInterval(t)},110+j*15)})}}
 new MutationObserver(()=>{if(document.body.classList.contains("pushed"))zmoApply();else document.body.classList.remove("zmir")}).observe(app,{childList:true,subtree:true});
 // fuite : la réponse touchée s'échappe deux fois, la 3e touche valide
-document.addEventListener("click",e=>{const o=e.target.closest&&e.target.closest(".opt");if(!o||o.disabled||!zmoOn("fuite"))return;const n=+(o.dataset.fu||0);if(n>=2){o.classList.remove("zfuite");o.style.left=o.style.top=o.style.width="";return}
- e.preventDefault();e.stopImmediatePropagation();o.dataset.fu=n+1;const w=o.offsetWidth;o.classList.add("zfuite");o.style.width=Math.min(w,innerWidth-24)+"px";
- o.style.left=Math.round(12+Math.random()*Math.max(0,innerWidth-24-Math.min(w,innerWidth-24)))+"px";o.style.top=Math.round(90+Math.random()*Math.max(0,innerHeight-220))+"px"},true);
+// 5.2.0 : la réponse s'échappe en échangeant sa place avec une autre (animation FLIP), sans jamais en recouvrir une autre
+function zFleeSwap(o){const box=o.parentElement;const sib=[...box.children].filter(x=>x!==o&&x.classList.contains("opt")&&!x.disabled);if(!sib.length)return false;const t=sib[Math.floor(Math.random()*sib.length)];
+ const all=[...box.children].filter(x=>x.classList.contains("opt"));const r0=new Map(all.map(x=>[x,x.getBoundingClientRect()]));zxSwap(o,t);
+ if(!matchMedia("(prefers-reduced-motion: reduce)").matches)all.forEach(x=>{const a=r0.get(x),c=x.getBoundingClientRect();const dx=a.left-c.left,dy=a.top-c.top;if(!dx&&!dy)return;x.style.transition="none";x.style.transform=`translate(${dx}px,${dy}px)`;requestAnimationFrame(()=>{x.style.transition="transform .28s ease";x.style.transform="";setTimeout(()=>{x.style.transition=""},320)})});
+ return true}
+document.addEventListener("click",e=>{const o=e.target.closest&&e.target.closest(".opt");if(!o||o.disabled||!zmoOn("fuite"))return;const n=+(o.dataset.fu||0);if(n>=2)return;
+ if(!o.parentElement||!zFleeSwap(o))return;e.preventDefault();e.stopImmediatePropagation();o.dataset.fu=n+1},true);
 
 // 3.4.0 : Mode Z (ponpon), cumulable : une question bonus par jeu, adaptée au type de jeu
 let ponQ=0,ponAt=2,ponDone=false;
@@ -342,9 +352,9 @@ window.addEventListener("popstate",()=>{const v=$("#viewer");if(v){v.querySelect
 function gameLog(title){try{qShownAt=Date.now();if(title==="Résultat"){if(curGame&&curGame.n){const g=curGame;curGame=null;setTimeout(()=>{const ev=typeof rankOnGameEnd==="function"?rankOnGameEnd(g):null;if(ev){if(ev.type==="down")setTimeout(()=>rankPopup("down",ev.to),400);else rankResultNote(ev)}const sc=$(".result .score"),gr=$(".result .grade");alog("jeu","fin · "+g.title,{score:sc?sc.textContent.trim():"","réponses":g.n,justes:g.ok,"durée":Math.round((Date.now()-g.t0)/1000)+" s",commentaire:gr?gr.textContent.trim().slice(0,120):""})},30)}return}
  if(!curGame||curGame.title!==title){if(curGame&&curGame.n)alog("jeu","abandon · "+curGame.title,{"réponses":curGame.n,justes:curGame.ok,"durée":Math.round((Date.now()-curGame.t0)/1000)+" s"});curGame={title,t0:Date.now(),n:0,ok:0,nL:0,nS:0}}}catch(e){}}
 try{history.scrollRestoration="manual"}catch(e){}
-function push(title,right,onBack){if(title!==lastEcran){alog("ecran",title,right||"");lastEcran=title;window.scrollTo({top:0,left:0,behavior:"instant"});if(typeof ponReset==="function")ponReset();if(title==="Résultat"&&typeof zFaked!=="undefined"&&zFaked)setTimeout(zReveal,450)}gameLog(title);if(!document.body.classList.contains("pushed"))history.pushState({app:1},"");if(cleanup){cleanup();cleanup=null}document.body.classList.add("pushed");$("#composer").hidden=true;app.className="view push";
+function push(title,right,onBack){curQ=null;if(title!==lastEcran){alog("ecran",title,right||"");lastEcran=title;window.scrollTo({top:0,left:0,behavior:"instant"});if(typeof ponReset==="function")ponReset();if(title==="Résultat"&&typeof zFaked!=="undefined"&&zFaked)setTimeout(zReveal,450)}gameLog(title);if(!document.body.classList.contains("pushed"))history.pushState({app:1},"");if(cleanup){cleanup();cleanup=null}document.body.classList.add("pushed");$("#composer").hidden=true;app.className="view push";
   backFn=null;
-  return `<div class="nav"><button class="back" id="back">${I.back}Retour</button><div class="ttl">${esc(title)}</div><div class="right" id="navr">${right||""}</div></div>`}
+  return `<div class="nav"><button class="back" id="back">${I.back}Retour</button><div class="ttl">${esc(title)}</div><div class="right"><span id="navr">${right||""}</span><button class="bugbtn" data-bug aria-label="Signaler un problème" title="Signaler un problème">${BUG_IC}</button></div></div>`}
 // 5.0.2 : bouton Retour géré par délégation globale. push() remet l'action par défaut (retour à l'onglet),
 // bindBack() fixe l'action de l'écran ; un écran redessiné sans bindBack garde donc un Retour qui marche.
 let backFn=null;
@@ -528,7 +538,7 @@ function runQuiz(qs,mode,instant,back){qs=(qs||[]).map(mixQ);
   const end=()=>{const ms=Date.now()-t0;const p=Math.round(score/qs.length*100);
     if(["qcm","exam"].includes(mode))setBest(mode,p);setTimeout(syncSoon,50);
     const w=isoWeek();let first=false;if(mode==="defi"&&!defiDone[w]){defiDone[w]={score,ms};store.set("defi",defiDone);first=true}
-    const recap=answers.filter(a=>!a.ok).map(({q})=>`<div class="card"><div class="qhead"><b>${esc(q.q)}</b>${markBtn(q._id,false)}</div><div class="a">${esc(q._k==="qcm"?q.choices[q.answer]:(q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(q.explication)}</div>${srcBtn(q)}</div>`).join("");
+    const recap=answers.filter(a=>!a.ok).map(({q})=>`<div class="card"><div class="qhead"><b>${esc(q.q)}</b>${qnoTag(q)}${markBtn(q._id,false)}</div><div class="a">${esc(q._k==="qcm"?q.choices[q.answer]:(q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(q.explication)}</div>${srcBtn(q)}</div>`).join("");
     app.innerHTML=push("Résultat")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${grade(p)}</div>${p<50&&level==="expert"&&learnerTier()==="debut"?`<p class="small">Astuce : le niveau Sapeur propose des questions de découverte, idéales pour démarrer. Tu peux le choisir en haut de l'accueil.</p>`:""}<p class="small">${p} % de bonnes réponses${mode==="defi"?` en ${fmtTime(ms)}${first?"":" (hors premier essai)"}`:""}.</p></div>
       <div class="actions"><button class="btn" id="again">Rejouer</button>${mode==="defi"||mode==="exam"?`<button class="btn sec" id="shareRes">${I.share.replace('<svg','<svg width="18" height="18"')} Partager</button>`:""}</div><p class="small" id="shareMsg"></p>
       ${recap?`<div class="sect">Corrigé de tes erreurs</div><div class="recap">${recap}</div>`:`<p class="sub" style="text-align:center">Sans faute, bravo.</p>`}`;
@@ -547,7 +557,7 @@ function runChrono(){
   const stop=()=>{clearInterval(timer);lastFive(false)};
   const show=()=>{const q=qs[i%qs.length];
     cleanup=null; // ne pas arrêter le chrono en changeant de question
-    app.innerHTML=push("Vrai ou faux 60 s",`${score} pts`)+`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px"><span class="qtag">${esc(short(q._t))}</span><span class="timer" id="tm">${left()} s</span></div><p class="qtext">${qHtml(q)}</p><div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
+    app.innerHTML=push("Vrai ou faux 60 s",`${score} pts`)+`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px"><span class="qtag">${esc(short(q._t))}</span>${qno(q)}<span class="timer" id="tm">${left()} s</span></div><p class="qtext">${qHtml(q)}</p><div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
     cleanup=stop;bindBack();app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>answer(+b.dataset.k))};
   const answer=k=>{if(over)return;const q=qs[i%qs.length];const ok=(k===1)===q.answer;record(q._id,ok);if(ok)score++;else{errs++;deadline-=3000;missed.push(q)}if(navigator.vibrate)navigator.vibrate(ok?12:[30,40,30]);i++;left()>0?show():end()};
   const end=()=>{if(over)return;over=true;stop();cleanup=null;setBest("chrono",score);setTimeout(syncSoon,50);
@@ -565,7 +575,7 @@ function runFlash(cards,back){
     const c=cards[i];
     app.innerHTML=push("Flashcards",`${i+1}/${cards.length}`)+`<div class="bar"><i style="width:${i/cards.length*100}%"></i></div>
       <div class="fcard" id="card" tabindex="0" role="button" aria-label="Retourner la carte"><div class="fin">
-       <div class="face"><span class="qtag">${esc(short(c._t))}</span><div class="t">${esc(c.recto)}</div><span class="h">Touche pour retourner</span></div>
+       <div class="face"><span class="qtag">${esc(short(c._t))} · ${esc(qcode(c))}</span>${(curQ=c,"")}<div class="t">${esc(c.recto)}</div><span class="h">Touche pour retourner</span></div>
        <div class="face back"><div style="font-size:17px">${esc(c.verso)}</div>${srcBtn(c)}${markBtn(c._id)}<span class="h">Glisse → si tu savais, ← à revoir</span></div></div></div>
       <div class="actions" id="eval" style="visibility:hidden"><button class="btn sec" style="flex:1" id="no">À revoir</button><button class="btn" style="flex:1" id="yes">Je savais</button></div>`;
     bindBack(back);bindSrc();const card=$("#card");
@@ -620,9 +630,9 @@ let revTab="qcm",revQ="";
 function viewRevise(){
   const lab={marks:`Marquées (<span id="mkcount">${Object.keys(marks).length}</span>)`,qcm:"QCM",vf:"Vrai/faux",flashcards:"Mémo",ordre:"Séquences",cas:"Cas"};
   app.innerHTML=`${backLink()}<h1 class="big">Réviser</h1><p class="sub">Toutes les questions avec leur réponse et le lien vers le référentiel.</p>
-   <input class="search" id="rq" type="search" placeholder="Rechercher : VSAV, 4C-N, plan rouge…" value="${esc(revQ)}">
+   <input class="search" id="rq" type="search" placeholder="Rechercher : VSAV, plan rouge, ou un numéro (Q0123)…" value="${esc(revQ)}">
    <div class="seg" style="margin:12px 0">${Object.keys(lab).map(k=>`<button data-rt="${k}" aria-pressed="${k===revTab}">${lab[k]}</button>`).join("")}</div><div id="rl"></div>`;
-  const draw=()=>{const qn=norm(revQ);const list=(revTab==="marks"?Object.keys(marks).map(id=>BYID[id]).filter(Boolean):ALL.filter(x=>x._k===revTab)).filter(x=>(!qn||norm(JSON.stringify([x.q,x.choices,x.explication,x.recto,x.verso,x.titre,x.etapes,x.situation,x.questions])).includes(qn))).slice(0,150);if(revTab==="marks")list.sort((a,b)=>marks[b._id]-marks[a._id]);
+  const draw=()=>{const qn=norm(revQ);const qm=/^\s*(?:n°\s*|no\s*)?q?\s*0*(\d{1,4})\s*$/i.exec(revQ);const list=(qm?ALL.filter(x=>x.no===+qm[1]):(revTab==="marks"?Object.keys(marks).map(id=>BYID[id]).filter(Boolean):ALL.filter(x=>x._k===revTab))).filter(x=>qm||(!qn||norm(JSON.stringify([x.q,x.choices,x.explication,x.recto,x.verso,x.titre,x.etapes,x.situation,x.questions])).includes(qn))).slice(0,150);if(revTab==="marks")list.sort((a,b)=>marks[b._id]-marks[a._id]);
     $("#rl").innerHTML=(revTab==="marks"&&list.length?`<p class="small" style="margin:0 4px 10px">Les éléments que tu as marqués pendant les quiz, avec la réponse et le référentiel. Touche « J'ai compris » pour retirer le marqueur.</p>`:"")+list.map(it=>{let body="";
       const KL={qcm:"QCM",vf:"Vrai/faux",flashcards:"Mémo",ordre:"Séquence",cas:"Cas pratique"};
       if(it._k==="qcm")body=`<b>${esc(it.q)}</b><div class="a">${LETTERS[it.answer]}. ${esc(it.choices[it.answer])}</div><div class="e">${esc(it.explication)}</div>`;
@@ -630,8 +640,8 @@ function viewRevise(){
       else if(it._k==="flashcards")body=`<b>${esc(it.recto)}</b><div class="e" style="color:var(--ink)">${esc(it.verso)}</div>`;
       else if(it._k==="ordre")body=`<b>${esc(it.titre)}</b><ol style="margin:6px 0;padding-left:20px">${it.etapes.map(s=>`<li>${esc(s)}</li>`).join("")}</ol>`;
       else body=`<b>${esc(it.titre)}</b><div class="e">${esc(it.situation)}</div>${it.questions.map(q=>`<div style="margin-top:8px"><i>${esc(q.q)}</i><div class="a">${esc(q.reponse)}</div></div>`).join("")}`;
-      if(revTab==="marks")return `<div class="card recap mkcard" style="margin-bottom:10px;display:block"><div class="qhead" style="margin-bottom:4px"><span class="qtag">${esc(KL[it._k])} · ${esc(short(it._t))}</span><span class="small">${new Date(marks[it._id]).toLocaleDateString("fr-FR")}</span></div>${body}${srcBtn(it)}<div class="actions" style="margin-top:12px"><button class="btn small" data-unmk="${esc(it._id)}">J'ai compris</button>${it._k==="qcm"||it._k==="vf"?`<button class="btn sec small" data-retry="${esc(it._id)}">Me réinterroger</button>`:""}</div></div>`;
-      return `<div class="card recap" style="margin-bottom:10px;display:block"><div class="qhead">${body.match(/^<b>.*?<\/b>/)[0]}${markBtn(it._id,false)}</div>${body.replace(/^<b>.*?<\/b>/,"")}${srcBtn(it)}</div>`}).join("")||`<p class="sub">${revTab==="marks"?"Aucune question marquée. Pendant un quiz, touche le drapeau « Marquer » sur une question que tu veux revoir plus tard.":"Aucun résultat."}</p>`;bindSrc();
+      if(revTab==="marks")return `<div class="card recap mkcard" style="margin-bottom:10px;display:block"><div class="qhead" style="margin-bottom:4px"><span class="qtag">${esc(KL[it._k])} · ${esc(short(it._t))}</span>${qnoTag(it)}<span class="small">${new Date(marks[it._id]).toLocaleDateString("fr-FR")}</span></div>${body}${srcBtn(it)}<div class="actions" style="margin-top:12px"><button class="btn small" data-unmk="${esc(it._id)}">J'ai compris</button>${it._k==="qcm"||it._k==="vf"?`<button class="btn sec small" data-retry="${esc(it._id)}">Me réinterroger</button>`:""}</div></div>`;
+      return `<div class="card recap" style="margin-bottom:10px;display:block"><div class="qhead">${body.match(/^<b>.*?<\/b>/)[0]}${qnoTag(it)}${markBtn(it._id,false)}</div>${body.replace(/^<b>.*?<\/b>/,"")}${srcBtn(it)}</div>`}).join("")||`<p class="sub">${revTab==="marks"?"Aucune question marquée. Pendant un quiz, touche le drapeau « Marquer » sur une question que tu veux revoir plus tard.":"Aucun résultat."}</p>`;bindSrc();
     $("#rl").querySelectorAll("[data-retry]").forEach(b=>b.onclick=()=>runQuiz([BYID[b.dataset.retry]],"review",true,()=>{go("revise")}))};
   draw();
   // les questions marquées au niveau Sapeur ne sont connues qu'une fois ses questions chargées
@@ -847,7 +857,7 @@ function runSimple(qs,title){if(!qs.length)return;qs=qs.map(mixQ);let i=0,score=
   const choices=q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`
    :`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`;
   app.innerHTML=push(title,`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
-   <div class="qhead"><span class="qtag">${esc(q._t.theme)}${q._k==="vf"?" · vrai ou faux":""}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span>${q._id.startsWith("doc:")?"":markBtn(q._id)}</div><p class="qtext">${qHtml(q)}</p>${choices}<div id="after"></div>`;
+   <div class="qhead"><span class="qtag">${esc(q._t.theme)}${q._k==="vf"?" · vrai ou faux":""}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span>${qno(q)}${q._id.startsWith("doc:")?"":markBtn(q._id)}</div><p class="qtext">${qHtml(q)}</p>${choices}<div id="after"></div>`;
   bindBack(back);
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k;const correct=q._k==="qcm"?q.answer:(q.answer?1:0);const ok=k===correct;
    if(ok){score++;combo++;bestCombo=Math.max(bestCombo,combo)}else{combo=0;missed.push(q)}record(q._id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
@@ -926,7 +936,7 @@ function gradeQuestions(expert){const n=expert?4:3;const pickO=(good,pool)=>{con
  return Q}
 function runGradeQuiz(expert){const qs=freshGen(()=>gradeQuestions(expert),expert?"grade:":"s:grade:",10);let i=0,score=0,combo=0;const pre=expert?"grade:":"s:grade:";
  const show=()=>{const q=qs[i];
-  app.innerHTML=push("Quiz des grades",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Grades · niveau ${expert?"Officier":"Sapeur"}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span></div>
+  app.innerHTML=push("Quiz des grades",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Grades · niveau ${expert?"Officier":"Sapeur"}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span>${qno(q)}</div>
    ${q.img?`<div class="gqbox">${q.img}</div>`:""}<p class="qtext">${esc(q.q)}</p>
    <div class="opts ${q.imgChoices?"gopts":""}">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}">${q.imgChoices?q.imgChoices[k]:`<span class="k">${LETTERS[k]}</span>`}<span>${q.imgChoices?"":esc(c)}</span></button>`).join("")}</div><div id="after"></div>`;
   bindBack(()=>tab==="grades"?go("grades"):viewGrades(expert));
@@ -990,7 +1000,7 @@ function runRankExam(){if(!rankReady()){toast("L'examen n'est pas encore disponi
   let i=0,score=0;const answers=[];const T=`Examen de passage · ${rankName(target)}`;alog("grade","examen commencé",{vers:rankName(target)});
   const show=()=>{const q=qs[i];
    app.innerHTML=push(T,`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
-    <div class="qhead"><span class="qtag">Examen · ${RANK_PASS}/${RANK_Q} requis</span></div><p class="qtext">${esc(q.q)}</p>
+    <div class="qhead"><span class="qtag">Examen · ${RANK_PASS}/${RANK_Q} requis</span>${qno(q)}</div><p class="qtext">${esc(q.q)}</p>
     ${q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`:`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`}`;
    bindBack(()=>{alog("grade","examen abandonné",{vers:rankName(target),question:i+1});go("profile")});
    app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k;const ok=k===(q._k==="qcm"?q.answer:(q.answer?1:0));if(ok)score++;answers.push({q,ok,k});record(q._id,ok);i++;i<qs.length?show():end()})};
@@ -1000,7 +1010,7 @@ function runRankExam(){if(!rankReady()){toast("L'examen n'est pas encore disponi
    app.innerHTML=push("Résultat de l'examen")+`<div class="result"><div class="score">${score}/${qs.length}</div><div class="grade">${pass?`Reçu ! Te voilà ${esc(rankName(target))}.`:`Ajourné : il fallait ${RANK_PASS} bonnes réponses.`}</div><p class="small">${pass?"":"Nouvel essai après 3 exercices réussis. Relis tes erreurs, tu y es presque."}</p></div>
     <div class="actions"><button class="btn" id="rkProf">Mon profil</button></div>
     ${(()=>{const bad=answers.filter(a=>!a.ok);const mine=a=>a.q._k==="qcm"?(a.q.choices[a.k]||""):(a.k?"Vrai":"Faux");
-     return bad.length?`<div class="sect">Corrigé de tes erreurs (${bad.length})</div><div class="recap">${bad.map(a=>`<div class="card"><div class="qhead"><b>${esc(a.q.q)}</b>${markBtn(a.q._id,false)}</div><div class="small" style="margin:6px 0 2px">Ta réponse : ${esc(mine(a))}</div><div class="a">${esc(a.q._k==="qcm"?a.q.choices[a.q.answer]:(a.q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(a.q.explication||"")}</div>${srcBtn(a.q)}</div>`).join("")}</div>`:`<p class="sub" style="text-align:center">Sans faute, bravo.</p>`})()}`;
+     return bad.length?`<div class="sect">Corrigé de tes erreurs (${bad.length})</div><div class="recap">${bad.map(a=>`<div class="card"><div class="qhead"><b>${esc(a.q.q)}</b>${qnoTag(a.q)}${markBtn(a.q._id,false)}</div><div class="small" style="margin:6px 0 2px">Ta réponse : ${esc(mine(a))}</div><div class="a">${esc(a.q._k==="qcm"?a.q.choices[a.q.answer]:(a.q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(a.q.explication||"")}</div>${srcBtn(a.q)}</div>`).join("")}</div>`:`<p class="sub" style="text-align:center">Sans faute, bravo.</p>`})()}`;
    bindSrc();bindBack(()=>go("profile"));$("#rkProf").onclick=()=>go("profile");window.scrollTo(0,0);
    if(pass)setTimeout(()=>rankPopup("up",target),250)};
   show()})}
@@ -1120,7 +1130,7 @@ function runDuel(d){const wantSimple=d.level==="simple";(wantSimple?loadSimple()
  const stop=()=>{clearInterval(tick);tick=null};
  const show=()=>{const q=qs[i];t0=Date.now();
   app.innerHTML=push(`Duel · ${o.n}`,`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
-   <div class="dlhud"><span class="qtag">${esc(d.themeN)} · ${duelLvl(d)}</span><span class="dlpts"><b id="dlP">${pts}</b> pts</span><span class="dlclock" id="dlC">100</span></div>
+   <div class="dlhud"><span class="qtag">${esc(d.themeN)} · ${duelLvl(d)}</span>${qno(q)}<span class="dlpts"><b id="dlP">${pts}</b> pts</span><span class="dlclock" id="dlC">100</span></div>
    <p class="qtext">${esc(q.q)}</p>${q._k==="qcm"?`<div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div>`:`<div class="vf"><button class="opt" data-k="1">VRAI</button><button class="opt" data-k="0">FAUX</button></div>`}<div id="after"></div>`;
   cleanup=stop;bindBack(()=>{if(done)return;if(!confirm("Quitter le duel ? Les questions restantes seront comptées fausses.")){return}finish()});
   stop();tick=setInterval(()=>{const c=$("#dlC");if(c)c.textContent=duelPts((Date.now()-t0)/1000)},250);
@@ -1134,7 +1144,7 @@ function runDuel(d){const wantSimple=d.level==="simple";(wantSimple?loadSimple()
   for(let tries=0;tries<3&&!r;tries++){try{r=(await api("duel/play","POST",{did:d.id,pts,ok,ms:tAll})).duel}catch(e){if(e.error&&!e.offline){toast(e.error);break}await new Promise(z=>setTimeout(z,1500))}}
   alog("duel","duel joué",{contre:o.n,points:pts,justes:ok+"/"+qs.length});await loadDuels(true);
   const res=r||{...d,mine:{pts,ok,ms:tAll},status:d.from===me.id?"pending":"pending"};
-  const bad=ans.filter(a=>!a.good);const recap=bad.length?`<div class="sect">Corrigé (${bad.length})</div><div class="recap">${bad.map(a=>`<div class="card"><div class="qhead"><b>${esc(a.q.q)}</b>${markBtn(a.q._id,false)}</div><div class="a">${esc(a.q._k==="qcm"?a.q.choices[a.q.answer]:(a.q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(a.q.explication||"")}</div>${srcBtn(a.q)}</div>`).join("")}</div>`:`<p class="sub" style="text-align:center">Sans faute !</p>`;
+  const bad=ans.filter(a=>!a.good);const recap=bad.length?`<div class="sect">Corrigé (${bad.length})</div><div class="recap">${bad.map(a=>`<div class="card"><div class="qhead"><b>${esc(a.q.q)}</b>${qnoTag(a.q)}${markBtn(a.q._id,false)}</div><div class="a">${esc(a.q._k==="qcm"?a.q.choices[a.q.answer]:(a.q.answer?"Vrai":"Faux"))}</div><div class="e">${esc(a.q.explication||"")}</div>${srcBtn(a.q)}</div>`).join("")}</div>`:`<p class="sub" style="text-align:center">Sans faute !</p>`;
   if(res.status==="done"){app.innerHTML=push("Résultat du duel")+`<div class="result"><div class="dlbig sm">${!res.winner?"":res.winner===me.id?DECO_IC.medal:DECO_IC.broom}</div><div class="grade">${!res.winner?"Match nul !":res.winner===me.id?"Victoire !":"Défaite…"}</div>${duelScoreHtml(res)}<p class="small">${!res.winner?"Égalité parfaite. +15 points.":res.winner===me.id?"Médaille affichée pendant 24 h. +30 points.":"Corvée de balai pendant 24 h. +10 points."}</p></div>${rewardHint(res)}${canNick(res)?`<button class="btn full" id="dNick" style="margin-top:6px">✍ Choisir un surnom pour ${esc(o.n)}</button>`:""}${canGage(res)?`<button class="btn full" id="dGage" style="margin-top:6px">🎁 Infliger un gage à ${esc(o.n)}</button>`:""}<div class="actions"><button class="btn${canNick(res)?" sec":""}" id="dRev">${res.winner===me.id?"Rejouer":"Revanche"}</button><button class="btn sec" id="dHub">Mes duels</button></div>${recap}`;
    const seen=store.get("duelSeen",{});seen[res.id]=1;store.set("duelSeen",seen);if(res.winner===me.id)confetti(app);loadBoard(true);duelCredit()}
   else app.innerHTML=push("Duel envoyé")+`<div class="result"><div class="score">${pts}</div><div class="grade">points · ${ok}/${qs.length} bonnes réponses</div><p class="small">Défi envoyé à <b>${esc(o.n)}</b>. Il a 48 h pour jouer les mêmes questions ; tu verras le résultat dès qu'il aura joué.</p></div><div class="actions"><button class="btn" id="dHub">Mes duels</button><button class="btn sec" id="dRev">Défier quelqu'un d'autre</button></div>${recap}`;
@@ -1514,7 +1524,7 @@ function runRentree(back,n=5){back=back||(()=>{radioTab="train";store.set("radio
   const chips=(k,opts,vals)=>`<div class="chips wrap mrchips" data-mc="${k}">${opts.map(o=>`<button type="button" class="chip" data-v="${esc(o)}" aria-pressed="${vals.includes(o)}">${esc(o)}</button>`).join("")}</div>`;
   const draw=()=>{const sc=window.scrollY;
    app.innerHTML=push("Message de rentrée",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
-    <div class="qhead"><span class="qtag">Message de rentrée · au PVO</span></div><div class="card mrsit"><p class="qtext" style="margin:0">${esc(q.sit)}</p></div>
+    <div class="qhead"><span class="qtag">Message de rentrée · au PVO</span>${qno({_mr:MR.findIndex(x=>x.id===q.id)+1,_id:q._id,q:q.sit})}</div><div class="card mrsit"><p class="qtext" style="margin:0">${esc(q.sit)}</p></div>
     <div class="evform mrform">
     <div class="sect">1 · Actions de l'équipage</div><div class="card vacard">
      ${seg("act",[["Bilan","Bilan"],["Recherche","Recherche"],["Brancardage","Brancardage"],["Néant","Néant"]],a.act)}
@@ -1575,6 +1585,80 @@ function runRentree(back,n=5){back=back||(()=>{radioTab="train";store.set("radio
    <div class="actions"><button class="btn" id="again">Rejouer</button><button class="btn sec" id="toB">Terminer</button></div>`;
   bindBack(back);$("#again").onclick=()=>runRentree(back,n);$("#toB").onclick=()=>back();window.scrollTo(0,0)};
  show()}
+/* ============ 5.2.0 : signaler un problème (capture d'écran + description), suivi par les administrateurs ============ */
+const BUG_IC='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="14.5" rx="5" ry="6"/><circle cx="12" cy="6.5" r="2.4"/><path d="M12 9v11.5M7.2 12 4 10.2M7 15.5H3.6M7.6 18.6 4.8 20.6M16.8 12l3.2-1.8M17 15.5h3.4M16.4 18.6l2.8 2M10.6 4.6 9.4 3M13.4 4.6 14.6 3"/></svg>';
+function loadJs(src,glob){return new Promise((res,rej)=>{if(window[glob])return res(window[glob]);const s=document.createElement("script");s.src=src;s.onload=()=>window[glob]?res(window[glob]):rej(new Error("module absent"));s.onerror=()=>rej(new Error("chargement de "+src));document.head.appendChild(s)})}
+function bugCtx(){const q=curQ;const qt=q?String(q.q||q.titre||q.recto||q.sit||"").replace(/\s+/g," ").trim():"";
+ return {version:APP_VER,ecran:lastEcran||tabName(tab),onglet:tabName(tab),mode:usage==="ci"?"CI BSPP":"Apprenti",niveau:level==="simple"?"Sapeur":"Officier",
+  question:q?qcode(q):"",questionId:q?String(q._id||q.id||""):"",questionTexte:qt.slice(0,300),ambiance:{off:"Normal",sgt:"Braise",fire:"On Fire"}[typeof fxMode!=="undefined"?fxMode:"off"]||"",
+  ecranTaille:`${innerWidth}×${innerHeight} px (×${Math.round((devicePixelRatio||1)*100)/100})`,installee:(matchMedia("(display-mode: standalone)").matches||navigator.standalone)?"oui":"non",
+  reseau:navigator.onLine===false?"hors ligne":"en ligne",appareil:navigator.userAgent.slice(0,220),heureLocale:new Date().toLocaleString("fr-FR")}}
+async function bugShot(){const h2c=await loadJs("lib/html2canvas.min.js","html2canvas");const sc=Math.min(2,window.devicePixelRatio||1);
+ const bg=getComputedStyle(document.body).backgroundColor;
+ const cv=await h2c(document.body,{backgroundColor:bg&&bg!=="rgba(0, 0, 0, 0)"?bg:"#ffffff",x:window.scrollX,y:window.scrollY,width:innerWidth,height:innerHeight,windowWidth:document.documentElement.clientWidth,windowHeight:innerHeight,scale:sc,useCORS:true,logging:false,imageTimeout:2500,
+  ignoreElements:el=>!!(el.matches&&el.matches(".toast,.bugbusy"))});
+ const w=Math.min(720,cv.width),h=Math.round(cv.height*w/cv.width);const c2=document.createElement("canvas");c2.width=w;c2.height=h;c2.getContext("2d").drawImage(cv,0,0,w,h);
+ let url=c2.toDataURL("image/jpeg",.72);if(url.length>850000)url=c2.toDataURL("image/jpeg",.45);return url.length>890000?null:url}
+let bugBusy=false;
+async function reportBug(){if(bugBusy)return;if(!me||me.expired){toast("Connecte-toi pour signaler un problème.");return}bugBusy=true;
+ const ctx=bugCtx();const btns=[...document.querySelectorAll("[data-bug]")];btns.forEach(b=>b.classList.add("busy"));
+ let img=null;try{img=await Promise.race([bugShot(),new Promise(r=>setTimeout(()=>r(null),9000))])}catch(e){img=null}
+ btns.forEach(b=>b.classList.remove("busy"));bugBusy=false;
+ const sh=sheet(`<h2 style="margin-top:0">Signaler un problème</h2><p class="small" style="margin:0 0 10px">Une erreur dans une question, un bouton qui ne répond pas, un affichage bizarre ? Décris-le : les administrateurs recevront ta description, la capture de l'écran et les informations techniques utiles.</p>
+  ${ctx.question?`<div class="bugq"><span class="qno">${esc(ctx.question)}</span><span>${esc(ctx.questionTexte.slice(0,140))}${ctx.questionTexte.length>140?"…":""}</span></div>`:`<p class="small" style="margin:0 0 8px">Écran : <b>${esc(ctx.ecran)}</b></p>`}
+  <label class="bugl" for="bugT">Que se passe-t-il ?</label><textarea id="bugT" class="bugt" rows="5" maxlength="2000" placeholder="Ex. la réponse indiquée comme juste est fausse, le bouton Valider ne marche pas, le texte dépasse de l'écran…"></textarea>
+  ${img?`<label class="zxrow" style="margin-top:10px"><input type="checkbox" id="bugImgOk" checked><span>Joindre la capture de l'écran (prise au moment du clic)</span></label><img class="bugimg" src="${img}" alt="Capture de l'écran signalé">`:`<p class="small" style="margin:8px 0 0">La capture d'écran n'a pas pu être réalisée sur cet appareil : ta description sera envoyée seule.</p>`}
+  <div class="actions"><button class="btn sec" data-close>Annuler</button><button class="btn" id="bugSend" style="flex:1">Envoyer</button></div><p class="small" id="bugMsg" style="margin:6px 0 0"></p>`);
+ const ta=sh.querySelector("#bugT");setTimeout(()=>{try{ta.focus()}catch(e){}},250);
+ sh.querySelector("#bugSend").onclick=async e=>{const b=e.currentTarget,msg=sh.querySelector("#bugMsg");const text=ta.value.trim();if(text.length<3){msg.textContent="Décris le problème en quelques mots.";ta.focus();return}
+  b.disabled=true;b.textContent="Envoi…";const ok=sh.querySelector("#bugImgOk");
+  try{const j=await api("bug/new","POST",{text,ctx,img:img&&(!ok||ok.checked)?img:null});closeSheet();toast(`Merci ! Signalement n°${j.no} transmis aux administrateurs.`);alog("bug","signalement envoyé",{no:j.no,ecran:ctx.ecran,question:ctx.question})}
+  catch(err){b.disabled=false;b.textContent="Envoyer";msg.textContent=err&&err.offline?"Pas de réseau : réessaie quand tu seras connecté (ta description reste dans le champ).":(err&&err.error)||"Envoi impossible, réessaie."}}}
+document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-bug]");if(!b)return;e.preventDefault();e.stopPropagation();reportBug()},true);
+// ---- administration des signalements
+let bugF="open",bugQ="",bugList=null;
+const BUG_ST={new:["Nouveau","ko"],doing:["En cours","warn"],done:["Résolu","ok"],wontfix:["Sans suite","none"]};
+const bugDate=t=>new Date(t).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+async function viewBugs(){app.innerHTML=push("Signalements")+`<div id="bgBody"><div class="loading">Chargement…</div></div>`;bindBack(()=>viewAdmin());
+ try{bugList=(await api("admin/bugs")).bugs||[]}catch(e){const el=$("#bgBody");if(el)el.innerHTML=`<p class="sub" style="margin-top:16px">${esc(e.error||"Erreur.")}</p>`;return}
+ drawBugs()}
+function drawBugs(){const el=$("#bgBody");if(!el||!bugList)return;const qn=norm(bugQ);
+ const inF=b=>bugF==="all"||(bugF==="open"?["new","doing"].includes(b.status):b.status===bugF);
+ const L=bugList.filter(b=>inF(b)&&(!qn||norm([b.no,"#"+b.no,b.pseudo,b.email,b.name,b.text,b.ctx&&b.ctx.ecran,b.ctx&&b.ctx.question,b.ctx&&b.ctx.version].join(" ")).includes(qn)));
+ const n=k=>bugList.filter(b=>k==="open"?["new","doing"].includes(b.status):k==="all"?true:b.status===k).length;
+ el.innerHTML=`<p class="small" style="margin:12px 4px 10px">Les problèmes signalés par les membres, avec la capture de leur écran au moment du signalement. Visible des seuls administrateurs.</p>
+  <div class="seg" style="margin-bottom:10px">${[["open","À traiter"],["new","Nouveaux"],["doing","En cours"],["done","Résolus"],["all","Tous"]].map(([k,l])=>`<button data-bf="${k}" aria-pressed="${bugF===k}">${l} (${n(k)})</button>`).join("")}</div>
+  <input class="search" id="bgq" type="search" placeholder="Rechercher : n°, membre, écran, Q0123, mot…" value="${esc(bugQ)}">
+  <div class="actions" style="margin:10px 0"><button class="btn sec small" id="bgCsv">Exporter (CSV)</button><button class="btn sec small" id="bgJson">Exporter avec captures</button></div><p class="small" id="bgMsg" style="margin:0 4px 8px"></p>
+  <div class="list">${L.map(b=>{const s=BUG_ST[b.status]||BUG_ST.new;return `<button class="row bgrow" data-bg="${esc(b.id)}"><span class="bgno">#${b.no}</span><span class="tx"><b>${esc(b.text.slice(0,90))}${b.text.length>90?"…":""}</b><span>${esc(bugDate(b.at))} · ${esc(b.pseudo)} · ${esc(b.ctx&&b.ctx.ecran||"")}${b.ctx&&b.ctx.question?" · "+esc(b.ctx.question):""}${b.img?" · capture":""}</span></span><span class="pill ${s[1]}">${s[0]}</span></button>`}).join("")||`<div class="row"><span class="tx"><span>Aucun signalement.</span></span></div>`}</div>`;
+ el.querySelectorAll("[data-bf]").forEach(b=>b.onclick=()=>{bugF=b.dataset.bf;drawBugs()});
+ let to;el.querySelector("#bgq").oninput=e=>{bugQ=e.target.value;clearTimeout(to);to=setTimeout(()=>{drawBugs();const i=$("#bgq");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)};
+ el.querySelectorAll("[data-bg]").forEach(b=>b.onclick=()=>openBug(b.dataset.bg));
+ el.querySelector("#bgCsv").onclick=()=>bugExportCsv(L);el.querySelector("#bgJson").onclick=()=>bugExportJson(L)}
+async function openBug(id){const sh=sheet(`<div class="loading">Chargement…</div>`);let j;try{j=await api("admin/bug?bid="+encodeURIComponent(id))}catch(e){sh.querySelector(".sheet,div").innerHTML=`<p>${esc(e.error||"Erreur.")}</p>`;return}
+ const b=j.bug,c=b.ctx||{};const LBL={version:"Version",ecran:"Écran",onglet:"Onglet",mode:"Mode",niveau:"Niveau",question:"Question",questionId:"Identifiant",questionTexte:"Texte de la question",ambiance:"Ambiance",ecranTaille:"Taille d'écran",installee:"Appli installée",reseau:"Réseau",appareil:"Appareil",heureLocale:"Heure (téléphone)"};
+ const box=sh.querySelector(".sheet")||sh.firstElementChild;
+ box.innerHTML=`<h2 style="margin-top:0">Signalement n°${b.no}</h2><p class="small" style="margin:0 0 10px">${esc(bugDate(b.at))} · <b>${esc(b.pseudo)}</b>${b.name?" ("+esc(b.name)+")":""} · ${esc(b.email||"")}</p>
+  <div class="seg" style="margin-bottom:10px">${Object.entries(BUG_ST).map(([k,[l]])=>`<button data-bs="${k}" aria-pressed="${b.status===k}">${l}</button>`).join("")}</div>
+  <div class="card bugtext">${esc(b.text)}</div>
+  ${j.img?`<img class="bugimg" src="${j.img}" alt="Capture d'écran"><div class="actions" style="margin-top:6px"><button class="btn sec small" id="bgImg">Télécharger la capture</button></div>`:`<p class="small">Pas de capture.</p>`}
+  <div class="sect">Contexte</div><div class="card bugctx">${Object.entries(c).filter(([,v])=>v).map(([k,v])=>`<div><span>${esc(LBL[k]||k)}</span><b>${esc(v)}</b></div>`).join("")}</div>
+  ${c.questionId&&BYID[c.questionId]?`<button class="btn sec full" id="bgQ" style="margin-top:8px">Voir la question ${esc(c.question)}</button>`:""}
+  <div class="sect">Note de suivi</div><textarea id="bgNote" class="bugt" rows="3" maxlength="1000" placeholder="Analyse, correction prévue, version…">${esc(b.note||"")}</textarea>${b.by?`<p class="small" style="margin:4px 0 0">Dernière mise à jour par ${esc(b.by)} le ${esc(bugDate(b.upd))}</p>`:""}
+  <div class="actions"><button class="btn" id="bgSave" style="flex:1">Enregistrer</button><button class="btn sec" id="bgDel" style="color:var(--ko)">Supprimer</button></div><button class="btn sec full" data-close style="margin-top:8px">Fermer</button><p class="small" id="bgM"></p>`;
+ let st=b.status;box.querySelectorAll("[data-bs]").forEach(x=>x.onclick=()=>{st=x.dataset.bs;box.querySelectorAll("[data-bs]").forEach(y=>y.setAttribute("aria-pressed",y===x))});
+ const im=box.querySelector("#bgImg");if(im)im.onclick=()=>bugDownload(dataUrlBlob(j.img),`signalement_${b.no}.jpg`);
+ const gq=box.querySelector("#bgQ");if(gq)gq.onclick=()=>{closeSheet();runQuiz([BYID[c.questionId]],"review",true,()=>viewBugs())};
+ box.querySelector("#bgSave").onclick=async()=>{try{const r=await api("admin/bug","POST",{bid:b.id,status:st,note:box.querySelector("#bgNote").value});const k=bugList.findIndex(x=>x.id===b.id);if(k>=0)bugList[k]=r.bug;closeSheet();toast("Signalement mis à jour.");drawBugs()}catch(e){box.querySelector("#bgM").textContent=e.error||"Erreur."}};
+ const del=box.querySelector("#bgDel");del.onclick=async()=>{if(!del.dataset.c){del.dataset.c="1";del.textContent="Confirmer";return}try{await api("admin/bug","POST",{bid:b.id,del:true});bugList=bugList.filter(x=>x.id!==b.id);closeSheet();toast("Signalement supprimé.");drawBugs()}catch(e){box.querySelector("#bgM").textContent=e.error||"Erreur."}}}
+function dataUrlBlob(u){const [h,d]=u.split(",");const mime=(h.match(/data:([^;]+)/)||[])[1]||"application/octet-stream";const bin=atob(d);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:mime})}
+function bugDownload(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
+function bugExportCsv(L){const C=[["no","N°"],["date","Date"],["statut","Statut"],["pseudo","Membre"],["nom","Nom"],["email","E-mail"],["ecran","Écran"],["mode","Mode"],["niveau","Niveau"],["question","Question"],["questionTexte","Texte de la question"],["texte","Description"],["capture","Capture"],["version","Version"],["installee","Appli installée"],["reseau","Réseau"],["ecranTaille","Taille d'écran"],["appareil","Appareil"],["note","Note de suivi"],["par","Traité par"]];
+ const row=b=>{const c=b.ctx||{};return {no:b.no,date:new Date(b.at).toISOString().replace("T"," ").slice(0,19),statut:(BUG_ST[b.status]||BUG_ST.new)[0],pseudo:b.pseudo,nom:b.name||"",email:b.email||"",ecran:c.ecran,mode:c.mode,niveau:c.niveau,question:c.question,questionTexte:c.questionTexte,texte:b.text,capture:b.img?"oui":"non",version:c.version,installee:c.installee,reseau:c.reseau,ecranTaille:c.ecranTaille,appareil:c.appareil,note:b.note||"",par:b.by||""}};
+ const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;const csv="﻿"+[C.map(x=>q(x[1])).join(";"),...L.map(b=>{const r=row(b);return C.map(x=>q(r[x[0]])).join(";")})].join("\r\n");
+ bugDownload(new Blob([csv],{type:"text/csv;charset=utf-8"}),`signalements_${new Date().toISOString().slice(0,10)}.csv`);alog("admin","export des signalements",{format:"csv",n:L.length})}
+async function bugExportJson(L){const m=$("#bgMsg");const out=[];for(let i=0;i<L.length;i++){if(m)m.textContent=`Préparation… ${i+1}/${L.length}`;let img=null;if(L[i].img){try{img=(await api("admin/bug?bid="+encodeURIComponent(L[i].id))).img}catch(e){}}out.push({...L[i],capture:img})}
+ if(m)m.textContent=`${L.length} signalement(s) exporté(s).`;bugDownload(new Blob([JSON.stringify({exporte:new Date().toISOString(),version:APP_VER,signalements:out},null,1)],{type:"application/json"}),`signalements_${new Date().toISOString().slice(0,10)}.json`);alog("admin","export des signalements",{format:"json",n:L.length})}
 /* ============ Tutoriel / présentation ============ */
 const TUTO_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.9"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>';
 function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${bg}">${svg}</span>`;return [
@@ -1582,9 +1666,10 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {art:`<div class="tpair"><div>${CROSS_IC}<b>Apprenti</b></div><div>${HELMET_IC}<b>CI BSPP</b></div></div>`,t:"Deux modes d'utilisation",p:"<b>Apprenti</b> : tout l'entraînement pour préparer le parcours. <b>CI BSPP</b> : une fois formé, l'appli devient ton assistant de garde, avec le défi de la semaine et tes outils.",n:"Tu changes de mode quand tu veux dans Profil › Moi. Ton choix suit ton compte."},
  {art:`<div class="tpair"><div>${gradeSvg("1CL","tgr")}<b>Sapeur</b></div><div><span class="tgr">${LTN_HELM}</span><b>Officier</b></div></div>`,t:"Deux niveaux de questions",p:"<b>Sapeur</b> : des questions faciles pour découvrir les documents (5 points). <b>Officier</b> : des questions expertes, tirées des référentiels (20 points).",n:"Le niveau se choisit en haut de l'accueil, en mode Apprenti."},
  {art:ic(I.quiz,"#0a84ff"),t:"Des jeux pour réviser",p:"Quiz, vrai ou faux en 60 secondes, flashcards, séquences à remettre dans l'ordre, cas pratiques, examen blanc, mort subite, bilan express, message de rentrée… et chaque semaine un <b>défi</b> : les mêmes 20 questions pour tout le monde.",n:"Les questions changent à chaque partie : celles que tu n'as jamais vues passent en premier. Les questions sur l'incendie sont regroupées dans la rubrique <b>Feu</b>, à activer à côté des thèmes. Nouveaux thèmes : <b>Culture BSPP</b> (histoire, traditions, chiffres de la Brigade) et <b>PSE 2026</b> (nouveautés du référentiel Croix-Rouge). Dans « Remets dans l'ordre », fais glisser les étapes par leur poignée."},
- {art:ic(I.book,"#5e5ce6"),t:"Le référentiel à portée de main",p:"Après chaque question, <b>Voir dans le référentiel</b> ouvre la bonne page du document. Le drapeau <b>Marquer</b> garde une question de côté pour la revoir dans Réviser.",n:"Tous les documents sont aussi dans le menu Documents, avec une recherche."},
+ {art:ic(I.book,"#5e5ce6"),t:"Le référentiel à portée de main",p:"Après chaque question, <b>Voir dans le référentiel</b> ouvre la bonne page du document. Le drapeau <b>Marquer</b> garde une question de côté pour la revoir dans Réviser. Chaque question porte un <b>numéro</b> (Q0123, S0123) pour la retrouver ou la signaler.",n:"Tous les documents sont aussi dans le menu Documents, avec une recherche."},
  {art:`<div class="tpair">${ic(RADIO_IC_T,"#0f1d36")}${ic(MAP_IC_T,"#1f9d55")}</div>`,t:"Tes outils de garde",p:"<b>Messages radio</b> : construis ton message pas à pas avec ton indicatif. <b>Codes CRI</b>, <b>Carte des secteurs</b> (adresses des CS et téléphones des PVO), <b>Hôpitaux</b> (le plus proche, filtré par spécialité), <b>Grades</b>, <b>Documents</b> et <b>Évaluations</b> (la synthèse de tes vacations).",n:"Tout est accessible depuis le menu en haut à droite."},
  {art:ic(I.user,"#ff9f0a"),t:"Classements et équipes",p:"Rejoins ou crée ton équipe dans Profil › Équipe : ta demande doit être acceptée par un membre, et l'équipe peut fixer un nombre maximum de joueurs. Touche une <b>équipe</b> pour voir ses membres (Points, Défi, Fiches, Duels), puis un <b>membre</b> pour voir sa fiche et le défier. Les points de la semaine repartent de zéro chaque lundi.",n:"Le menu Statistiques montre ton total depuis ton arrivée, tes courbes semaine par semaine et ton évaluation par fiche."},
+ {id:"new520",art:ic(BUG_IC.replace('width="18" height="18"','width="40" height="40"'),"#0f1d36"),t:"Signaler un problème",p:"Une erreur dans une question, un bouton qui ne répond pas ? Touche la petite icône <b>insecte (bug)</b> en haut de l'écran : l'appli prend une <b>capture</b> de l'écran, tu décris le souci en quelques mots et les administrateurs le reçoivent avec les détails utiles. Chaque question porte aussi un <b>numéro</b> (Q0123 au niveau Officier, S0123 au niveau Sapeur) à citer pour la retrouver.",n:"Le signalement est aussi accessible dans Profil › Moi › Aide. Dans Réviser, tape un numéro pour retrouver la question."},
  {id:"new511",art:ic(I.book,"#e3051b"),t:"Nouveautés PSE 2026",p:"Les 12 fiches mises à jour du référentiel PSE de la Croix-Rouge sont dans <b>Documents › Nouveautés PSE 2026</b> : arrêt cardiaque de l'enfant et du nourrisson, compressions thoraciques, DAE, perte de connaissance, amputation, accouchement inopiné, massage utérin, chaleur et refroidissement, tri des déchets. Un nouveau thème de questions <b>PSE 2026</b> les accompagne, aux niveaux Sapeur et Officier.",n:"Le thème est activé automatiquement ; tu peux le décocher comme les autres. Il ne compte pas dans le défi de la semaine."},
  {id:"new510",art:ic(I.doc,"#3a4a6b"),t:"Message de rentrée",p:"Nouveau jeu : une intervention de secours à personne est racontée, à toi de composer ton <b>message de rentrée</b> au PVO (actions, victimes, défibrillateur public, dégâts, difficultés…) et de choisir le <b>CRI</b>. La correction reprend chaque point et montre le message attendu.",n:"Tuile « Message de rentrée » de l'accueil, ou Messages radio › S'entraîner. En mode CI BSPP : Messages radio › Construire."},
  {id:"new500",art:ic('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2.5"/><path d="M9 3.5h6v3H9z"/><path d="m8.5 13 2 2 4-4.5"/></svg>',"#1f7a3f"),t:"Évaluations de vacation",p:"En mode <b>CI BSPP</b>, la tuile <b>Évaluations</b> remplit avec ton encadrant la <b>synthèse de vacation CIR BSPP</b>. Date, nom, numéro de vacation et nombre de victimes (UA, UR, DCD, sans suite) se remplissent tout seuls. Tu remplis l'en-tête et ton avis ; ton encadrant saisit les interventions et note les 8 compétences (<b>Non acquis, En cours, Acquis, Maîtrisé</b>) depuis son compte ou sur ton téléphone.",n:"Le bouton <b>Générer le PDF</b> sort la fiche officielle remplie. Ta progression vacation par vacation est dans Statistiques › Vacations, et en mode Apprenti les exercices insistent sur tes points à travailler. Avec les notifications activées, ton encadrant est prévenu quand une fiche l'attend, et toi quand il l'a validée. Fiches visibles par toi, ton encadrant et les administrateurs."},
@@ -1597,6 +1682,7 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {art:`<div class="tpair">${ic(FLAME_IC,"#ff6a00")}${ic(I.refresh,"#0f1d36")}</div>`,t:"Ton profil, tes réglages",p:"Dans Profil › Moi : choisis ton ambiance : <b>Normal</b>, <b>Braise</b> (messages de sergent-chef énervé, sans effets) ou <b>On Fire</b> (en plus, thème enflammé et animations : 5 bonnes réponses d'affilée déclenchent la lance, 3 erreurs l'alarme, et 10 de suite la médaille <b>Soldat du feu</b>). Et si l'appli semble ancienne, touche <b>Forcer la mise à jour</b> pour charger la dernière version.",n:"Ta version et la dernière version en ligne y sont affichées. Ta progression est conservée."},
  {art:ic(I.plus,"#e3051b"),t:"À toi de jouer !",p:"Sur iPhone, ajoute l'appli à ton écran d'accueil : bouton <b>Partager</b> puis <b>Sur l'écran d'accueil</b>. Le menu se trouve en haut à droite de chaque page.",n:"Tu pourras revoir cette présentation à tout moment dans Profil › Moi › Tutoriel."}]}
 const NEWS={rank:{n:2,t:"Nouveau dans la version 3.2",p:"Deux nouveautés : un <b>grade de progression</b> qui évolue avec tes résultats, et un menu <b>Statistiques</b> à part. Voici comment ça marche."},
+ new520:{n:1,t:"Nouveau dans la version 5.2",p:"Tu peux maintenant <b>signaler un problème</b> en un geste, avec une capture de l'écran, et chaque question a son <b>numéro</b>. Les notifications ouvrent aussi directement le bon écran."},
  new511:{n:1,t:"Nouveau dans la version 5.1.1",p:"Les nouveautés du <b>référentiel PSE 2026</b> de la Croix-Rouge arrivent dans l'appli, avec leur thème de questions."},
  new510:{n:1,t:"Nouveau dans la version 5.1",p:"Un nouveau jeu pour t'entraîner au <b>message de rentrée</b> et au <b>CRI</b>, et une visionneuse de documents mieux adaptée à l'écran du téléphone."},
  new500:{n:2,t:"Nouveau dans la version 5.0",p:"Les <b>Évaluations de vacation</b> arrivent en mode CI BSPP, avec le PDF de la fiche officielle, et un nouveau jeu radio à pièges. Côté duels : plus de limite de défis, et un sans-faute donne droit au surnom <b>et</b> au gage."},
@@ -2144,7 +2230,7 @@ function runRadioBuild(back,hard){back=back||(()=>{radioTab="train";store.set("r
  const all=buildScenarios();const qs=fresh(all.map(x=>({...x,_id:"s:rb:"+x.id}))).slice(0,8);let i=0,score=0;cleanup=stopSpeak;
  const show=()=>{const q=qs[i];const D=q.parts.map(rbClean);const traps=hard?rbTraps(q,Math.min(4,Math.max(2,Math.ceil(q.parts.length/2)))):[];const pool=shuffle([...q.parts.map((t,k)=>({t,k,d:D[k]})),...traps]);const chosen=[];let done=false;
   const draw=()=>{app.innerHTML=push(hard?"Message radio · pièges":"Construis le message",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div>
-    <div class="qhead"><span class="qtag">Jeu radio${hard?" · niveau Officier":""}${gameRid().ex?" · indicatif d'exemple":""}</span></div><p class="qtext rbsit">${esc(q.sit)}</p>
+    <div class="qhead"><span class="qtag">Jeu radio${hard?" · niveau Officier":""}${gameRid().ex?" · indicatif d'exemple":""}</span>${qno({_rb:all.findIndex(x=>x.id===q.id)+1,_id:q._id,q:q.sit})}</div><p class="qtext rbsit">${esc(q.sit)}</p>
     <div class="sect" style="margin-top:6px">Ton message</div><div class="rbmsg ${done?(chosen.map(c=>c.d).join("|")===D.join("|")?"good":"bad"):""}">${chosen.length?chosen.map((c,j)=>`<button class="rbp in" data-out="${j}" ${done?"disabled":""}>${esc(c.d)}</button>`).join(""):`<span class="small">Touche les morceaux ci-dessous dans le bon ordre.</span>`}</div>
     ${done?"":`<div class="sect">Morceaux${hard?` · ${q.parts.length} à placer`:""}</div>${chosen.length>=q.parts.length&&pool.length>q.parts.length?`<p class="small" style="margin:0 4px 6px">Message complet : valide, ou touche un morceau de ton message pour le retirer.</p>`:""}<div class="rbpool">${pool.map((p,j)=>chosen.includes(p)?"":`<button class="rbp" data-in="${j}" ${chosen.length>=q.parts.length?"disabled":""}>${esc(p.d)}</button>`).join("")}</div>
     <div class="actions"><button class="btn sec" id="rbHint">Indice</button><button class="btn" id="rbOk" ${chosen.length===q.parts.length?"":"disabled"} style="flex:1">Valider</button></div>`}<div id="after"></div>`;
@@ -2202,7 +2288,7 @@ function radioQuestions(){const Q=[];const me=rMe(),g=rGolf();
  return shuffle(Q).map(q=>{const o=q.o.map((t,i)=>({t,ok:i===q.a}));const s=shuffle(o);return{...q,o:s.map(x=>x.t),a:s.findIndex(x=>x.ok)}})}
 function runRadioSim(){const qs=radioQuestions();let i=0,score=0;cleanup=stopSpeak;
  const show=()=>{const q=qs[i];
-  app.innerHTML=push("Simulateur radio",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Messages radio</span></div><p class="qtext">${esc(q.q)}</p>
+  app.innerHTML=push("Simulateur radio",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Messages radio</span>${qno({_id:"rs:"+q.id,q:q.q})}</div><p class="qtext">${esc(q.q)}</p>
    <div class="opts">${q.o.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div><div id="after"></div>`;
   bindBack(()=>{stopSpeak();go("radio")});
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const k=+b.dataset.k,ok=k===q.a;if(ok)score++;record("radio:"+q.id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
@@ -2310,7 +2396,7 @@ function carteQuestions(){const S=SECT.sect;const P=()=>pick(S);const other=(s,n
   if(q.a!=null){Q.push(q);continue}const sh=shuffle(q.o.map((t,i)=>({t,ok:i===0})));Q.push({...q,o:sh.map(x=>x.t),a:sh.findIndex(x=>x.ok)})}
  return Q}
 function runCarteQuiz(){loadSect().then(()=>{const qs=freshGen(carteQuestions,"carte:",10);let i=0,score=0;
- const show=()=>{const q=qs[i];app.innerHTML=push("Quiz secteurs",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Carte des secteurs</span></div><p class="qtext">${esc(q.q)}</p>
+ const show=()=>{const q=qs[i];app.innerHTML=push("Quiz secteurs",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Carte des secteurs</span>${qno(q)}</div><p class="qtext">${esc(q.q)}</p>
   <div class="opts">${q.o.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div><div id="after"></div>`;
   bindBack(()=>go("carte"));
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const ok=+b.dataset.k===q.a;if(ok)score++;record("carte:"+q.id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
@@ -2440,7 +2526,7 @@ function hospQuestions(expert){const n=expert?4:3;const Q=[];const P=()=>pick(HO
  return Q}
 function runHospQuiz(expert,back){back=back||(()=>go("home"));loadSect().catch(()=>null).then(()=>{const pre=expert?"hosp:":"s:hosp:";const qs=freshGen(()=>hospQuestions(expert),pre,10);let i=0,score=0,combo=0;
  const show=()=>{const q=qs[i];
-  app.innerHTML=push("Quiz des hôpitaux",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Hôpitaux · niveau ${expert?"Officier":"Sapeur"}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span></div>
+  app.innerHTML=push("Quiz des hôpitaux",`${i+1}/${qs.length}`)+`<div class="bar"><i style="width:${i/qs.length*100}%"></i></div><div class="qhead"><span class="qtag">Hôpitaux · niveau ${expert?"Officier":"Sapeur"}${combo>=2?` · <span class="combo">série ×${combo}</span>`:""}</span>${qno(q)}</div>
    <p class="qtext">${esc(q.q)}</p><div class="opts">${q.choices.map((c,k)=>`<button class="opt" data-k="${k}"><span class="k">${LETTERS[k]}</span><span>${esc(c)}</span></button>`).join("")}</div><div id="after"></div>`;
   bindBack(back);
   app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const ok=+b.dataset.k===q.answer;if(ok){score++;combo++}else combo=0;record(pre+q.id,ok);if(navigator.vibrate)navigator.vibrate(ok?15:[30,40,30]);
@@ -2575,7 +2661,7 @@ function bindPush(){const b=$("#pushT");if(!b)return;b.onclick=async()=>{const m
   const k=(await api("push/key")).key;let sub=await reg.pushManager.getSubscription();if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:ub64k(k)});
   await api("push/sub","POST",{sub:sub.toJSON()});store.set("pushOn",true);toast("Notifications activées.");alog("push","activées")}
  viewProfile()}catch(e){m.textContent=e.error||"Impossible d'activer les notifications sur cet appareil.";b.disabled=false}}}
-function viewMe(head){app.innerHTML=head+`${meCard()}${me&&!me.expired?rankCard():""}${usageCard()}${fireCard()}${pushCard()}<div class="sect">Aide</div><div class="list"><button class="row" id="openTuto"><span class="ic" style="background:#e3051b">${TUTO_IC}</span><span class="tx"><b>Tutoriel et présentation</b><span>Revoir la visite guidée de l'appli</span></span><span class="chev">${I.chev}</span></button></div><p class="small" style="margin:8px 4px 0">Pour corriger les bugs, l'appli enregistre ton activité (pages ouvertes, boutons touchés, réponses, erreurs) pendant 30 jours. Seuls les administrateurs y ont accès.</p>${updCard()}${accountCard()}`;bindProfTabs();bindMe();bindUsage();bindFire();bindPush();bindRank();$("#openTuto").onclick=()=>openTuto();$("#forceUpd").onclick=forceUpdate;checkOnline()}
+function viewMe(head){app.innerHTML=head+`${meCard()}${me&&!me.expired?rankCard():""}${usageCard()}${fireCard()}${pushCard()}<div class="sect">Aide</div><div class="list"><button class="row" id="openTuto"><span class="ic" style="background:#e3051b">${TUTO_IC}</span><span class="tx"><b>Tutoriel et présentation</b><span>Revoir la visite guidée de l'appli</span></span><span class="chev">${I.chev}</span></button><button class="row" data-bug><span class="ic" style="background:#0f1d36;color:#fff">${BUG_IC}</span><span class="tx"><b>Signaler un problème</b><span>Erreur dans une question, bouton qui ne marche pas… (avec capture d'écran)</span></span><span class="chev">${I.chev}</span></button></div><p class="small" style="margin:8px 4px 0">Pour corriger les bugs, l'appli enregistre ton activité (pages ouvertes, boutons touchés, réponses, erreurs) pendant 30 jours. Seuls les administrateurs y ont accès.</p>${updCard()}${accountCard()}`;bindProfTabs();bindMe();bindUsage();bindFire();bindPush();bindRank();$("#openTuto").onclick=()=>openTuto();$("#forceUpd").onclick=forceUpdate;checkOnline()}
 /* ---- graphiques d'évolution (barres SVG, une seule série : pas de légende, le titre la nomme) ---- */
 let evoPer=store.get("evoPer","w");
 const MOIS=["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."];
@@ -3080,6 +3166,7 @@ function drawAdmin(){setTimeout(drawAdminTeams,0);const A=adminData,S=A.settings
     <form id="aform" class="form"><label for="aDom">Domaines autorisés</label><input id="aDom" value="${esc((S.allowedDomains||[]).join(", "))}" placeholder="ex. croix-rouge.fr, gmail.com">
     <label for="aMail">E-mails autorisés (en plus des domaines)</label><textarea id="aMail" rows="3" placeholder="un e-mail par ligne">${esc((S.allowedEmails||[]).join("\n"))}</textarea>
     <button class="btn full" type="submit" style="margin-top:12px">Enregistrer les accès</button><p class="small" id="aMsg"></p></form></div>
+   <div class="sect">Signalements de problèmes</div><div class="list"><button class="row" id="openBugs"><span class="ic" style="background:#d92d20;color:#fff">${BUG_IC}</span><span class="tx"><b>Signalements <span id="bugN"></span></b><span>Problèmes signalés par les membres, avec capture d'écran ; suivi et exports</span></span><span class="chev">${I.chev}</span></button></div>
    <div class="sect">Journaux d'activité</div><div class="list"><button class="row" id="openLogs"><span class="ic" style="background:#30b0c7">${I.list}</span><span class="tx"><b>Journaux d'activité</b><span>Qui fait quoi, clics, réponses, erreurs (30 derniers jours)</span></span><span class="chev">${I.chev}</span></button></div>
    <div class="sect">Équipes (<span id="tcount">…</span>)</div><div id="adTeams"><div class="loading">Chargement…</div></div>
    <div class="sect">Membres (${A.members.length})</div>
@@ -3089,7 +3176,7 @@ function drawAdmin(){setTimeout(drawAdminTeams,0);const A=adminData,S=A.settings
   bindBack(()=>go("profile"));
   $("#aform").onsubmit=async e=>{e.preventDefault();const m=$("#aMsg");m.textContent="Enregistrement…";
     try{const j=await api("admin/settings","PUT",{allowedDomains:$("#aDom").value,allowedEmails:$("#aMail").value});adminData.settings=j.settings;m.textContent="Accès enregistrés.";$("#aDom").value=j.settings.allowedDomains.join(", ");$("#aMail").value=j.settings.allowedEmails.join("\n")}catch(err){m.textContent=err.error||"Erreur."}};
-  $("#openLogs").onclick=()=>viewLogs();
+  $("#openLogs").onclick=()=>viewLogs();$("#openBugs").onclick=()=>viewBugs();api("admin/bugs").then(j=>{const n=(j.bugs||[]).filter(b=>b.status==="new").length;const e=$("#bugN");if(e&&n)e.innerHTML=`<span class="dlbadge">${n}</span>`}).catch(()=>{});
   let to;$("#aq").oninput=e=>{adminQ=e.target.value;clearTimeout(to);to=setTimeout(()=>{drawAdmin();const q=$("#aq");q.focus();q.setSelectionRange(q.value.length,q.value.length)},250)};
   app.querySelectorAll("[data-mem]").forEach(b=>b.onclick=()=>memberSheet(adminData.members.find(m=>m.id===b.dataset.mem)));
 }
@@ -3137,13 +3224,20 @@ alog("demarrage",APP_VER,{chargement:Math.round(performance.now())+" ms",langue:
 if(me&&me.id){const o=store.get("progOwner",null);if(o&&o!==me.id)applyProgress({resetAt:0});store.set("progOwner",me.id)}
 go(tab);{const wel=store.get("welcome",false);if(wel)store.del("welcome");const tk="tutoSeen_"+(me&&me.id||"x");
  const afterTuto=()=>{if(wel){profTab="moi";go("profile");profileSheet(true,true)}};
- const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x"),nk5="news510_"+(me&&me.id||"x"),nk6="news511_"+(me&&me.id||"x");
- if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
+ const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x"),nk5="news510_"+(me&&me.id||"x"),nk6="news511_"+(me&&me.id||"x"),nk7="news520_"+(me&&me.id||"x");
+ if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
  else if(me&&!me.expired&&!store.get(nk,false))setTimeout(()=>openTuto(()=>store.set(nk,true),"rank"),600);
- else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
- else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true)},"new340"),600)
- else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>{store.set(nk4,true);store.set(nk5,true);store.set(nk6,true)},"new500"),600)
- else if(me&&!me.expired&&!store.get(nk5,false))setTimeout(()=>openTuto(()=>{store.set(nk5,true);store.set(nk6,true)},"new510"),600)
- else if(me&&!me.expired&&!store.get(nk6,false))setTimeout(()=>openTuto(()=>store.set(nk6,true),"new511"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
-if("serviceWorker" in navigator&&location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").catch(()=>{});navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.openEv&&me&&!me.expired)evOpen(e.data.openEv,()=>{evLoad().catch(()=>{});viewEvals()})})}
-{const m=/^#ev=([\w-]+)/.exec(location.hash);if(m&&me&&!me.expired){history.replaceState(null,"",location.pathname+location.search);setTimeout(()=>evOpen(m[1],()=>viewEvals()),700)}}
+ else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
+ else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true)},"new340"),600)
+ else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>{store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true)},"new500"),600)
+ else if(me&&!me.expired&&!store.get(nk5,false))setTimeout(()=>openTuto(()=>{store.set(nk5,true);store.set(nk6,true);store.set(nk7,true)},"new510"),600)
+ else if(me&&!me.expired&&!store.get(nk6,false))setTimeout(()=>openTuto(()=>{store.set(nk6,true);store.set(nk7,true)},"new511"),600)
+ else if(me&&!me.expired&&!store.get(nk7,false))setTimeout(()=>openTuto(()=>store.set(nk7,true),"new520"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
+// 5.2.0 : ouverture depuis une notification (appli déjà ouverte : message du service worker ; sinon : #go=… dans l'adresse)
+function goNav(nav){if(!nav||!me||me.expired)return;alog("notif","ouverture",{cible:nav});try{closeSheet();const v=$("#viewer");if(v)v.remove();document.body.style.overflow=""}catch(e){}
+ if(nav.startsWith("ev:")){const id=nav.slice(3);evLoad().catch(()=>{});evOpen(id,()=>viewEvals());return}
+ if(nav==="duels"){loadDuels(true).then(()=>viewDuels()).catch(()=>viewDuels());return}
+ if(nav==="live"){if(cleanup){try{cleanup()}catch(e){}cleanup=null}go("home");liveBusy=false;setTimeout(liveInbox,300);return}
+ if(nav==="maj"){store.del("updSeen");go("profile");setTimeout(()=>{updWatch();checkOnline()},400)}}
+if("serviceWorker" in navigator&&location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").catch(()=>{});navigator.serviceWorker.addEventListener("message",e=>{const d=e.data||{};if(d.go)setTimeout(()=>goNav(d.go),200);else if(d.openEv)setTimeout(()=>goNav("ev:"+d.openEv),200)})}
+{const m=/^#(?:go=([^&]+)|ev=([\w-]+))/.exec(location.hash);if(m){history.replaceState(null,"",location.pathname+location.search);const nav=m[1]?decodeURIComponent(m[1]):"ev:"+m[2];setTimeout(()=>goNav(nav),900)}}
