@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="5.3.1";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="5.3.2";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -1972,7 +1972,11 @@ applyFire();
 const RADIO_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="12" height="13" rx="2.5"/><path d="M9 8 7 3"/><path d="M9.5 12h5M9.5 15h5"/><circle cx="12" cy="18.2" r=".6" fill="currentColor"/></svg>';
 let radioId=store.get("radioId",{num:"",cs:"",golf:"",t:0});
 function saveRadioId(v){radioId={num:String(v.num||"").trim().slice(0,6),cs:String(v.cs||"").trim().slice(0,40),golf:String(v.golf||"").trim().slice(0,3),t:Date.now()};store.set("radioId",radioId);if(typeof syncSoon==="function")syncSoon(2000)}
-const rMe=()=>`Croix-Rouge française ${radioId.num||"XXX"} de ${radioId.cs||"(centre de secours)"}`;
+const deCs=n=>/^[aeiouyéèêâîôûh]/i.test(String(n||""))?"d'"+n:"de "+n;
+const rMe=()=>`Croix-Rouge française ${radioId.num||"XXX"} ${radioId.cs?deCs(radioId.cs):"de (centre de secours)"}`;
+// 5.3.2 : compagnie de rattachement et indicatif CRf du 1er engin (n° de compagnie, rang du CS dans la compagnie, 0 = PC, puis n° d'engin)
+const csInd=s=>s&&s.cie!=null?`${s.cie}${s.rk}1`:"";
+const cieTxt=s=>{if(!s||s.cie==null)return "";const o=s.cie===1?"1re":s.cie+"e";if(!s.rk)return `PC de la ${o} compagnie`;const pc=SECT&&SECT.sect.concat(SECT.extra||[]).find(x=>x.cie===s.cie&&!x.rk);return `${o} compagnie${pc?" · PC "+pc.name:""}`};
 const rGolf=()=>`Golf ${radioId.golf||"X"}`;
 const rPf=()=>`Poste fixe de ${radioId.cs||"(centre de secours)"}`;
 const rHour=()=>{const d=new Date();return String(d.getHours()).padStart(2,"0")+String(d.getMinutes()).padStart(2,"0")}; // format BSPP : 1634
@@ -2146,11 +2150,11 @@ function indicCard(){const ok=radioId.num&&radioId.cs;
  return `<div class="card rid"><div><div class="small">Mon indicatif</div><b>${ok?esc(rMe()):"Non renseigné"}</b><div class="small">${radioId.golf?`Interlocuteur : ${esc(rGolf())} · `:""}${ok?esc(rPf()):"Il sera prérempli dans tous les messages."}</div></div><button class="btn small sec" id="ridEdit">${ok?"Modifier":"Renseigner"}</button></div>`}
 function indicSheet(after){sheet(`<h2>Mon indicatif radio</h2><p class="small">Prérempli dans tous les messages. Exemple : Croix-Rouge française <b>321</b> de <b>Plaisance</b>, interlocuteur <b>Golf 3</b>.</p>
   <form class="form" id="ridF"><label for="ridN">Numéro de l'engin CRF</label><input id="ridN" inputmode="numeric" maxlength="6" placeholder="ex. 321" value="${esc(radioId.num)}">
-  <label for="ridC">Centre de secours</label><input id="ridC" maxlength="40" placeholder="ex. Plaisance" value="${esc(radioId.cs)}">
+  <label for="ridC">Centre de secours</label><input id="ridC" maxlength="40" placeholder="ex. Plaisance" value="${esc(radioId.cs)}"><p class="small" id="ridH" style="margin:4px 2px 0">Choisis ton CS dans la liste : le numéro d'engin se remplit tout seul.</p>
   <label for="ridG">Numéro du Golf (groupement)</label><input id="ridG" inputmode="numeric" maxlength="3" placeholder="ex. 3" value="${esc(radioId.golf)}">
   <button class="btn full" type="submit" style="margin-top:14px">Enregistrer</button></form><p class="small">Golf 1, 2 ou 3 selon le groupement du centre de secours où tu es de garde (rempli automatiquement si tu choisis un CS de la liste, ou depuis la carte des secteurs). L'indicatif est enregistré sur ton compte.</p>`);
- loadSect().then(()=>{const ci=$("#ridC");if(!ci)return;const dl=document.createElement("datalist");dl.id="dlCS";dl.innerHTML=SECT.sect.map(s=>`<option value="${esc(s.name)}">`).join("");ci.after(dl);ci.setAttribute("list","dlCS");
-   ci.addEventListener("input",()=>{const s=SECT.sect.find(x=>norm(x.name)===norm(ci.value.trim()));if(s)$("#ridG").value=s.golf})}).catch(()=>{});
+ loadSect().then(()=>{const ci=$("#ridC");if(!ci)return;const dl=document.createElement("datalist");dl.id="dlCS";dl.innerHTML=SECT.sect.concat(SECT.extra||[]).map(s=>`<option value="${esc(s.name)}">`).join("");ci.after(dl);ci.setAttribute("list","dlCS");
+   ci.addEventListener("input",()=>{const s=SECT.sect.concat(SECT.extra||[]).find(x=>norm(x.name)===norm(ci.value.trim()));if(s){$("#ridG").value=s.golf;const n=$("#ridN"),v=csInd(s);if(n&&v&&(!n.value||/^\d{3,4}$/.test(n.value)&&n.value.slice(-1)==="1")){n.value=v;const h=$("#ridH");if(h)h.textContent=`Indicatif du 1er engin CRf de ${s.name} (${cieTxt(s)}). Pour un 2e engin, remplace le dernier chiffre par 2.`}}})}).catch(()=>{});
  $("#ridF").onsubmit=e=>{e.preventDefault();saveRadioId({num:$("#ridN").value,cs:$("#ridC").value,golf:$("#ridG").value});closeSheet();(after||viewRadio)()}}
 function viewRadio(){if(usage==="ci"&&radioTab==="train")radioTab="build";
  const head=`${backLink()}<h1 class="big">Messages radio</h1><p class="sub">Construis tes messages phonie BSPP, entraîne-toi au dialogue avec le CSO et révise les statuts.</p>${indicCard()}
@@ -2223,10 +2227,10 @@ function criPicker(cb){let q="";sheet(`<h2>Code CRI</h2><input class="search" id
 
 /* ---- Jeu « Construis le message » : remettre les morceaux d'un message radio dans l'ordre ---- */
 // indicatif utilisé dans le jeu : le tien s'il est renseigné, sinon un indicatif d'exemple complet (jamais de « XXX »)
-function gameRid(){const ex=!radioId.num||!radioId.cs;let golf=radioId.golf;if(!golf&&radioId.cs&&typeof SECT!=="undefined"&&SECT){const s=SECT.sect.find(x=>norm(x.name)===norm(radioId.cs));if(s)golf=s.golf}
- return ex?{num:radioId.num||"321",cs:radioId.cs||"Plaisance",golf:golf||(radioId.cs?"X":"3"),ex:true}:{num:radioId.num,cs:radioId.cs,golf:golf||"X",ex:false}}
+function gameRid(){let golf=radioId.golf,num=radioId.num;if(radioId.cs&&typeof SECT!=="undefined"&&SECT){const s=SECT.sect.concat(SECT.extra||[]).find(x=>norm(x.name)===norm(radioId.cs));if(s){if(!golf)golf=s.golf;if(!num)num=csInd(s)}}const ex=!num||!radioId.cs;
+ return ex?{num:num||"321",cs:radioId.cs||"Plaisance",golf:golf||(radioId.cs?"X":"3"),ex:true}:{num,cs:radioId.cs,golf:golf||"X",ex:false}}
 let rbAsked=false;
-function buildScenarios(){const R=gameRid();const me_=`Croix-Rouge française ${R.num} de ${R.cs}`,g=`Golf ${R.golf}`,h=rHour(),num=R.num;const A=pick(R_ADR),H=pick(R_HOP);const A2=pick(R_ADR.filter(x=>x!==A)),H2=pick(R_HOP.filter(x=>x!==H)),RT=pick(R_RTE),SEC=pick(R_SEC.filter(x=>norm(x)!==norm(R.cs)));const hm=m=>{const d=new Date(Date.now()-m*6e4);return String(d.getHours()).padStart(2,"0")+String(d.getMinutes()).padStart(2,"0")};const h0=hm(38),h1=hm(21),h2=hm(-45);
+function buildScenarios(){const R=gameRid();const me_=`Croix-Rouge française ${R.num} ${deCs(R.cs)}`,g=`Golf ${R.golf}`,h=rHour(),num=R.num;const A=pick(R_ADR),H=pick(R_HOP);const A2=pick(R_ADR.filter(x=>x!==A)),H2=pick(R_HOP.filter(x=>x!==H)),RT=pick(R_RTE),SEC=pick(R_SEC.filter(x=>norm(x)!==norm(R.cs)));const hm=m=>{const d=new Date(Date.now()-m*6e4);return String(d.getHours()).padStart(2,"0")+String(d.getMinutes()).padStart(2,"0")};const h0=hm(38),h1=hm(21),h2=hm(-45);
  return [
  {id:"appel",sit:`Tu veux appeler le CSO de ton groupement (${g}).`,parts:[g,`ici la ${me_},`,"parlez."],e:"On appelle d'abord son interlocuteur (le Golf), on s'annonce, puis « parlez » pour lui donner la parole.",p:10},
  {id:"depart",sit:`Mode dégradé : tu dois annoncer ton départ pour un malaise au ${A}.`,parts:[`${g},`,`la ${me_}`,"partie","pour malaise,",`${A}.`],e:"Statut 1 en phonie : Golf, indicatif, « partie », le motif puis l'adresse.",p:9},
@@ -2505,12 +2509,13 @@ function carteMapView(){const b=$("#cbody");
  const {m,layers}=makeMap($("#map"),{onPick:s=>select(s)});cartMap=m;cleanup=()=>{try{m.remove()}catch(e){}cartMap=null};
  const restyle=()=>styleSect(layers,(s,col)=>{const on=carteG==="all"||s.golf===carteG;const sel=carteSel===s.code;return{color:col,weight:sel?3.5:1.6,opacity:on?1:.25,fillOpacity:sel?.32:on?.13:.03}});
  const select=(s,fit)=>{carteSel=s.code;restyle();if(fit){if(layers[s.code])m.fitBounds(layers[s.code].getBounds(),{padding:[30,30]});else m.setView(s.ll,15)}
-  $("#cinfo").innerHTML=`<div class="card sectcard"><div style="display:flex;gap:12px;align-items:center"><span class="sectcode" style="background:${GCOL[s.golf]}">${esc(s.code)}</span><div style="flex:1;min-width:0"><b style="font-size:18px">CS ${esc(s.name)}</b><div class="small">Groupement ${esc(s.golf)} · interlocuteur radio « Golf ${esc(s.golf)} »${s.area?` · ${String(s.area).replace(".",",")} km²`:""}</div></div></div>
+  $("#cinfo").innerHTML=`<div class="card sectcard"><div style="display:flex;gap:12px;align-items:center"><span class="sectcode" style="background:${GCOL[s.golf]}">${esc(s.code)}</span><div style="flex:1;min-width:0"><b style="font-size:18px">CS ${esc(s.name)}</b><div class="small">Groupement ${esc(s.golf)} · interlocuteur radio « Golf ${esc(s.golf)} »${s.area?` · ${String(s.area).replace(".",",")} km²`:""}</div>${s.cie!=null?`<div class="small">${esc(cieTxt(s))}</div>`:""}</div></div>
+   ${s.cie!=null?`<div class="csind"><span class="small">Indicatif CRf (1er engin)</span><b>Croix-Rouge française ${csInd(s)} ${esc(deCs(s.name))}</b></div>`:""}
    ${s.adr||s.tel?`<div class="cadrs">${adrHtml(s)}${telHtml(s)}</div>`:""}
    ${s.nb?`<div class="small" style="margin:12px 0 6px">Secteurs limitrophes (« carré des neuf »)</div>`:`<p class="small" style="margin:12px 0 0">Pas de secteur tracé pour ce centre sur la carte.</p>`}<div class="chips wrap">${(s.nb||[]).map(c=>`<button class="chip" data-nb="${c}"><i class="gdot" style="background:${GCOL[SECT.by[c].golf]}"></i>${esc(SECT.by[c].name)}</button>`).join("")}</div>
    <div class="actions"><button class="btn sec" id="cMine">${radioId.cs===s.name?"Mon CS de garde ✓":"C'est mon CS de garde"}</button></div><p class="small" id="cMineMsg" style="margin:0"></p></div>`;
   $("#cinfo").querySelectorAll("[data-nb]").forEach(x=>x.onclick=()=>select(SECT.by[x.dataset.nb],true));
-  $("#cMine").onclick=()=>{saveRadioId({...radioId,cs:s.name,golf:s.golf});$("#cMine").textContent="Mon CS de garde ✓";$("#cMineMsg").textContent=`Indicatif radio mis à jour : ${rMe()}, interlocuteur ${rGolf()}.`}};
+  $("#cMine").onclick=()=>{saveRadioId({...radioId,cs:s.name,golf:s.golf,num:csInd(s)||radioId.num});$("#cMine").textContent="Mon CS de garde ✓";$("#cMineMsg").textContent=`Indicatif radio mis à jour : ${rMe()}, interlocuteur ${rGolf()}.`}};
  b.querySelectorAll("[data-cg]").forEach(x=>x.onclick=()=>{carteG=x.dataset.cg;b.querySelectorAll("[data-cg]").forEach(y=>y.setAttribute("aria-pressed",y===x));restyle();
   if(carteG!=="all")m.fitBounds(window.L.featureGroup(SECT.sect.filter(s=>s.golf===carteG).map(s=>layers[s.code])).getBounds(),{padding:[10,10]})});
  $("#cLoc").onclick=()=>{if(!navigator.geolocation){toast("Localisation indisponible.");return}toast("Localisation en cours…");
@@ -2521,7 +2526,7 @@ function carteMapView(){const b=$("#cbody");
  restyle();const selObj=carteSel&&(SECT.by[carteSel]||(SECT.extra||[]).find(x=>x.code===carteSel));if(selObj)select(selObj,true);
  setTimeout(()=>m.invalidateSize(),60)}
 function carteListView(){const b=$("#cbody");
- b.innerHTML=["1","2","3"].map(g=>`<div class="sect"><i class="gdot" style="background:${GCOL[g]}"></i> Groupement ${g} · Golf ${g}</div><div class="list">${SECT.sect.concat(SECT.extra||[]).filter(s=>s.golf===g).sort((a,c)=>a.name.localeCompare(c.name)).map(s=>`<button class="row" data-cs="${s.code}"><span class="sectcode" style="background:${GCOL[g]}">${s.code}</span><span class="tx"><b>${esc(s.name)}</b><span>${s.adr?esc(s.adr):""}</span>${s.tel?`<span>PVO ${esc(s.tel)}</span>`:""}${s.nb?`<span>Voisins : ${s.nb.map(c=>esc(SECT.by[c].name)).join(", ")}</span>`:""}</span>${s.tel?`<a class="callbtn" href="tel:${s.tel.replace(/\s/g,"")}" aria-label="Appeler le PVO ${esc(s.name)}" data-call="1">${PHONE}</a>`:`<span class="chev">${I.chev}</span>`}</button>`).join("")}</div>`).join("")
+ b.innerHTML=["1","2","3"].map(g=>`<div class="sect"><i class="gdot" style="background:${GCOL[g]}"></i> Groupement ${g} · Golf ${g}</div><div class="list">${SECT.sect.concat(SECT.extra||[]).filter(s=>s.golf===g).sort((a,c)=>a.name.localeCompare(c.name)).map(s=>`<button class="row" data-cs="${s.code}"><span class="sectcode" style="background:${GCOL[g]}">${s.code}</span><span class="tx"><b>${esc(s.name)}</b>${s.cie!=null?`<span>${esc(cieTxt(s))} · indicatif ${csInd(s)}</span>`:""}<span>${s.adr?esc(s.adr):""}</span>${s.tel?`<span>PVO ${esc(s.tel)}</span>`:""}${s.nb?`<span>Voisins : ${s.nb.map(c=>esc(SECT.by[c].name)).join(", ")}</span>`:""}</span>${s.tel?`<a class="callbtn" href="tel:${s.tel.replace(/\s/g,"")}" aria-label="Appeler le PVO ${esc(s.name)}" data-call="1">${PHONE}</a>`:`<span class="chev">${I.chev}</span>`}</button>`).join("")}</div>`).join("")
   +`<p class="small" style="margin:10px 4px 0">Touche un centre pour le voir sur la carte, ou le combiné pour appeler son PVO. Numéros : annuaire CIS pour AASC (version du 03/12/2025).${(SECT.extra||[]).length?` ${SECT.extra.map(x=>"CS "+esc(x.name)).join(", ")} : pas de secteur tracé.`:""}</p>`;
  b.querySelectorAll("[data-cs]").forEach(x=>x.onclick=e=>{if(e.target.closest("[data-call]"))return;carteSel=x.dataset.cs;carteTab="map";store.set("carteTab","map");viewCarte()})}
 function carteQuizView(){const b=$("#cbody");const bq=store.get("carteBest",{});

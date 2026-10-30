@@ -308,7 +308,7 @@ async function verifyGoogle(idToken) {
 }
 
 // 3.4.0 : notification « nouvelle version disponible » envoyée une seule fois par version (verrou Redis SET NX)
-const APP_VERSION = "5.3.1"; let announced = false;
+const APP_VERSION = "5.3.2"; let announced = false;
 async function announceVersion(st) {
   try {
     const r = await redis(["SET", NS + "ver/announced/" + APP_VERSION, "1", "NX"]); if (r !== "OK") return;

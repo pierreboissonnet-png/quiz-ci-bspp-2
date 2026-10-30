@@ -721,3 +721,4 @@ body.zmir .qtext,body.zmir .opt>span:last-child,body.zmir .vf .opt{transform:sca
 .form select{min-height:46px;border-radius:12px;border:.5px solid var(--sep);background:var(--card);color:var(--ink);padding:0 14px;font-size:16px;font-family:inherit;width:100%;-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat}
 .skbtn span{flex:0 1 auto;text-align:left}
 .skbtn{margin:12px 0}
+.csind{margin:12px 0 0;padding:10px 12px;border-radius:12px;background:var(--red-soft);display:flex;flex-direction:column;gap:2px}.csind b{color:var(--red)}
