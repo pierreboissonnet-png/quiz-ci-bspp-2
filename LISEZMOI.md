@@ -14,6 +14,7 @@ Application web (PWA) d'entraînement au parcours CI BSPP. Application non offic
 - `GOOGLE_CLIENT_ID` : identifiant du client OAuth Google
 - `SESSION_SECRET` : longue chaîne aléatoire (ne jamais la publier)
 - `SUPER_ADMIN` (facultatif) : par défaut pierre.boissonnet@croix-rouge.fr
+- `BUG_API_KEY` (facultatif, 5.2.1) : clé d'accès de service aux signalements (suivi avec Claude). Au moins 32 caractères, ne jamais la publier ni l'envoyer sur GitHub. Sans cette variable, l'accès est désactivé. Le super administrateur peut aussi le couper dans Administration › Signalements.
 - Base Redis : `KV_REST_API_URL` et `KV_REST_API_TOKEN`, ajoutées automatiquement en connectant « Upstash for Redis » (Storage)
 
 ## Mise à jour

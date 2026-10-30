@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="5.2.0";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="5.3.0";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -165,14 +165,15 @@ const CI_TABS=["home","cri","radio","carte","grades","lexique","docs","stats","p
 const visTabs=()=>usage==="ci"?TABS.filter(t=>CI_TABS.includes(t[0])):TABS;
 let tab=store.get("tab","home");if(!visTabs().some(t=>t[0]===tab))tab="home";
 let cleanup=null;
+const ADM_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/></svg>';
 const MENU_IC='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
 function renderTabs(){const cur=TABS.find(t=>t[0]===tab);const TABS_V=visTabs();
   $("#tabbar").innerHTML=`<button class="bugbtn bugtab" data-bug aria-label="Signaler un problème" title="Signaler un problème">${BUG_IC}</button><button class="menubtn" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="menuPanel">${cur?cur[2]:""}<span>${cur?esc(cur[1]):""}</span>${MENU_IC}</button>
-   <div class="menupanel" id="menuPanel" hidden>${TABS_V.map(([k,l,ic])=>`<button data-tab="${k}" ${k===tab?'aria-current="page"':""}>${ic}<span>${l}</span></button>`).join("")}</div>`;
+   <div class="menupanel" id="menuPanel" hidden>${TABS_V.map(([k,l,ic])=>`<button data-tab="${k}" ${k===tab?'aria-current="page"':""}>${ic}<span>${l}</span></button>`).join("")}${(()=>{try{return me&&me.admin}catch(e){return false}})()?`<button data-adm class="admitem">${ADM_IC}<span>Administration</span></button>`:""}</div>`;
   const btn=$("#menuBtn"),pan=$("#menuPanel");
   const close=()=>{pan.hidden=true;btn.setAttribute("aria-expanded","false")};
   btn.onclick=e=>{e.stopPropagation();pan.hidden=!pan.hidden;btn.setAttribute("aria-expanded",String(!pan.hidden))};
-  pan.querySelectorAll("button").forEach(b=>b.onclick=()=>{close();if(b.dataset.tab==="profile"){profTab="moi";store.set("profTab",profTab);rkNav={v:"top"}}go(b.dataset.tab)});
+  pan.querySelectorAll("button").forEach(b=>b.onclick=()=>{close();if(b.hasAttribute("data-adm")){viewAdmin();return}if(b.dataset.tab==="profile"){profTab="moi";store.set("profTab",profTab);rkNav={v:"top"}}go(b.dataset.tab)});
   if(!renderTabs.bound){renderTabs.bound=true;document.addEventListener("click",e=>{const p=$("#menuPanel");if(p&&!p.hidden&&!e.target.closest("#tabbar")){p.hidden=true;const b=$("#menuBtn");if(b)b.setAttribute("aria-expanded","false")}});
     document.addEventListener("keydown",e=>{if(e.key==="Escape"){const p=$("#menuPanel");if(p)p.hidden=true}})}}
 let navStack=[];
@@ -186,7 +187,7 @@ let zState=store.get("zState",null),xState=store.get("xState",null),zFaked=0,zLa
 const zxGame=()=>document.body.classList.contains("pushed")&&!/examen|défi|duel|résultat|administration|journaux/i.test(lastEcran||"");
 const zOn=()=>!!(zState&&zState.u>Date.now())&&zxGame();
 const xOn=()=>!!(xState&&xState.u>Date.now())&&zxGame();
-function zxSet(j){if(!j)return;if("zmo" in j&&typeof zmoSet==="function")zmoSet(j.zmo);if(j.kk&&typeof kickPop==="function")setTimeout(()=>kickPop(j.kk),600);const z=j.zz&&j.zz.u>Date.now()?j.zz:null,x=j.xx&&j.xx.u>Date.now()?j.xx:null;
+function zxSet(j){if(!j)return;if(typeof j.parrain==="string"&&me&&me.parrain!==j.parrain){me.parrain=j.parrain;saveMe()}if("zmo" in j&&typeof zmoSet==="function")zmoSet(j.zmo);if(j.kk&&typeof kickPop==="function")setTimeout(()=>kickPop(j.kk),600);const z=j.zz&&j.zz.u>Date.now()?j.zz:null,x=j.xx&&j.xx.u>Date.now()?j.xx:null;
  if(zState&&zState.by)zBy=zState.by;zState=z;store.set("zState",z);if(z)zBy=z.by;
  xState=x;store.set("xState",x);
  }
@@ -1203,7 +1204,7 @@ function viewEvals(){app.innerHTML=push("Évaluations")+`<div id="evBody"><div c
   b.innerHTML=`<p class="sub" style="margin-top:12px">La synthèse de tes vacations d'accompagnement : tu remplis l'en-tête et ton avis ; ton encadrant renseigne les interventions, les compétences et son avis. Le PDF de la fiche se génère à la fin.</p>
    <button class="btn full" id="evNew">Nouvelle vacation</button>
    ${todo.length?`<div class="sect">À évaluer (tu es encadrant)</div><div class="list">${todo.map(e=>row(e,true)).join("")}</div>`:""}
-   <div class="sect">Mes vacations</div>${E.mine.length?`<div class="list">${E.mine.slice().sort((a,c)=>c.num-a.num).map(e=>row(e)).join("")}</div>`:`<p class="small" style="margin:0 4px">Aucune vacation pour l'instant.</p>`}
+   <div class="sect">Mes vacations</div>${E.mine.length?`<div class="list">${E.mine.slice().sort((a,c)=>c.num-a.num).map(e=>row(e)).join("")}</div>${E.mine.some(e=>EV_C.some(([k])=>e.comps&&e.comps[k]))?`<div style="margin-top:10px">${skBtn()}</div>`:""}`:`<p class="small" style="margin:0 4px">Aucune vacation pour l'instant.</p>`}
    ${E.asEnc.filter(e=>e.encDone||e.status==="done").length?`<div class="sect">Déjà évaluées par toi</div><div class="list">${E.asEnc.filter(e=>e.encDone||e.status==="done").map(e=>row(e,true)).join("")}</div>`:""}
    <p class="small" style="margin:14px 4px 0">Les fiches sont visibles par le candidat, son encadrant et les administrateurs.</p>`;
   $("#evNew").onclick=async e=>{e.currentTarget.disabled=true;try{const j=await api("ev/new","POST",{});alog("eval","nouvelle vacation",{num:j.ev.num});await evLoad().catch(()=>{});evEdit(j.ev,j.role)}catch(err){toast(err.error||"Erreur.");e.currentTarget.disabled=false}};
@@ -1300,11 +1301,152 @@ async function evPdf(ev){await loadScriptOnce("pdflib/pdf-lib.min.js");const {PD
  const file=new File([blob],name,{type:"application/pdf"});alog("eval","PDF généré",{num:ev.num});
  if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name});return}catch(e){if(e&&e.name==="AbortError")return}}
  const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
+// ---- 5.3.0 : fiche de synthèse des compétences (PDF) pour formateurs, accompagnants et direction
+const SK_DEST={form:"Formateur",acc:"Accompagnant",dir:"Direction",all:"Formateurs, accompagnants et direction"};
+function skRated(ev){return EV_C.some(([k])=>ev.comps&&ev.comps[k]&&ev.comps[k].lvl)}
+async function skCollect(ids){const out=[];for(const id of ids){try{const j=await api("ev/get?eid="+encodeURIComponent(id));if(j&&j.ev)out.push(j.ev)}catch(e){}}return out.sort((a,b)=>(a.date||"").localeCompare(b.date||"")||a.num-b.num)}
+// analyse d'une compétence au fil des vacations
+function skAnalyse(L,k){const pts=L.map(e=>({e,v:(e.comps&&e.comps[k]&&e.comps[k].lvl)||0,o:String(e.comps&&e.comps[k]&&e.comps[k].obs||"").trim()})).filter(p=>p.v);
+ if(!pts.length)return {k,st:"none",pts};const first=pts[0],last=pts[pts.length-1],prev=pts.length>1?pts[pts.length-2]:null;let streak=0;for(let i=pts.length-1;i>=0&&pts[i].v>=3;i--)streak++;
+ const trend=!prev?"seul":last.v>prev.v?"up":last.v<prev.v?"down":"flat";const obs=[...pts].reverse().find(p=>p.o);const best=Math.max(...pts.map(p=>p.v));
+ return {k,st:last.v>=3?"ok":"work",pts,first,last,prev,streak,trend,obs,best}}
+async function skillPdf(o){await loadScriptOnce("pdflib/pdf-lib.min.js");const {PDFDocument,StandardFonts,rgb}=window.PDFLib;
+ const L=o.evs,S=o.stats||null,doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),FB=await doc.embedFont(StandardFonts.HelveticaBold),FI=await doc.embedFont(StandardFonts.HelveticaOblique);
+ const W=595.28,H=841.89,M=42,CW=W-2*M,BOT=H-54;const hex=h=>{h=h.replace("#","");return rgb(parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255)};
+ const RED=hex("#e3051b"),NAVY=hex("#0f1d36"),INK=hex("#1b1f27"),MUT=hex("#6b7280"),SEP=hex("#d9dde4"),SOFT=hex("#f4f6fa"),WHITE=rgb(1,1,1),LC=EV_COL.map(hex);
+ const safe=t=>String(t??"").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/→/g,"->").replace(/[•·]/g,"·").replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFFŒœ€–—…«»]/g,"");
+ const tw=(t,s,f=F)=>f.widthOfTextAtSize(safe(t),s);
+ const wrap=(t,s,w,f=F)=>{const out=[];for(const para of safe(t).split(/\n/)){let cur="";for(const word of para.split(/\s+/)){if(!word)continue;const x=cur?cur+" "+word:word;if(f.widthOfTextAtSize(x,s)<=w)cur=x;else{if(cur)out.push(cur);cur=word}}out.push(cur)}return out};
+ let pg,y;const T=v=>H-v;
+ const txt=(t,x,yy,s=9,f=F,c=INK)=>pg.drawText(safe(t),{x,y:T(yy),size:s,font:f,color:c});
+ const rect=(x,yy,w,h,c,b)=>{const o2={x,y:T(yy+h),width:w,height:h};if(c)o2.color=c;if(b){o2.borderColor=b;o2.borderWidth=.6}pg.drawRectangle(o2)};
+ const line=(x1,y1,x2,y2,c=SEP,t=.6)=>pg.drawLine({start:{x:x1,y:T(y1)},end:{x:x2,y:T(y2)},thickness:t,color:c});
+ const who=safe(o.name||"Candidat");
+ const newPage=()=>{pg=doc.addPage([W,H]);y=48;if(doc.getPageCount()>1){txt("Fiche de synthèse des compétences · "+who,M,30,7.5,F,MUT);line(M,36,W-M,36)}};
+ const need=h=>{if(y+h>BOT)newPage()};
+ const para=(t,{s=9.2,f=F,c=INK,x=M,w=CW,lh=1.32,max=0,gap=4}={})=>{let ls=wrap(t,s,w,f);if(max&&ls.length>max){ls=ls.slice(0,max);ls[max-1]=ls[max-1].replace(/\s*\S*$/,"")+"…"}ls.forEach(l=>{need(s*lh);txt(l,x,y+s,s,f,c);y+=s*lh});y+=gap};
+ const h2=(t,sub)=>{need(46);y+=8;rect(M,y,4,16,RED);txt(t,M+11,y+12.5,13,FB,NAVY);y+=24;if(sub)para(sub,{s:8.6,c:MUT,gap:6})};
+ const h3=(t,c=NAVY)=>{need(28);txt(t,M,y+10,10.4,FB,c);y+=16};
+ const bullet=(t,o2={})=>{const s=o2.s||9;const ls=wrap(t,s,CW-14,o2.f||F);need(s*1.32*Math.min(ls.length,2));pg.drawCircle({x:M+4,y:T(y+s*.62),size:1.6,color:o2.dot||NAVY});const sv=y;para(t,{s,x:M+12,w:CW-14,gap:2,f:o2.f,c:o2.c,max:o2.max})};
+ // ------- données
+ const A=EV_C.map(([k])=>skAnalyse(L,k));const ok=A.filter(a=>a.st==="ok"),work=A.filter(a=>a.st==="work"),none=A.filter(a=>a.st==="none");
+ const lab=k=>(EV_C.find(c=>c[0]===k)||[,k])[1],desc=k=>(EV_C.find(c=>c[0]===k)||[,,""])[2];
+ const avg=e=>{const r=EV_C.map(([k])=>e.comps&&e.comps[k]&&e.comps[k].lvl||0).filter(Boolean);return r.length?r.reduce((a,b)=>a+b,0)/r.length:null};
+ const R=L.filter(skRated);const dF=s=>s?new Date(s+"T12:00:00").toLocaleDateString("fr-FR"):"";const vac=e=>`n°${e.num}${e.date?" ("+dF(e.date)+")":""}`;
+ const cnt={UA:0,UR:0,DCD:0,SS:0};L.forEach(e=>(e.inter||[]).forEach(x=>{if(cnt[x.t]!=null)cnt[x.t]++}));const nInter=cnt.UA+cnt.UR+cnt.DCD+cnt.SS;
+ const encs=[...new Set(L.map(e=>e.enc&&e.enc.name).filter(Boolean))];const lastAvg=R.length?avg(R[R.length-1]):null;
+ // ------- page 1 : en-tête
+ newPage();rect(0,0,W,96,NAVY);rect(0,96,W,4,RED);
+ try{if(o.logo){const img=await doc.embedPng(o.logo);const h=24,w=img.width/img.height*h;rect(W-M-w-10,28,w+14,h+14,WHITE);pg.drawImage(img,{x:W-M-w-3,y:T(35+h),width:w,height:h})}}catch(e){}
+ txt("FICHE DE SYNTHÈSE DES COMPÉTENCES",M,40,17,FB,WHITE);txt("CI en réseau de secours BSPP · parcours d'accompagnement",M,58,10,F,hex("#cfd6e4"));txt("Croix-Rouge française · document établi à partir des évaluations de vacation",M,74,8.5,F,hex("#cfd6e4"));
+ y=118;const idr=[["Candidat",who],["Unité",o.unite||"—"],["Période",R.length?`du ${dF(R[0].date)} au ${dF(R[R.length-1].date)}`:"—"],["Parrain / marraine",o.parrain||"—"],["À l'attention de",SK_DEST[o.dest]||SK_DEST.all],["Édité le",new Date().toLocaleDateString("fr-FR")]];
+ rect(M,y,CW,82,SOFT);idr.forEach(([k,v],i)=>{const cx=M+12+(i%2)*(CW/2),cy=y+18+Math.floor(i/2)*23;txt(k,cx,cy,7.6,F,MUT);const vv=wrap(v,9.6,CW/2-24,FB)[0]||"";txt(vv+(wrap(v,9.6,CW/2-24,FB).length>1?"…":""),cx,cy+11,9.6,FB,INK)});y+=96;
+ // chiffres clés
+ const K=[[String(R.length),R.length>1?"vacations évaluées":"vacation évaluée"],[String(nInter),"interventions"],[`${ok.length} / 8`,"compétences acquises"],[lastAvg!=null?lastAvg.toFixed(1).replace(".",",")+" / 4":"—","moyenne dernière vacation"]];
+ const kw=(CW-18)/4;K.forEach(([v,l],i)=>{const x=M+i*(kw+6);rect(x,y,kw,46,NAVY);txt(v,x+10,y+22,16,FB,WHITE);txt(l,x+10,y+37,7.8,F,hex("#cfd6e4"))});y+=60;
+ // tableau de synthèse
+ h2("Vue d'ensemble",`Niveaux : ${EV_L.slice(1).join(" · ")}. Une compétence est considérée comme acquise lorsque la dernière évaluation est « Acquis » ou « Maîtrisé ».`);
+ const cols=[[M,"Compétence",196],[M+196,"1re note",70],[M+266,"Dernière note",80],[M+346,"Tendance",72],[M+418,"Statut",CW-418]];
+ need(20);rect(M,y,CW,18,NAVY);cols.forEach(([x,t])=>txt(t,x+6,y+12.5,8,FB,WHITE));y+=18;
+ const TR={up:"En progrès",down:"En recul",flat:"Stable",seul:"Une seule note"};
+ A.forEach((a,i)=>{need(20);if(i%2)rect(M,y,CW,19,SOFT);txt(wrap(lab(a.k),8.6,186,FB)[0],M+6,y+13,8.6,FB,INK);
+  const pill=(x,v)=>{if(!v){txt("—",x+6,y+13,8.6,F,MUT);return}rect(x+5,y+4,64,12,LC[v]);txt(EV_L[v],x+5+(64-tw(EV_L[v],7.6,FB))/2,y+12.6,7.6,FB,v===2?INK:WHITE)};
+  pill(M+196,a.first&&a.first.v);pill(M+266,a.last&&a.last.v);txt(a.st==="none"?"—":TR[a.trend],M+352,y+13,8.4,F,a.trend==="down"?hex("#d92d20"):a.trend==="up"?hex("#1f7a3f"):INK);
+  txt(a.st==="ok"?"Acquise":a.st==="work"?"À perfectionner":"Non évaluée",M+424,y+13,8.6,FB,a.st==="ok"?hex("#1f7a3f"):a.st==="work"?hex("#b45309"):MUT);y+=19});
+ line(M,y,W-M,y);y+=6;
+ // ------- graphiques d'évolution
+ h2("Évolution dans le temps","Chaque colonne correspond à une vacation évaluée, dans l'ordre chronologique.");
+ const RV=R.length>14?R.slice(-14):R;if(R.length>14)para(`Les 14 dernières vacations sont représentées (sur ${R.length}).`,{s:8,c:MUT});
+ // 1. courbe de la moyenne
+ {const ch=150;need(ch+30);h3("Moyenne des 8 compétences");const x0=M+62,x1=W-M-10,y0=y+6,y1=y+ch-22,n=RV.length,X=i=>n>1?x0+10+i*((x1-x0-20)/(n-1)):(x0+x1)/2,Y=v=>y1-(y1-y0)*(v-1)/3;
+  [1,2,3,4].forEach(v=>{line(x0,Y(v),x1,Y(v),SEP,.5);txt(EV_L[v],x0-6-tw(EV_L[v],7.4),Y(v)+2.6,7.4,F,MUT)});
+  rect(x0,Y(4),x1-x0,Y(3)-Y(4),hex("#eaf7ee"));[1,2,3,4].forEach(v=>line(x0,Y(v),x1,Y(v),SEP,.5));
+  const P=RV.map((e,i)=>{const v=avg(e);return v==null?null:[X(i),Y(v),v]});let prev=null;P.forEach(p=>{if(p&&prev)line(prev[0],prev[1],p[0],p[1],hex("#1f7a3f"),2);if(p)prev=p});
+  P.forEach(p=>{if(p){pg.drawCircle({x:p[0],y:T(p[1]),size:3.6,color:LC[Math.round(p[2])],borderColor:WHITE,borderWidth:1})}});
+  RV.forEach((e,i)=>{const l="n°"+e.num;txt(l,X(i)-tw(l,7.2)/2,y1+12,7.2,F,MUT)});y+=ch+4}
+ // 2. matrice compétences x vacations
+ {const rh=17,lw=170,n=RV.length,cw=Math.min(34,(CW-lw)/Math.max(1,n));need(rh*(EV_C.length+1)+40);h3("Niveau de chaque compétence, vacation par vacation");
+  RV.forEach((e,i)=>{const l="n°"+e.num;txt(l,M+lw+i*cw+(cw-tw(l,7.4,FB))/2,y+9,7.4,FB,MUT)});y+=14;
+  EV_C.forEach(([k,l],r)=>{txt(wrap(l,8.2,lw-8)[0],M,y+11.5,8.2,F,INK);RV.forEach((e,i)=>{const v=(e.comps&&e.comps[k]&&e.comps[k].lvl)||0;rect(M+lw+i*cw+1,y+1,cw-2,rh-2,v?LC[v]:hex("#eef0f4"));if(v)txt(String(v),M+lw+i*cw+cw/2-2.2,y+11.8,8,FB,v===2?INK:WHITE)});y+=rh});
+  y+=6;let lx=M+lw;[1,2,3,4].forEach(v=>{rect(lx,y,9,9,LC[v]);txt(`${v} ${EV_L[v]}`,lx+13,y+8,7.6,F,MUT);lx+=tw(`${v} ${EV_L[v]}`,7.6)+30});rect(lx,y,9,9,hex("#eef0f4"));txt("non noté",lx+13,y+8,7.6,F,MUT);y+=22}
+ // 3. interventions
+ if(nInter){const ch=120;need(ch+30);h3(`Interventions réalisées (${nInter})`);const TC={SS:"#a3a9b5",UA:"#ff9f0a",UR:"#d92d20",DCD:"#3a4a6b"};
+  const x0=M+26,x1=W-M-10,y0=y+4,y1=y+ch-30,n=RV.length,tot=e=>(e.inter||[]).length,mx=Math.max(4,...RV.map(tot)),bw=Math.min(26,(x1-x0)/n*.6),step=(x1-x0)/n,Y=v=>y1-(y1-y0)*v/mx;
+  [0,mx/2,mx].forEach(v=>{line(x0,Y(v),x1,Y(v),SEP,.5);txt(String(Math.round(v)),x0-6-tw(String(Math.round(v)),7.2),Y(v)+2.6,7.2,F,MUT)});
+  RV.forEach((e,i)=>{const c={UA:0,UR:0,DCD:0,SS:0};(e.inter||[]).forEach(x=>{if(c[x.t]!=null)c[x.t]++});let acc=0;const bx=x0+i*step+(step-bw)/2;["SS","UA","UR","DCD"].forEach(t=>{if(!c[t])return;rect(bx,Y(acc+c[t]),bw,Y(acc)-Y(acc+c[t]),hex(TC[t]));acc+=c[t]});if(acc)txt(String(acc),bx+bw/2-tw(String(acc),7.4,FB)/2,Y(acc)-3,7.4,FB,INK);const l="n°"+e.num;txt(l,bx+bw/2-tw(l,7.2)/2,y1+11,7.2,F,MUT)});
+  let lx=x0;[["UA","UA"],["UR","UR"],["DCD","DCD"],["SS","Sans suite"]].forEach(([t,l])=>{rect(lx,y1+18,9,9,hex(TC[t]));txt(`${l} (${cnt[t]})`,lx+13,y1+26,7.6,F,MUT);lx+=tw(`${l} (${cnt[t]})`,7.6)+30});y+=ch+6}
+ // ------- compétences acquises
+ h2("Compétences acquises",ok.length?"Pourquoi elles sont considérées comme acquises : niveau atteint, stabilité dans le temps et observations de l'encadrant.":"Aucune compétence n'est encore évaluée « Acquis » ou « Maîtrisé » à la dernière vacation.");
+ ok.forEach(a=>{h3(`${lab(a.k)} · ${EV_L[a.last.v]}`,hex("#1f7a3f"));
+  bullet(`Dernière évaluation : ${EV_L[a.last.v]} (vacation ${vac(a.last.e)}).`);
+  bullet(a.streak>=2?`Niveau tenu sur ${a.streak} vacations consécutives : l'acquisition est stable.`:`Niveau atteint à la dernière vacation : à confirmer lors des prochaines.`);
+  if(a.first.v<a.last.v)bullet(`Progression depuis « ${EV_L[a.first.v]} » (vacation ${vac(a.first.e)}).`);
+  if(a.obs)bullet(`Observation de l'encadrant (vacation n°${a.obs.e.num}) : « ${a.obs.o} »`,{f:FI,max:5});y+=4});
+ // ------- à perfectionner
+ h2("Compétences à perfectionner",work.length?"Pourquoi elles restent à travailler : niveau actuel, tendance, observations, et ce qui est attendu.":"Aucune compétence n'est en dessous du niveau « Acquis » à la dernière vacation.");
+ work.forEach(a=>{h3(`${lab(a.k)} · ${EV_L[a.last.v]}`,hex("#b45309"));
+  bullet(`Dernière évaluation : ${EV_L[a.last.v]} (vacation ${vac(a.last.e)}).`);
+  if(a.trend==="up")bullet(`En progrès : « ${EV_L[a.prev.v]} » à la vacation n°${a.prev.e.num}.`);
+  else if(a.trend==="down")bullet(`En recul : « ${EV_L[a.prev.v]} » à la vacation n°${a.prev.e.num}${a.best>=3?" ; le niveau « Acquis » a déjà été atteint, il reste à le stabiliser":""}.`);
+  else if(a.trend==="flat")bullet(`Niveau stable depuis la vacation n°${a.prev.e.num} : la compétence ne progresse plus, elle demande un travail ciblé.`);
+  else bullet("Une seule évaluation pour l'instant : à confirmer lors des prochaines vacations.");
+  if(a.obs)bullet(`Observation de l'encadrant (vacation n°${a.obs.e.num}) : « ${a.obs.o} »`,{f:FI,max:5});
+  bullet(`Attendu : ${desc(a.k)}.`,{c:MUT});
+  const tr=o.train&&o.train[a.k];if(tr&&tr.n)bullet(`Entraînement dans l'appli : ${tr.n} question${tr.n>1?"s":""} liée${tr.n>1?"s":""} déjà travaillée${tr.n>1?"s":""}, dont ${tr.ok} maîtrisée${tr.ok>1?"s":""} (${Math.round(tr.ok/tr.n*100)} %).`,{c:MUT});
+  y+=4});
+ if(none.length){h3("Compétences non encore évaluées",MUT);para(none.map(a=>lab(a.k)).join(" · "),{s:9,c:MUT})}
+ // ------- points travaillés
+ h2("Points travaillés","Ce qui a été travaillé pendant le parcours : progressions constatées, retours en intervention et entraînement personnel.");
+ const prog=A.filter(a=>a.st!=="none"&&a.pts.length>1&&a.last.v>a.first.v);
+ if(prog.length){h3("Progressions constatées");prog.forEach(a=>bullet(`${lab(a.k)} : de « ${EV_L[a.first.v]} » (n°${a.first.e.num}) à « ${EV_L[a.last.v]} » (n°${a.last.e.num}).`))}
+ const recent=L.slice(-3).reverse();const grp=f=>{const m=new Map();recent.forEach(e=>(e.inter||[]).forEach(x=>{const t=String(x[f]||"").trim();if(!t)return;const key=t.toLowerCase().replace(/[\s.;!]+$/,"");if(!m.has(key))m.set(key,{t,tags:[]});const g=m.get(key),tag=`n°${e.num}${x.motif?" "+x.motif.toLowerCase():""}`;if(!g.tags.includes(tag))g.tags.push(tag)}));return [...m.values()].sort((a,b)=>b.tags.length-a.tags.length).map(g=>`${g.t}${/[.!?]$/.test(g.t)?"":"."} (${g.tags.length>1?"relevé "+g.tags.length+" fois : ":""}${g.tags.slice(0,4).join(", ")}${g.tags.length>4?"…":""})`)};const pos=grp("pos"),axes=grp("axes");
+ if(pos.length){h3("Points forts relevés en intervention (3 dernières vacations)");pos.slice(0,6).forEach(t=>bullet(t,{max:3}))}
+ if(axes.length){h3("Axes d'amélioration relevés en intervention (3 dernières vacations)");axes.slice(0,6).forEach(t=>bullet(t,{max:3}))}
+ const au=L.filter(e=>e.autoEnc&&(e.autoEnc.v||e.autoEnc.c));if(au.length){h3("Avis d'autonomie de l'encadrant");au.slice(-4).forEach(e=>bullet(`Vacation ${vac(e)} : ${e.autoEnc.v==="oui"?"apte à tenir le poste en autonomie":e.autoEnc.v==="non"?"pas encore en autonomie":"avis non renseigné"}${e.autoEnc.c?" · « "+String(e.autoEnc.c).trim()+" »":""}`,{max:4}))}
+ if(S&&(S.answered||S.fichesOk)){h3("Entraînement dans l'application");
+  const pc=S.answered?Math.round(S.correct/S.answered*100):0;const k2=[[String(S.answered||0),"réponses données"],[pc+" %","de bonnes réponses"],[`${S.fichesOk||0} / ${S.fichesTotal||0}`,"fiches maîtrisées"],[S.bestExam?S.bestExam+" %":"—","meilleur examen blanc"]];
+  need(50);k2.forEach(([v,l],i)=>{const x=M+i*(kw+6);rect(x,y,kw,40,SOFT);txt(v,x+10,y+19,13,FB,NAVY);txt(l,x+10,y+32,7.6,F,MUT)});y+=50;
+  const hw=Object.entries(S.hw||{}).sort().slice(-12);if(hw.some(([,v])=>v)){const ch=110;need(ch+20);txt("Activité par semaine (points gagnés)",M,y+9,8.6,FB,INK);y+=14;const x0=M+30,x1=W-M-10,y0=y+4,y1=y+ch-30,mx=Math.max(10,...hw.map(([,v])=>v)),step=(x1-x0)/hw.length,bw=Math.min(24,step*.62),Y=v=>y1-(y1-y0)*v/mx;
+   [0,mx].forEach(v=>{line(x0,Y(v),x1,Y(v),SEP,.5);txt(String(Math.round(v)),x0-6-tw(String(Math.round(v)),7),Y(v)+2.6,7,F,MUT)});
+   hw.forEach(([k,v],i)=>{const bx=x0+i*step+(step-bw)/2;if(v)rect(bx,Y(v),bw,y1-Y(v),hex("#0a84ff"));const l="S"+(+k.split("-S")[1]);txt(l,bx+bw/2-tw(l,7)/2,y1+11,7,F,MUT)});y+=ch-6}
+  const th=Object.entries(S.themes||{}).map(([id,v])=>[(DATA.find(t=>t.id===id)||{}).theme||id,v]).filter(([n])=>n).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  if(th.length){need(24+th.length*15);txt("Maîtrise des thèmes de questions",M,y+9,8.6,FB,INK);y+=16;th.forEach(([n,v])=>{need(15);const nm=wrap(n,8,200)[0]+(wrap(n,8,200).length>1?"…":"");txt(nm,M,y+9,8,F,INK);rect(M+210,y+2,CW-250,9,hex("#eef0f4"));if(v)rect(M+210,y+2,(CW-250)*v/100,9,v>=66?hex("#1f9d55"):v>=33?hex("#ff9f0a"):hex("#d92d20"));txt(v+" %",W-M-32,y+9.5,8,FB,INK);y+=15});y+=6}}
+ // ------- commentaire et visa
+ if(o.comment&&o.comment.trim()){h2("Le mot du candidat");para(o.comment.trim(),{s:9.4,f:FI,max:14})}
+ h2("Observations et visa");need(150);const bw2=(CW-12)/2;[["Formateur / accompagnant",M],["Direction",M+bw2+12]].forEach(([t,x])=>{rect(x,y,bw2,138,null,SEP);txt(t,x+8,y+14,8.6,FB,NAVY);for(let i=1;i<=5;i++)line(x+8,y+16+i*19,x+bw2-8,y+16+i*19,SEP,.4);txt("Nom, date et signature :",x+8,y+130,7.6,F,MUT)});y+=150;
+ // pieds de page
+ const n=doc.getPageCount();doc.getPages().forEach((p,i)=>{p.drawLine({start:{x:M,y:36},end:{x:W-M,y:36},thickness:.5,color:SEP});p.drawText(safe("Quiz CI BSPP · Fiche de synthèse des compétences · généré à partir des évaluations de vacation, à valider par le formateur"),{x:M,y:24,size:6.8,font:F,color:MUT});const pn=`${i+1} / ${n}`;p.drawText(pn,{x:W-M-F.widthOfTextAtSize(pn,7.5),y:24,size:7.5,font:F,color:MUT})});
+ doc.setTitle(safe(`Fiche de synthèse des compétences – ${who}`));doc.setAuthor(who);doc.setCreator("Quiz CI BSPP");doc.setSubject("Synthèse des compétences CI BSPP");
+ return {bytes:await doc.save(),name:`Synthese_competences_${who.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"_")}_${new Date().toISOString().slice(0,10)}.pdf`}}
+async function skillShare(r){const blob=new Blob([r.bytes],{type:"application/pdf"});const file=new File([blob],r.name,{type:"application/pdf"});
+ if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:r.name});return}catch(e){if(e&&e.name==="AbortError")return}}
+ const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=r.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
+// entraînement lié à chaque compétence (questions travaillées et maîtrisées) : pour le candidat lui-même
+function skTrain(){const o={};try{EV_C.forEach(([k])=>{const it=evFocusItems(k,false).filter(x=>hist[x._id]&&hist[x._id].length);o[k]={n:it.length,ok:it.filter(x=>known(x._id)).length}})}catch(e){}return o}
+// feuille d'options puis génération ; cand : {id, name, unite, stats} pour un administrateur, sinon soi-même
+function skillSheet(cand){const self=!cand;const ids=self?((evCache&&evCache.mine)||[]).map(e=>e.id):cand.ids;
+ const sh=sheet(`<h2 style="margin:0 0 4px">Fiche de synthèse des compétences</h2><p class="small" style="margin:0 0 12px">Un PDF à remettre ${self?"à tes formateurs, accompagnants ou à la direction":"aux formateurs, accompagnants ou à la direction"} : compétences acquises et pourquoi, points à perfectionner et pourquoi, points travaillés, et graphiques de l'évolution${self?" de tes":" des"} évaluations de vacation.</p>
+  <div class="sect" style="margin-top:0">À l'attention de</div><div class="seg" id="skDest">${Object.entries(SK_DEST).map(([k,l],i)=>`<button data-sd="${k}" aria-pressed="${k==="all"}">${k==="all"?"Tous":l}</button>`).join("")}</div>
+  <label class="row" style="margin-top:10px"><span class="tx"><b>Inclure les fiches non clôturées</b><span>Brouillons en cours de remplissage</span></span><input type="checkbox" id="skDraft"></label>
+  <label class="row"><span class="tx"><b>Inclure l'entraînement dans l'appli</b><span>Réponses, thèmes maîtrisés, activité par semaine</span></span><input type="checkbox" id="skTr" checked></label>
+  ${self?`<div class="sect">Ton mot (facultatif)</div><textarea id="skCom" class="bugt" rows="4" maxlength="800" placeholder="Ce que tu retiens de ton parcours, tes objectifs, tes besoins…"></textarea>`:""}
+  <button class="btn full" id="skGo" style="margin-top:12px">Générer le PDF</button><button class="btn sec full" data-close style="margin-top:8px">Fermer</button><p class="small" id="skMsg" style="margin:8px 4px 0"></p>`);
+ const box=sh.querySelector(".sheet")||sh.firstElementChild;let dest="all";box.querySelectorAll("[data-sd]").forEach(b=>b.onclick=()=>{dest=b.dataset.sd;box.querySelectorAll("[data-sd]").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+ box.querySelector("#skGo").onclick=async e=>{const btn=e.currentTarget,msg=box.querySelector("#skMsg");btn.disabled=true;msg.textContent="Préparation de la fiche…";
+  try{let evs=await skCollect(ids);if(!box.querySelector("#skDraft").checked)evs=evs.filter(x=>x.status==="done");evs=evs.filter(skRated);
+   if(!evs.length){msg.textContent=box.querySelector("#skDraft").checked?"Aucune vacation avec des compétences notées.":"Aucune vacation clôturée avec des compétences notées : coche « Inclure les fiches non clôturées » pour utiliser les brouillons.";btn.disabled=false;return}
+   const tr=box.querySelector("#skTr").checked;let logo=null;try{const r=await fetch("logo-crf.png");if(r.ok)logo=await r.arrayBuffer()}catch(x){}
+   const name=self?(evs[evs.length-1].candN||(evCache&&evCache.name)||me.pseudo):(cand.name||evs[evs.length-1].candN||cand.pseudo);
+   const r=await skillPdf({evs,name,unite:self?me.unite||"":cand.unite||"",parrain:self?me.parrain||"":cand.parrain||"",dest,stats:tr?(self?buildStats():cand.stats):null,train:tr&&self?skTrain():null,comment:self?box.querySelector("#skCom").value.slice(0,800):"",logo});
+   alog("eval","fiche de synthèse des compétences",{vacations:evs.length,pour:self?"soi":"admin"});msg.textContent="";btn.disabled=false;await skillShare(r)}
+  catch(err){logErr("synthese-competences",err&&err.message,err&&err.stack);msg.textContent="Impossible de générer la fiche : "+(err.error||err.message||"erreur")+".";btn.disabled=false}}}
+const skBtn=()=>`<button class="btn sec full skbtn" data-skill>${I.doc}<span>Ma fiche de synthèse des compétences (PDF)</span></button>`;
+document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-skill]");if(b){e.preventDefault();skillSheet()}});
 // ---- Statistiques : progression d'une vacation à l'autre
 function statVacations(){const E=evCache||{mine:[]};const L=(E.mine||[]).slice().sort((a,b)=>a.num-b.num);
  if(!L.length)return `<div class="card"><b>Aucune vacation évaluée</b><p class="small" style="margin:6px 0 0">En mode CI BSPP, l'outil <b>Évaluations</b> te permet de remplir la synthèse de tes vacations d'accompagnement avec ton encadrant. Ta progression apparaîtra ici.</p></div>`;
  const last=L[L.length-1];const weak=evWeak();
- return `<div class="card"><b>Compétences, vacation par vacation</b><div class="evtable"><table><thead><tr><th></th>${L.map(e=>`<th>n°${e.num}</th>`).join("")}</tr></thead><tbody>
+ return `${L.some(e=>EV_C.some(([k])=>e.comps&&e.comps[k]))?skBtn():""}<div class="card"><b>Compétences, vacation par vacation</b><div class="evtable"><table><thead><tr><th></th>${L.map(e=>`<th>n°${e.num}</th>`).join("")}</tr></thead><tbody>
   ${EV_C.map(([k,l])=>`<tr><td>${esc(l)}</td>${L.map(e=>{const v=e.comps&&e.comps[k]||0;return `<td><span class="evdot" style="background:${EV_COL[v]}" title="${EV_L[v]}">${v||""}</span></td>`}).join("")}</tr>`).join("")}
   <tr><td>Autonomie (encadrant)</td>${L.map(e=>`<td>${e.autoEnc==="oui"?"✓":e.autoEnc==="non"?"✗":"—"}</td>`).join("")}</tr></tbody></table></div>
   <div class="evleg">${[1,2,3,4].map(v=>`<span><i style="background:${EV_COL[v]}"></i>${EV_L[v]}</span>`).join("")}</div></div>
@@ -1619,19 +1761,22 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 let bugF="open",bugQ="",bugList=null;
 const BUG_ST={new:["Nouveau","ko"],doing:["En cours","warn"],done:["Résolu","ok"],wontfix:["Sans suite","none"]};
 const bugDate=t=>new Date(t).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+let bugApi=null;
 async function viewBugs(){app.innerHTML=push("Signalements")+`<div id="bgBody"><div class="loading">Chargement…</div></div>`;bindBack(()=>viewAdmin());
- try{bugList=(await api("admin/bugs")).bugs||[]}catch(e){const el=$("#bgBody");if(el)el.innerHTML=`<p class="sub" style="margin-top:16px">${esc(e.error||"Erreur.")}</p>`;return}
+ try{const j=await api("admin/bugs");bugList=j.bugs||[];bugApi=j.bugApi||null}catch(e){const el=$("#bgBody");if(el)el.innerHTML=`<p class="sub" style="margin-top:16px">${esc(e.error||"Erreur.")}</p>`;return}
  drawBugs()}
 function drawBugs(){const el=$("#bgBody");if(!el||!bugList)return;const qn=norm(bugQ);
  const inF=b=>bugF==="all"||(bugF==="open"?["new","doing"].includes(b.status):b.status===bugF);
  const L=bugList.filter(b=>inF(b)&&(!qn||norm([b.no,"#"+b.no,b.pseudo,b.email,b.name,b.text,b.ctx&&b.ctx.ecran,b.ctx&&b.ctx.question,b.ctx&&b.ctx.version].join(" ")).includes(qn)));
  const n=k=>bugList.filter(b=>k==="open"?["new","doing"].includes(b.status):k==="all"?true:b.status===k).length;
  el.innerHTML=`<p class="small" style="margin:12px 4px 10px">Les problèmes signalés par les membres, avec la capture de leur écran au moment du signalement. Visible des seuls administrateurs.</p>
+  ${bugApi&&bugApi.on?`<div class="card small" style="margin:0 0 10px;padding:12px 14px;line-height:1.4"><b>Suivi avec Claude</b> : accès API ${bugApi.off?"<b>coupé</b>":"<b>actif</b>"}${bugApi.last?" · dernier accès "+esc(bugDate(bugApi.last)):" · jamais utilisé"}. Claude lit les signalements (sans les adresses e-mail) et met à jour leur statut et leur note.${me&&me.superAdmin?` <br><button class="btn sec small" id="bgApi" style="margin-top:8px">${bugApi.off?"Rétablir l'accès":"Couper l'accès"}</button>`:""}</div>`:""}
   <div class="seg" style="margin-bottom:10px">${[["open","À traiter"],["new","Nouveaux"],["doing","En cours"],["done","Résolus"],["all","Tous"]].map(([k,l])=>`<button data-bf="${k}" aria-pressed="${bugF===k}">${l} (${n(k)})</button>`).join("")}</div>
   <input class="search" id="bgq" type="search" placeholder="Rechercher : n°, membre, écran, Q0123, mot…" value="${esc(bugQ)}">
   <div class="actions" style="margin:10px 0"><button class="btn sec small" id="bgCsv">Exporter (CSV)</button><button class="btn sec small" id="bgJson">Exporter avec captures</button></div><p class="small" id="bgMsg" style="margin:0 4px 8px"></p>
   <div class="list">${L.map(b=>{const s=BUG_ST[b.status]||BUG_ST.new;return `<button class="row bgrow" data-bg="${esc(b.id)}"><span class="bgno">#${b.no}</span><span class="tx"><b>${esc(b.text.slice(0,90))}${b.text.length>90?"…":""}</b><span>${esc(bugDate(b.at))} · ${esc(b.pseudo)} · ${esc(b.ctx&&b.ctx.ecran||"")}${b.ctx&&b.ctx.question?" · "+esc(b.ctx.question):""}${b.img?" · capture":""}</span></span><span class="pill ${s[1]}">${s[0]}</span></button>`}).join("")||`<div class="row"><span class="tx"><span>Aucun signalement.</span></span></div>`}</div>`;
  el.querySelectorAll("[data-bf]").forEach(b=>b.onclick=()=>{bugF=b.dataset.bf;drawBugs()});
+ const ba=$("#bgApi");if(ba)ba.onclick=async()=>{ba.disabled=true;try{const j=await api("admin/bugapi","POST",{off:!bugApi.off});bugApi.off=j.off;drawBugs()}catch(e){ba.disabled=false;toast(e.error||"Erreur.")}};
  let to;el.querySelector("#bgq").oninput=e=>{bugQ=e.target.value;clearTimeout(to);to=setTimeout(()=>{drawBugs();const i=$("#bgq");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)};
  el.querySelectorAll("[data-bg]").forEach(b=>b.onclick=()=>openBug(b.dataset.bg));
  el.querySelector("#bgCsv").onclick=()=>bugExportCsv(L);el.querySelector("#bgJson").onclick=()=>bugExportJson(L)}
@@ -1669,6 +1814,7 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {art:ic(I.book,"#5e5ce6"),t:"Le référentiel à portée de main",p:"Après chaque question, <b>Voir dans le référentiel</b> ouvre la bonne page du document. Le drapeau <b>Marquer</b> garde une question de côté pour la revoir dans Réviser. Chaque question porte un <b>numéro</b> (Q0123, S0123) pour la retrouver ou la signaler.",n:"Tous les documents sont aussi dans le menu Documents, avec une recherche."},
  {art:`<div class="tpair">${ic(RADIO_IC_T,"#0f1d36")}${ic(MAP_IC_T,"#1f9d55")}</div>`,t:"Tes outils de garde",p:"<b>Messages radio</b> : construis ton message pas à pas avec ton indicatif. <b>Codes CRI</b>, <b>Carte des secteurs</b> (adresses des CS et téléphones des PVO), <b>Hôpitaux</b> (le plus proche, filtré par spécialité), <b>Grades</b>, <b>Documents</b> et <b>Évaluations</b> (la synthèse de tes vacations).",n:"Tout est accessible depuis le menu en haut à droite."},
  {art:ic(I.user,"#ff9f0a"),t:"Classements et équipes",p:"Rejoins ou crée ton équipe dans Profil › Équipe : ta demande doit être acceptée par un membre, et l'équipe peut fixer un nombre maximum de joueurs. Touche une <b>équipe</b> pour voir ses membres (Points, Défi, Fiches, Duels), puis un <b>membre</b> pour voir sa fiche et le défier. Les points de la semaine repartent de zéro chaque lundi.",n:"Le menu Statistiques montre ton total depuis ton arrivée, tes courbes semaine par semaine et ton évaluation par fiche."},
+ {id:"new530",art:ic(I.doc,"#1f7a3f"),t:"Fiche de synthèse des compétences",p:"Tu as des <b>évaluations de vacation</b> ? Dans <b>Évaluations</b> ou <b>Statistiques › Vacations</b>, génère le <b>PDF</b> de ta fiche de synthèse à remettre à tes formateurs, accompagnants ou à la direction : compétences acquises et pourquoi, points à perfectionner, points travaillés et graphiques de ton évolution. Dans <b>Profil › Modifier</b>, choisis ton <b>unité locale</b> et indique ton <b>parrain ou ta marraine</b> : ils figurent sur la fiche."},
  {id:"new520",art:ic(BUG_IC.replace('width="18" height="18"','width="40" height="40"'),"#0f1d36"),t:"Signaler un problème",p:"Une erreur dans une question, un bouton qui ne répond pas ? Touche la petite icône <b>insecte (bug)</b> en haut de l'écran : l'appli prend une <b>capture</b> de l'écran, tu décris le souci en quelques mots et les administrateurs le reçoivent avec les détails utiles. Chaque question porte aussi un <b>numéro</b> (Q0123 au niveau Officier, S0123 au niveau Sapeur) à citer pour la retrouver.",n:"Le signalement est aussi accessible dans Profil › Moi › Aide. Dans Réviser, tape un numéro pour retrouver la question."},
  {id:"new511",art:ic(I.book,"#e3051b"),t:"Nouveautés PSE 2026",p:"Les 12 fiches mises à jour du référentiel PSE de la Croix-Rouge sont dans <b>Documents › Nouveautés PSE 2026</b> : arrêt cardiaque de l'enfant et du nourrisson, compressions thoraciques, DAE, perte de connaissance, amputation, accouchement inopiné, massage utérin, chaleur et refroidissement, tri des déchets. Un nouveau thème de questions <b>PSE 2026</b> les accompagne, aux niveaux Sapeur et Officier.",n:"Le thème est activé automatiquement ; tu peux le décocher comme les autres. Il ne compte pas dans le défi de la semaine."},
  {id:"new510",art:ic(I.doc,"#3a4a6b"),t:"Message de rentrée",p:"Nouveau jeu : une intervention de secours à personne est racontée, à toi de composer ton <b>message de rentrée</b> au PVO (actions, victimes, défibrillateur public, dégâts, difficultés…) et de choisir le <b>CRI</b>. La correction reprend chaque point et montre le message attendu.",n:"Tuile « Message de rentrée » de l'accueil, ou Messages radio › S'entraîner. En mode CI BSPP : Messages radio › Construire."},
@@ -1679,9 +1825,10 @@ function tutoSlides(){const ic=(svg,bg)=>`<span class="tic" style="background:${
  {id:"duel",art:`<div class="tpair"><div><span class="tdeco">${DECO_IC.medal}</span><b>Gagnant</b></div><div><span class="tdeco">${DECO_IC.broom}</span><b>Perdant</b></div><div><span class="tdeco">${DECO_IC.run}</span><b>Refus</b></div></div>`,t:"Les duels",p:"Défie un membre sur <b>10 questions chronométrées</b>, au thème et au niveau de ton choix : tuile <b>Duels</b> de l'accueil ou bouton ⚔ dans les classements. Ton adversaire a 48 h pour jouer les mêmes questions ; plus on répond vite, plus on marque. Le gagnant porte la <b>médaille</b> et le perdant passe <b>le balai</b>. Le gagnant choisit ensuite un <b>surnom</b> pour le perdant <b>ou</b> lui inflige un <b>gage</b> d'une heure (réponses qui s'enfuient, questions à l'envers…) ; avec un <b>sans-faute (10/10)</b>, il a droit aux deux. Refuser ? Tu deviens le <b>pompier qui se défile</b> !",n:"Décorations et surnom s'affichent 24 h, le gage dure 1 h (jamais en examen, défi ou duel). Victoire +30 points, nul +15, défaite +10. Pas de limite au nombre de défis en cours. Active les <b>notifications</b> dans Profil › Moi pour savoir quand on te défie."},
  {id:"rank",art:`<div class="tpair"><div>${gradeSvg("SAP","tgr")}<b>Sapeur 2e cl.</b></div><div>${gradeSvg("1CL","tgr")}<b>1re classe</b></div><div>${gradeSvg("CPL","tgr")}<b>Caporal</b></div></div>`,t:"Monte en grade",p:"Tu débutes <b>Sapeur de 2e classe</b>. Chaque exercice d'au moins 5 questions réussi à <b>50 % ou plus</b> fait avancer ta barre de progression. Une fois la barre pleine, l'<b>examen de passage</b> se débloque : 15 questions, <b>12 bonnes réponses</b> pour être promu, avec feu d'artifice et ton nouveau galon.",n:"Il faut 3 exercices réussis pour les premiers grades, un peu plus à mesure que tu montes. Examen raté : nouvel essai après 3 exercices réussis."},
  {art:`<div class="tpair"><div>${gradeSvg("SCH","tgr")}<b>Sergent-chef</b></div><div><span class="tgr">${LTN_HELM}</span><b>Niveau Officier</b></div></div>`,t:"Garde tes galons",p:"<b>3 exercices d'affilée sous 50 %</b> et tu redescends d'un grade : l'appli te prévient dès le 2e. Au-delà de <b>Sergent-chef</b>, seuls les exercices du <b>niveau Officier</b> font progresser : pour viser Adjudant, Lieutenant ou Général, il faut maîtriser les questions expertes.",n:"Ton grade, ta barre de progression et le bouton de l'examen sont dans Profil › Moi et en haut du menu Statistiques. Ton galon s'affiche aussi devant ton pseudo dans les classements."},
- {art:`<div class="tpair">${ic(FLAME_IC,"#ff6a00")}${ic(I.refresh,"#0f1d36")}</div>`,t:"Ton profil, tes réglages",p:"Dans Profil › Moi : choisis ton ambiance : <b>Normal</b>, <b>Braise</b> (messages de sergent-chef énervé, sans effets) ou <b>On Fire</b> (en plus, thème enflammé et animations : 5 bonnes réponses d'affilée déclenchent la lance, 3 erreurs l'alarme, et 10 de suite la médaille <b>Soldat du feu</b>). Et si l'appli semble ancienne, touche <b>Forcer la mise à jour</b> pour charger la dernière version.",n:"Ta version et la dernière version en ligne y sont affichées. Ta progression est conservée."},
+ {art:`<div class="tpair">${ic(FLAME_IC,"#ff6a00")}${ic(I.refresh,"#0f1d36")}</div>`,t:"Ton profil, tes réglages",p:"Dans Profil › Moi › <b>Modifier</b> : ton pseudo, ton <b>unité locale</b> et ton <b>parrain</b>. Choisis aussi ton ambiance : <b>Normal</b>, <b>Braise</b> (messages de sergent-chef énervé, sans effets) ou <b>On Fire</b> (en plus, thème enflammé et animations : 5 bonnes réponses d'affilée déclenchent la lance, 3 erreurs l'alarme, et 10 de suite la médaille <b>Soldat du feu</b>). Et si l'appli semble ancienne, touche <b>Forcer la mise à jour</b> pour charger la dernière version.",n:"Ta version et la dernière version en ligne y sont affichées. Ta progression est conservée."},
  {art:ic(I.plus,"#e3051b"),t:"À toi de jouer !",p:"Sur iPhone, ajoute l'appli à ton écran d'accueil : bouton <b>Partager</b> puis <b>Sur l'écran d'accueil</b>. Le menu se trouve en haut à droite de chaque page.",n:"Tu pourras revoir cette présentation à tout moment dans Profil › Moi › Tutoriel."}]}
 const NEWS={rank:{n:2,t:"Nouveau dans la version 3.2",p:"Deux nouveautés : un <b>grade de progression</b> qui évolue avec tes résultats, et un menu <b>Statistiques</b> à part. Voici comment ça marche."},
+ new530:{n:1,t:"Nouveau dans la version 5.3",p:"Une <b>fiche de synthèse de tes compétences</b> en PDF, avec graphiques d'évolution, à remettre aux formateurs, accompagnants et à la direction. Et dans ton profil : ton <b>unité locale</b> et ton <b>parrain</b>."},
  new520:{n:1,t:"Nouveau dans la version 5.2",p:"Tu peux maintenant <b>signaler un problème</b> en un geste, avec une capture de l'écran, et chaque question a son <b>numéro</b>. Les notifications ouvrent aussi directement le bon écran."},
  new511:{n:1,t:"Nouveau dans la version 5.1.1",p:"Les nouveautés du <b>référentiel PSE 2026</b> de la Croix-Rouge arrivent dans l'appli, avec leur thème de questions."},
  new510:{n:1,t:"Nouveau dans la version 5.1",p:"Un nouveau jeu pour t'entraîner au <b>message de rentrée</b> et au <b>CRI</b>, et une visionneuse de documents mieux adaptée à l'écran du téléphone."},
@@ -3108,9 +3255,8 @@ function meCard(){if(!me||me.expired)return noProfileCard();
   const myAcc=s.answered?Math.round(s.correct/s.answered*100):0;const tAcc=avg(p=>p.stats.answered?p.stats.correct/p.stats.answered*100:0);
   const rk=k=>{const r=myRank(k);return `<div class="kpi">${r?`<b>${r.pos}<sup>e</sup><small>/${r.of}</small></b>`:`<b>–</b>`}<span>${esc(k==="defi"?"Défi semaine":METRICS[k].l())}</span></div>`};
   const bar=(lab,mine,their,unit="%")=>`<div class="cmp"><div class="cmpl"><span>${lab}</span><span><b>${mine}${unit}</b>${their!=null?` · équipe ${their}${unit}`:""}</span></div><div class="cmpb"><i style="width:${Math.min(100,mine)}%"></i>${their!=null?`<em style="left:${Math.min(100,their)}%"></em>`:""}</div></div>`;
-  return `<div class="card"><div style="display:flex;gap:12px;align-items:center">${avatar(me,52)}<div style="flex:1;min-width:0"><b style="font-size:19px">${esc(me.pseudo)}</b>${fxMode==="fire"?` <span class="pill firepill">${FLAME_IC} On Fire</span>`:fxMode==="sgt"?` <span class="pill firepill sgtpill">${SGT_IC} Braise</span>`:""}${me.superAdmin?` <span class="pill warn">Super admin</span>`:me.admin?` <span class="pill warn">Admin</span>`:""}<div class="small">${esc(me.unite||"")}${me.unite?" · ":""}${s.points.toLocaleString("fr-FR")} pts cette semaine</div></div><button class="btn sec small" id="editProfile">Modifier</button></div>
+  return `<div class="card"><div style="display:flex;gap:12px;align-items:center">${avatar(me,52)}<div style="flex:1;min-width:0"><b style="font-size:19px">${esc(me.pseudo)}</b>${fxMode==="fire"?` <span class="pill firepill">${FLAME_IC} On Fire</span>`:fxMode==="sgt"?` <span class="pill firepill sgtpill">${SGT_IC} Braise</span>`:""}${me.superAdmin?` <span class="pill warn">Super admin</span>`:me.admin?` <span class="pill warn">Admin</span>`:""}<div class="small">${me.unite&&ulOk(me.unite)?esc(me.unite)+" · ":""}${s.points.toLocaleString("fr-FR")} pts cette semaine</div></div><button class="btn sec small" id="editProfile">Modifier</button></div>${me.unite&&ulOk(me.unite)?"":`<button class="row ulpick" id="ulPick" style="margin-top:10px;width:100%;border-radius:12px;background:var(--red-soft)"><span class="tx"><b style="color:var(--red)">Choisis ton unité locale</b><span>Une seule unité par membre, dans la liste des UL de Paris.</span></span><span class="chev">${I.chev}</span></button>`}
    <div class="kpis rks" style="margin-top:14px">${rk("points")}${rk("defi")}${rk("fiches")}</div></div>
-   ${me.admin?`<div class="list" style="margin-top:12px"><button class="row" id="openAdmin"><span class="ic" style="background:var(--navy2)">${I.user}</span><span class="tx"><b>Administration</b><span>Membres, équipes, accès, remises à zéro</span></span><span class="chev">${I.chev}</span></button></div>`:""}
    ${teamCard()}
    <div class="sect">Moi face à ${boardScope==="team"&&teamOf(myTeamId())?"mon équipe":"tout le monde"}</div>
    <div class="card">${bar("Taux de réussite",myAcc,tAcc)}${bar("Fiches acquises",Math.round(s.fichesOk/s.fichesTotal*100),avg(p=>p.stats.fichesOk/(p.stats.fichesTotal||1)*100))}
@@ -3125,31 +3271,35 @@ function accountCard(){if(!me||me.expired)return"";
 function bindMe(){bindInstall();bindTeams();
   const g=$("#gLogin");if(g)g.onclick=loginGoogle;
   const mk=$("#mkProfile");if(mk)mk.onclick=()=>profileSheet(false);
-  const ed=$("#editProfile");if(ed)ed.onclick=()=>profileSheet(true);
-  const ad=$("#openAdmin");if(ad)ad.onclick=viewAdmin;
+  const ed=$("#editProfile");if(ed)ed.onclick=()=>profileSheet(true);const ulp=$("#ulPick");if(ulp)ulp.onclick=()=>profileSheet(true);
   const sy=$("#syncBtn");if(sy)sy.onclick=async()=>{$("#accMsg").textContent="Synchronisation…";await syncNow();$("#accMsg").textContent=store.get("lastSync",0)>Date.now()-5000?"Scores envoyés.":"Échec : vérifie ta connexion."};
   const lo=$("#logoutBtn");if(lo)lo.onclick=logout;
   const dl=$("#delProfile");if(dl)dl.onclick=async()=>{if(!dl.dataset.c){dl.dataset.c="1";$("#delMsg").textContent="Touche encore pour confirmer : ton profil sera supprimé du classement (ta progression locale est conservée).";return}
     try{await api("profile","DELETE",{})}catch(e){}me=null;saveMe();board=null;store.del("board");await clearProtected();location.replace(location.pathname)};
 }
+// 5.3.0 : unités locales (une seule par membre)
+const UL_LIST=["Paris I-II","Paris III-X","Paris IV","Paris V","Paris VI","Paris VII","Paris VIII","Paris IX","Paris XII","Paris XIII","Paris XIV","Paris XV","Paris XVI","Paris XVII","Paris XVIII","Paris XIX","Paris XX"].map(x=>"UL "+x);
+function ulMatch(v){v=String(v||"").trim();if(!v)return "";if(UL_LIST.includes(v))return v;const r=v.toUpperCase().replace(/\b(UL|CRF|U\.L\.|UNITÉ|UNITE|LOCALE|DE|CROIX-ROUGE|PARIS)\b/g," ").replace(/\s*[-–\/]\s*/g,"-").trim().split(/\s+/).pop()||"";const f=UL_LIST.find(u=>u.split(" ").pop()===r);return f||""}
+const ulOk=v=>!v||UL_LIST.includes(v);
 function profileSheet(edit,welcome){const p=edit?me:{pseudo:"",unite:"",color:COLORS[Math.floor(Math.random()*COLORS.length)],team:store.get("lastTeam","")};let color=p.color;
-  const sh=sheet(`<h2>${welcome?"Bienvenue !":edit?"Modifier mon profil":"Créer mon profil"}</h2>${welcome?`<p class="small">Vérifie le pseudo qui apparaîtra dans le classement et indique ton unité.</p>`:""}
+  const sh=sheet(`<h2>${welcome?"Bienvenue !":edit?"Modifier mon profil":"Créer mon profil"}</h2>${welcome?`<p class="small">Vérifie le pseudo qui apparaîtra dans le classement et choisis ton unité locale.</p>`:""}
    <form id="pform" class="form"><label for="fPseudo">Pseudo</label><input id="fPseudo" maxlength="24" required value="${esc(p.pseudo)}" placeholder="ex. Pierre B.">
-    <label for="fUnite">Unité ou centre (facultatif)</label><input id="fUnite" maxlength="40" value="${esc(p.unite||"")}" placeholder="ex. CRF Paris 15e">
+    <label for="fUnite">Unité locale</label><select id="fUnite"><option value="">— Choisir mon unité locale —</option>${UL_LIST.map(u=>`<option value="${u}" ${ulMatch(p.unite)===u?"selected":""}>${u}</option>`).join("")}</select>${p.unite&&!ulOk(p.unite)?`<p class="small" style="margin:4px 2px 0">Avant : « ${esc(p.unite)} ». Choisis ton unité dans la liste.</p>`:""}
+    ${edit?`<label for="fParr">Parrain ou marraine (facultatif)</label><input id="fParr" maxlength="60" list="fParrL" value="${esc(p.parrain||"")}" placeholder="Nom de ton parrain ou de ta marraine" autocomplete="off"><datalist id="fParrL">${((board&&board.profiles)||[]).filter(x=>x.id!==me.id).map(x=>`<option value="${esc(x.pseudo)}">`).join("")}</datalist><p class="small" style="margin:4px 2px 0">Il apparaît sur ta fiche de synthèse des compétences.</p>`:""}
     <label>Couleur</label><div class="colors">${COLORS.map(c=>`<button type="button" class="col" data-c="${c}" style="background:${c}" aria-pressed="${c===color}" aria-label="Couleur"></button>`).join("")}</div>
     ${edit?"":`<label for="fTeam">Code d'équipe</label><input id="fTeam" autocapitalize="characters" value="${esc(p.team||"")}" placeholder="Donné par ton responsable">`}
     <button class="btn full" type="submit" style="margin-top:16px">${edit?"Enregistrer":"Créer mon profil"}</button><p class="small" id="pMsg" style="color:var(--ko)"></p></form>`);
   sh.querySelectorAll(".col").forEach(b=>b.onclick=()=>{color=b.dataset.c;sh.querySelectorAll(".col").forEach(x=>x.setAttribute("aria-pressed",x===b))});
   sh.querySelector("#pform").onsubmit=async e=>{e.preventDefault();const m=sh.querySelector("#pMsg");m.textContent="";const btn=sh.querySelector('[type="submit"]');btn.disabled=true;
     const pseudo=sh.querySelector("#fPseudo").value.trim(),unite=sh.querySelector("#fUnite").value.trim();
-    try{if(edit){const j=await api("profile","PUT",{pseudo,unite,color});Object.assign(me,{pseudo:j.profile.pseudo,unite:j.profile.unite,color:j.profile.color});saveMe()}
+    try{if(edit){const parrain=sh.querySelector("#fParr").value.trim();const j=await api("profile","PUT",{pseudo,unite,color,parrain});Object.assign(me,{pseudo:j.profile.pseudo,unite:j.profile.unite,color:j.profile.color,parrain:j.parrain||""});saveMe()}
       else{const team=sh.querySelector("#fTeam").value.trim();store.set("lastTeam",team);const j=await api("profile","POST",{team,pseudo,unite,color,stats:buildStats()});me={id:j.id,token:j.token,pseudo:j.profile.pseudo,unite:j.profile.unite,color:j.profile.color,resetSeen:Date.now()};saveMe()}
       closeSheet();await loadBoard(true);viewProfile()}catch(err){m.textContent=err.error||"Erreur.";btn.disabled=false}}}
 
 /* ---- administration */
 let adminData=null,adminQ="";
-async function viewAdmin(){app.innerHTML=push("Administration")+`<div class="loading">Chargement…</div>`;bindBack(()=>go("profile"));
-  try{adminData=await api("admin/members")}catch(e){app.innerHTML=push("Administration")+`<p class="sub" style="margin-top:20px">${esc(e.error||"Accès refusé.")}</p>`;bindBack(()=>go("profile"));return}
+async function viewAdmin(){app.innerHTML=push("Administration")+`<div class="loading">Chargement…</div>`;bindBack(()=>go(tab,true));
+  try{adminData=await api("admin/members")}catch(e){app.innerHTML=push("Administration")+`<p class="sub" style="margin-top:20px">${esc(e.error||"Accès refusé.")}</p>`;bindBack(()=>go(tab,true));return}
   drawAdmin()}
 async function drawAdminTeams(){const el=$("#adTeams");if(!el)return;let d;try{d=await api("teams")}catch(e){if(el.isConnected)el.innerHTML=`<p class="small">${esc(e.error||"Erreur.")}</p>`;return}
   if(!el.isConnected)return; // l'écran a été quitté pendant le chargement
@@ -3173,7 +3323,7 @@ function drawAdmin(){setTimeout(drawAdminTeams,0);const A=adminData,S=A.settings
    <input class="search" id="aq" type="search" placeholder="Rechercher un membre" value="${esc(adminQ)}">
    <div class="list" style="margin-top:10px">${mem.map(m=>`<button class="row lbrow" data-mem="${esc(m.id)}">${avatar(m)}<span class="tx"><b>${esc(m.pseudo)} ${badge(m)}</b><span>${esc(m.email||"sans compte Google")}${m.unite?" · "+esc(m.unite):""}</span><span>${(m.stats&&m.stats.points||0).toLocaleString("fr-FR")} pts · ${m.lastLogin?"vu "+new Date(m.lastLogin).toLocaleDateString("fr-FR"):"jamais connecté"}</span></span><span class="chev">${I.chev}</span></button>`).join("")||`<div class="row"><span class="tx"><span>Aucun membre.</span></span></div>`}</div>
    <p class="small" style="margin:10px 4px">Super administrateur : ${esc(A.superEmail)}. ${A.superAdmin?"Tu peux nommer d'autres administrateurs depuis la fiche d'un membre.":"Seul le super administrateur peut nommer des administrateurs."}</p>`;
-  bindBack(()=>go("profile"));
+  bindBack(()=>go(tab,true));
   $("#aform").onsubmit=async e=>{e.preventDefault();const m=$("#aMsg");m.textContent="Enregistrement…";
     try{const j=await api("admin/settings","PUT",{allowedDomains:$("#aDom").value,allowedEmails:$("#aMail").value});adminData.settings=j.settings;m.textContent="Accès enregistrés.";$("#aDom").value=j.settings.allowedDomains.join(", ");$("#aMail").value=j.settings.allowedEmails.join("\n")}catch(err){m.textContent=err.error||"Erreur."}};
   $("#openLogs").onclick=()=>viewLogs();$("#openBugs").onclick=()=>viewBugs();api("admin/bugs").then(j=>{const n=(j.bugs||[]).filter(b=>b.status==="new").length;const e=$("#bugN");if(e&&n)e.innerHTML=`<span class="dlbadge">${n}</span>`}).catch(()=>{});
@@ -3208,9 +3358,10 @@ function memberSheet(m){const A=adminData;const canAdmin=A.superAdmin&&m.email&&
 async function admEvals(m){let L=[];try{L=(await api("ev/list?cand="+encodeURIComponent(m.id))).mine||[]}catch(e){toast(e.error||"Erreur.");return}
  const draw=()=>{const sh=sheet(`<h2 style="margin:0 0 4px">Évaluations · ${esc(m.pseudo)}</h2><p class="small" style="margin:0 0 12px">${L.length?`${L.length} fiche${L.length>1?"s":""}. Supprimer une fiche efface aussi sa trace dans les statistiques de progression.`:"Aucune fiche d'évaluation."}</p>
   ${L.length?`<div class="list">${L.slice().sort((a,b)=>b.num-a.num).map(e=>`<div class="row evadm"><span class="ic" style="background:${e.status==="done"?"#1f9d55":"#ff9f0a"}">${e.num}</span><span class="tx"><b>Vacation n°${e.num}</b><span>${esc(evDate(e.date))} · ${e.status==="done"?"clôturée":"brouillon"}${e.enc&&e.enc.name?" · "+esc(e.enc.name):""}</span></span><button class="btn sec small" data-eo="${esc(e.id)}">Voir</button><button class="btn sec small" data-ed="${esc(e.id)}" style="color:var(--ko)">Suppr.</button></div>`).join("")}</div>`:""}
-  <div class="actions" style="flex-direction:column">${L.length>1?`<button class="btn sec full" id="evDelAll" style="color:var(--ko)">Supprimer toutes ses évaluations</button>`:""}<button class="btn full" data-close>Fermer</button></div><p class="small" id="eaMsg"></p>`);
+  <div class="actions" style="flex-direction:column">${L.some(e=>EV_C.some(([k])=>e.comps&&e.comps[k]))?`<button class="btn sec full" id="evSk">${I.doc} Fiche de synthèse des compétences (PDF)</button>`:""}${L.length>1?`<button class="btn sec full" id="evDelAll" style="color:var(--ko)">Supprimer toutes ses évaluations</button>`:""}<button class="btn full" data-close>Fermer</button></div><p class="small" id="eaMsg"></p>`);
   const del=async ids=>{const msg=sh.querySelector("#eaMsg");msg.textContent="Suppression…";try{for(const id of ids)await api("ev/delete","POST",{eid:id});L=L.filter(e=>!ids.includes(e.id));toast(ids.length>1?"Évaluations supprimées.":"Fiche supprimée.");alog("admin","évaluations supprimées",{membre:m.pseudo,n:ids.length});draw()}catch(e){msg.textContent=e.error||"Erreur."}};
-  sh.querySelectorAll("[data-eo]").forEach(b=>b.onclick=()=>{closeSheet();evOpen(b.dataset.eo,()=>go("profile"))});
+  sh.querySelectorAll("[data-eo]").forEach(b=>b.onclick=()=>{closeSheet();evOpen(b.dataset.eo,()=>viewAdmin())});
+  const sk=sh.querySelector("#evSk");if(sk)sk.onclick=()=>{closeSheet();setTimeout(()=>skillSheet({ids:L.map(e=>e.id),name:m.name||"",pseudo:m.pseudo,unite:m.unite||"",parrain:m.parrain||"",stats:m.stats||null}),250)};
   sh.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{if(!b.dataset.c){b.dataset.c="1";b.textContent="Confirmer";return}del([b.dataset.ed])});
   const da=sh.querySelector("#evDelAll");if(da)da.onclick=()=>{if(!da.dataset.c){da.dataset.c="1";da.textContent="Confirmer : tout supprimer ("+L.length+" fiches)";return}del(L.map(e=>e.id))}};
  draw()}
@@ -3224,15 +3375,16 @@ alog("demarrage",APP_VER,{chargement:Math.round(performance.now())+" ms",langue:
 if(me&&me.id){const o=store.get("progOwner",null);if(o&&o!==me.id)applyProgress({resetAt:0});store.set("progOwner",me.id)}
 go(tab);{const wel=store.get("welcome",false);if(wel)store.del("welcome");const tk="tutoSeen_"+(me&&me.id||"x");
  const afterTuto=()=>{if(wel){profTab="moi";go("profile");profileSheet(true,true)}};
- const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x"),nk5="news510_"+(me&&me.id||"x"),nk6="news511_"+(me&&me.id||"x"),nk7="news520_"+(me&&me.id||"x");
- if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
+ const nk="news320_"+(me&&me.id||"x"),nk2="news330_"+(me&&me.id||"x");const nk3="news340_"+(me&&me.id||"x"),nk4="news500_"+(me&&me.id||"x"),nk5="news510_"+(me&&me.id||"x"),nk6="news511_"+(me&&me.id||"x"),nk7="news520_"+(me&&me.id||"x"),nk8="news530_"+(me&&me.id||"x");
+ if(!store.get(tk,false))setTimeout(()=>openTuto(()=>{store.set(tk,true);store.set(nk,true);store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);store.set(nk8,true);afterTuto()}),350);else if(wel)setTimeout(afterTuto,300);
  else if(me&&!me.expired&&!store.get(nk,false))setTimeout(()=>openTuto(()=>store.set(nk,true),"rank"),600);
- else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
- else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true)},"new340"),600)
- else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>{store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true)},"new500"),600)
- else if(me&&!me.expired&&!store.get(nk5,false))setTimeout(()=>openTuto(()=>{store.set(nk5,true);store.set(nk6,true);store.set(nk7,true)},"new510"),600)
- else if(me&&!me.expired&&!store.get(nk6,false))setTimeout(()=>openTuto(()=>{store.set(nk6,true);store.set(nk7,true)},"new511"),600)
- else if(me&&!me.expired&&!store.get(nk7,false))setTimeout(()=>openTuto(()=>store.set(nk7,true),"new520"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
+ else if(me&&!me.expired&&!store.get(nk2,false))setTimeout(()=>openTuto(()=>{store.set(nk2,true);store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);store.set(nk8,true);if(typeof duelNotify==="function")duelNotify()},"duel"),600)
+ else if(me&&!me.expired&&!store.get(nk3,false))setTimeout(()=>openTuto(()=>{store.set(nk3,true);store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);store.set(nk8,true)},"new340"),600)
+ else if(me&&!me.expired&&!store.get(nk4,false))setTimeout(()=>openTuto(()=>{store.set(nk4,true);store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);store.set(nk8,true)},"new500"),600)
+ else if(me&&!me.expired&&!store.get(nk5,false))setTimeout(()=>openTuto(()=>{store.set(nk5,true);store.set(nk6,true);store.set(nk7,true);store.set(nk8,true)},"new510"),600)
+ else if(me&&!me.expired&&!store.get(nk6,false))setTimeout(()=>openTuto(()=>{store.set(nk6,true);store.set(nk7,true);store.set(nk8,true)},"new511"),600)
+ else if(me&&!me.expired&&!store.get(nk7,false))setTimeout(()=>openTuto(()=>{store.set(nk7,true);store.set(nk8,true)},"new520"),600)
+ else if(me&&!me.expired&&!store.get(nk8,false))setTimeout(()=>openTuto(()=>store.set(nk8,true),"new530"),600)}loadCfg().then(()=>{if(tab==="profile"&&!document.body.classList.contains("pushed"))viewProfile()});if(store.get("pendingLogin",null))startPoll();if(me&&!me.expired)setTimeout(()=>evLoad().then(()=>{if(tab==="home"&&!document.body.classList.contains("pushed"))go("home")}).catch(()=>{}),2500);if(me&&!me.expired)loadBoard(true).then(()=>{syncSoon();setTimeout(()=>loadDuels(true),1200)});
 // 5.2.0 : ouverture depuis une notification (appli déjà ouverte : message du service worker ; sinon : #go=… dans l'adresse)
 function goNav(nav){if(!nav||!me||me.expired)return;alog("notif","ouverture",{cible:nav});try{closeSheet();const v=$("#viewer");if(v)v.remove();document.body.style.overflow=""}catch(e){}
  if(nav.startsWith("ev:")){const id=nav.slice(3);evLoad().catch(()=>{});evOpen(id,()=>viewEvals());return}

@@ -716,3 +716,8 @@ body.zmir .qtext,body.zmir .opt>span:last-child,body.zmir .vf .opt{transform:sca
 .bgrow .bgno{flex:none;min-width:44px;font:700 13px var(--mono);color:var(--ink);background:var(--card2);border-radius:8px;padding:6px 6px;text-align:center}
 .bugtext{white-space:pre-wrap;font-size:15px;line-height:1.45;margin-bottom:6px}
 .bugctx{display:grid;gap:6px;font-size:13px}.bugctx div{display:grid;grid-template-columns:120px 1fr;gap:8px}.bugctx span{color:var(--muted)}.bugctx b{font-weight:500;overflow-wrap:anywhere}
+.menupanel .admitem{border-top:.5px solid var(--sep);margin-top:4px;border-radius:0 0 10px 10px;color:var(--navy2,inherit)}
+.skbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 12px}.skbtn svg{width:20px;height:20px}
+.form select{min-height:46px;border-radius:12px;border:.5px solid var(--sep);background:var(--card);color:var(--ink);padding:0 14px;font-size:16px;font-family:inherit;width:100%;-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat}
+.skbtn span{flex:0 1 auto;text-align:left}
+.skbtn{margin:12px 0}

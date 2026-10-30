@@ -174,6 +174,9 @@ async function dropRequest(st, p) { if (!p.askTeam) return; const o = await st.g
 const zOf = (p) => (p.zm && p.zm.u > Date.now() ? { u: p.zm.u, by: clean(p.zm.by, 24), at: p.zm.at || 0 } : null); // mode Z, jamais dans pub()
 const zmoOf = (p) => { const o = {}; for (const [k, v] of Object.entries(p.zmo || {})) if (v && v.u > Date.now()) o[k] = { u: v.u, by: clean(v.by, 24), at: v.at || 0 }; return Object.keys(o).length ? o : null; };
 const xOf = (p) => (p.xm && p.xm.u > Date.now() ? { u: p.xm.u, by: clean(p.xm.by, 24), at: p.xm.at || 0 } : null); // mode X
+// 5.3.0 : unité locale choisie dans une liste fermée (une seule par membre)
+const UL_LIST = ["Paris I-II", "Paris III-X", "Paris IV", "Paris V", "Paris VI", "Paris VII", "Paris VIII", "Paris IX", "Paris XII", "Paris XIII", "Paris XIV", "Paris XV", "Paris XVI", "Paris XVII", "Paris XVIII", "Paris XIX", "Paris XX"].map((x) => "UL " + x);
+const ulOk = (v) => { const u = clean(v, 40); return u === "" || UL_LIST.includes(u) ? u : null; };
 const pub = (p) => ({ id: p.id, pseudo: p.pseudo, unite: p.unite, color: p.color, team: p.team || null, stats: p.stats, updatedAt: p.updatedAt, fire: fxOf(p) === "fire", fx: fxOf(p), deco: p.deco && p.deco.u > Date.now() ? p.deco : null, nick: p.nick && p.nick.u > Date.now() ? p.nick : null, sdf: p.sdf && p.sdf > Date.now() ? p.sdf : null });
 function mergeProgress(a, b) {
   a = a || {}; b = b || {};
@@ -305,7 +308,7 @@ async function verifyGoogle(idToken) {
 }
 
 // 3.4.0 : notification « nouvelle version disponible » envoyée une seule fois par version (verrou Redis SET NX)
-const APP_VERSION = "5.2.0"; let announced = false;
+const APP_VERSION = "5.3.0"; let announced = false;
 async function announceVersion(st) {
   try {
     const r = await redis(["SET", NS + "ver/announced/" + APP_VERSION, "1", "NX"]); if (r !== "OK") return;
@@ -374,9 +377,44 @@ async function handler(req) {
       const all = await allProfiles(st);
       if (all.some((p) => p.pseudo.toLowerCase() === pseudo.toLowerCase())) return json({ error: "Ce pseudo est déjà pris." }, 409);
       const id = randomBytes(8).toString("hex");
-      const p = { id, pseudo, unite: clean(body.unite, 40), color: COLORS.includes(body.color) ? body.color : COLORS[0], stats: sanitizeStats(body.stats), createdAt: Date.now(), updatedAt: Date.now(), sessions: [] };
+      const p = { id, pseudo, unite: ulOk(body.unite) || "", color: COLORS.includes(body.color) ? body.color : COLORS[0], stats: sanitizeStats(body.stats), createdAt: Date.now(), updatedAt: Date.now(), sessions: [] };
       await st.setJSON("p/" + id, p); const token = await newSession(st, p);
       return withCookie(json({ id, token, profile: pub(p) }), id);
+    }
+
+    // ---- 5.2.1 : accès de service aux signalements (clé BUG_API_KEY, en-tête x-bug-key) : lecture sans e-mail, mise à jour du statut et de la note
+    if (route.startsWith("svc/")) {
+      const want = process.env.BUG_API_KEY || ""; if (want.length < 32) return json({ error: "Introuvable." }, 404);
+      const hr = "bugkeyfail/" + new Date().toISOString().slice(0, 13); const fails = Number(await st.get(hr)) || 0;
+      if (fails >= 30) return json({ error: "Trop d'essais : réessaie plus tard." }, 429);
+      const ka = createHash("sha256").update(String(req.headers.get("x-bug-key") || "")).digest(), kb = createHash("sha256").update(want).digest();
+      if (!timingSafeEqual(ka, kb)) { await st.setJSON(hr, fails + 1, 7200); return json({ error: "Clé refusée." }, 401); }
+      const api = (await st.get("cfg/bugapi", { type: "json" })) || {};
+      if (api.off) return json({ error: "Accès coupé par le super administrateur." }, 403);
+      api.last = Date.now(); api.n = (api.n || 0) + 1; await st.setJSON("cfg/bugapi", api);
+      const strip = (b) => ({ id: b.id, no: b.no, at: b.at, pseudo: b.pseudo, text: b.text, ctx: b.ctx, img: b.img, status: b.status, note: b.note || "", by: b.by || "", upd: b.upd || null });
+      const ids = (await st.get("bugs", { type: "json" })) || [];
+      const find = async () => { const bid = clean(url.searchParams.get("bid") || body?.bid, 20), no = Number(url.searchParams.get("no") || body?.no) || 0;
+        if (bid) return st.get("bug/" + bid, { type: "json" });
+        if (no) return (await st.getMany(ids.map((i) => "bug/" + i), { type: "json" })).find((b) => b && b.no === no) || null; return null; };
+      if (route === "svc/bugs" && req.method === "GET") {
+        const stt = url.searchParams.get("status") || "", since = Number(url.searchParams.get("since")) || 0;
+        let L = (await st.getMany(ids.map((i) => "bug/" + i), { type: "json" })).filter(Boolean);
+        if (stt === "open") L = L.filter((b) => ["new", "doing"].includes(b.status)); else if (stt) L = L.filter((b) => b.status === stt);
+        if (since) L = L.filter((b) => b.no > since);
+        return json({ version: APP_VERSION, bugs: L.map(strip) });
+      }
+      if (route === "svc/bug" && req.method === "GET") {
+        const b = await find(); if (!b) return json({ error: "Signalement introuvable." }, 404);
+        return json({ bug: strip(b), img: b.img && url.searchParams.get("img") === "1" ? await st.get("bugimg/" + b.id) : null });
+      }
+      if (route === "svc/bug" && req.method === "POST") {
+        const b = await find(); if (!b) return json({ error: "Signalement introuvable." }, 404);
+        if (["new", "doing", "done", "wontfix"].includes(body.status)) b.status = body.status;
+        if ("note" in body) b.note = String(body.note ?? "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "").trim().slice(0, 1000);
+        b.by = "Claude (API)"; b.upd = Date.now(); await st.setJSON("bug/" + b.id, b); return json({ bug: strip(b) });
+      }
+      return json({ error: "Introuvable." }, 404);
     }
 
     const au = await auth(st, req, body);
@@ -384,7 +422,7 @@ async function handler(req) {
     const me = au.p;
     const cfg = await settings(st);
 
-    if (route === "me") return withCookie(json({ profile: pub(me), email: me.email || null, admin: isAdmin(me, cfg), superAdmin: me.email === SUPER, resetAt: me.resetAt || null, zz: zOf(me), xx: xOf(me), zmo: zmoOf(me), kk: me.kicked || null }), me.id);
+    if (route === "me") return withCookie(json({ profile: pub(me), parrain: me.parrain || "", email: me.email || null, admin: isAdmin(me, cfg), superAdmin: me.email === SUPER, resetAt: me.resetAt || null, zz: zOf(me), xx: xOf(me), zmo: zmoOf(me), kk: me.kicked || null }), me.id);
 
     // ---- duels
     if (route === "duel/list" && req.method === "GET") {
@@ -645,7 +683,8 @@ async function handler(req) {
 
     if (route === "profile" && req.method === "PUT") {
       if (body.pseudo !== undefined) { const ps = clean(body.pseudo, 24); if (ps.length >= 2 && ps.toLowerCase() !== me.pseudo.toLowerCase()) { const all = await allProfiles(st); if (all.some((x) => x.id !== me.id && x.pseudo.toLowerCase() === ps.toLowerCase())) return json({ error: "Ce pseudo est déjà pris." }, 409); me.pseudo = ps; } }
-      if (body.unite !== undefined) me.unite = clean(body.unite, 40);
+      if (body.parrain !== undefined) me.parrain = clean(body.parrain, 60);
+      if (body.unite !== undefined) { const u = ulOk(body.unite); if (u === null) return json({ error: "Choisis ton unité locale dans la liste." }, 400); me.unite = u; }
       if (COLORS.includes(body.color)) me.color = body.color;
       if (["off", "sgt", "fire"].includes(body.fx)) setFx(me, body.fx); // le membre choisit lui-même : normal, sergent ou On Fire
       else if (typeof body.fire === "boolean") setFx(me, body.fire ? "fire" : "off");
@@ -654,7 +693,7 @@ async function handler(req) {
         const s = sanitizeStats(body.stats); if (me.stats?.defi && s.defi && me.stats.defi.week === s.defi.week) s.defi = me.stats.defi; me.stats = s;
       }
       me.updatedAt = Date.now(); await st.setJSON("p/" + me.id, me);
-      return withCookie(json({ profile: pub(me), resetAt: me.resetAt || null, admin: isAdmin(me, cfg), zz: zOf(me), xx: xOf(me), zmo: zmoOf(me), kk: me.kicked || null }), me.id);
+      return withCookie(json({ profile: pub(me), parrain: me.parrain || "", resetAt: me.resetAt || null, admin: isAdmin(me, cfg), zz: zOf(me), xx: xOf(me), zmo: zmoOf(me), kk: me.kicked || null }), me.id);
     }
     if (route === "logout" && req.method === "POST") { const h = sha(req.headers.get("x-token") || body?.token); await st.delete("s/" + h); if ((me.sessions || []).includes(h)) { me.sessions = me.sessions.filter((x) => x !== h); await st.setJSON("p/" + me.id, me); } return withCookie(json({ ok: true }), null); }
     if (route === "kick/seen" && req.method === "POST") { if (me.kicked) { me.kicked = null; await st.setJSON("p/" + me.id, me); } return json({ ok: true }); }
@@ -699,7 +738,12 @@ async function handler(req) {
       const superMe = me.email === SUPER;
       if (route === "admin/bugs" && req.method === "GET") {
         const ids = (await st.get("bugs", { type: "json" })) || [];
-        return json({ bugs: (await st.getMany(ids.map((i) => "bug/" + i), { type: "json" })).filter(Boolean) });
+        const ba = (await st.get("cfg/bugapi", { type: "json" })) || {};
+        return json({ bugs: (await st.getMany(ids.map((i) => "bug/" + i), { type: "json" })).filter(Boolean), bugApi: { on: (process.env.BUG_API_KEY || "").length >= 32, off: !!ba.off, last: ba.last || null, n: ba.n || 0 } });
+      }
+      if (route === "admin/bugapi" && req.method === "POST") {
+        if (!superMe) return json({ error: "Réservé au super administrateur." }, 403);
+        const ba = (await st.get("cfg/bugapi", { type: "json" })) || {}; ba.off = !!body.off; await st.setJSON("cfg/bugapi", ba); return json({ ok: true, off: ba.off });
       }
       if (route === "admin/bug" && req.method === "GET") {
         const id = clean(url.searchParams.get("bid"), 20); const b = await st.get("bug/" + id, { type: "json" }); if (!b) return json({ error: "Signalement introuvable." }, 404);
@@ -720,7 +764,7 @@ async function handler(req) {
       }
       if (route === "admin/members" && req.method === "GET") {
         const all = await allProfiles(st);
-        return json({ members: all.map((p) => ({ ...pub(p), email: p.email || null, name: p.name || "", blocked: !!p.blocked, admin: isAdmin(p, cfg), superAdmin: p.email === SUPER, createdAt: p.createdAt, lastLogin: p.lastLogin || null, z: zOf(p), x: xOf(p), zmo: zmoOf(p) })), settings: cfg, superAdmin: superMe, superEmail: SUPER });
+        return json({ members: all.map((p) => ({ ...pub(p), email: p.email || null, name: p.name || "", parrain: p.parrain || "", blocked: !!p.blocked, admin: isAdmin(p, cfg), superAdmin: p.email === SUPER, createdAt: p.createdAt, lastLogin: p.lastLogin || null, z: zOf(p), x: xOf(p), zmo: zmoOf(p) })), settings: cfg, superAdmin: superMe, superEmail: SUPER });
       }
       if (route === "admin/settings" && req.method === "PUT") {
         const list = (a, re) => [...new Set((Array.isArray(a) ? a : String(a || "").split(/[\s,;]+/)).map((x) => String(x).trim().toLowerCase().replace(/^@/, "")).filter((x) => re.test(x)))].slice(0, 300);
