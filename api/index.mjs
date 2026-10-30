@@ -143,12 +143,12 @@ const nameFromEmail = (p) => { const m = /^([a-z0-9-]+)\.([a-z0-9.-]+)@/i.exec(p
 async function evList(st, key) { return (await st.get(key, { type: "json" })) || []; }
 async function evLink(st, key, id, add) { let l = (await evList(st, key)).filter((x) => x !== id); if (add) l.unshift(id); await st.setJSON(key, l.slice(0, 200)); }
 const evRole = (ev, me, cfg) => (ev.cand === me.id ? "cand" : ev.enc && ev.enc.uid === me.id ? "enc" : isAdmin(me, cfg) ? "admin" : null);
-const evSum = (ev) => ({ id: ev.id, cand: ev.cand, candN: ev.candN, num: ev.num, date: ev.date, enc: ev.enc, status: ev.status, encDone: !!ev.encDone, updated: ev.updated, comps: Object.fromEntries(EV_COMPS.map((k) => [k, (ev.comps && ev.comps[k] && ev.comps[k].lvl) || 0])), autoEnc: ev.autoEnc && ev.autoEnc.v || "", autoCi: ev.autoCi && ev.autoCi.v || "", n: (ev.inter || []).length, cnt: (ev.inter || []).reduce((c, x) => { if (c[x.t] != null) c[x.t]++; return c; }, { UA: 0, UR: 0, DCD: 0, SS: 0 }) });
+const evSum = (ev) => ({ id: ev.id, cand: ev.cand, candN: ev.candN, num: ev.num, date: ev.date, cs: ev.cs || "", enc: ev.enc, status: ev.status, encDone: !!ev.encDone, updated: ev.updated, comps: Object.fromEntries(EV_COMPS.map((k) => [k, (ev.comps && ev.comps[k] && ev.comps[k].lvl) || 0])), autoEnc: ev.autoEnc && ev.autoEnc.v || "", autoCi: ev.autoCi && ev.autoCi.v || "", n: (ev.inter || []).length, cnt: (ev.inter || []).reduce((c, x) => { if (c[x.t] != null) c[x.t]++; return c; }, { UA: 0, UR: 0, DCD: 0, SS: 0 }) });
 function evClean(ev, patch, role) {
   const s = (v, n) => clean(v, n), lvl = (v) => Math.max(0, Math.min(4, Math.round(Number(v) || 0)));
   const encPart = role === "enc" || (role === "cand" && !(ev.enc && ev.enc.uid));
   if (role === "cand") {
-    if ("date" in patch) ev.date = s(patch.date, 10); if ("horaires" in patch) ev.horaires = s(patch.horaires, 40);
+    if ("date" in patch) ev.date = s(patch.date, 10); if ("cs" in patch) ev.cs = s(patch.cs, 40); if ("horaires" in patch) ev.horaires = s(patch.horaires, 40);
     if ("equip" in patch) ev.equip = ["ul", "ext", "mixte"].includes(patch.equip) ? patch.equip : "";
     if ("autoCi" in patch && patch.autoCi) ev.autoCi = { v: ["oui", "non"].includes(patch.autoCi.v) ? patch.autoCi.v : "", c: s(patch.autoCi.c, 1500) };
   }
@@ -308,7 +308,7 @@ async function verifyGoogle(idToken) {
 }
 
 // 3.4.0 : notification « nouvelle version disponible » envoyée une seule fois par version (verrou Redis SET NX)
-const APP_VERSION = "5.3.0"; let announced = false;
+const APP_VERSION = "5.3.1"; let announced = false;
 async function announceVersion(st) {
   try {
     const r = await redis(["SET", NS + "ver/announced/" + APP_VERSION, "1", "NX"]); if (r !== "OK") return;
@@ -569,7 +569,7 @@ async function handler(req) {
       await st.setJSON("ev/" + ev.id, ev); await evLink(st, "evc/" + me.id, ev.id, true); return json({ ev, role: "cand" });
     }
     if (route === "ev/save" && req.method === "POST") {
-      const ev = await st.get("ev/" + clean(body.eid, 20), { type: "json" }); if (!ev) return json({ error: "Fiche introuvable." }, 404);
+      const ev = await st.get("ev/" + clean(body.eid, 20), { type: "json" }); if (!ev) return json({ error: "Cette fiche n'existe plus : elle a été supprimée par le candidat ou un administrateur." }, 404);
       const role = evRole(ev, me, cfg); if (role !== "cand" && role !== "enc") return json({ error: "Seuls le candidat et son encadrant peuvent modifier la fiche." }, 403);
       const patch = body.patch || {};
       if (role === "cand" && "status" in patch) ev.status = patch.status === "done" ? "done" : "draft";

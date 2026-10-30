@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="5.3.0";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="5.3.1";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -1200,7 +1200,7 @@ const evCount=ev=>{const c={SS:0,UA:0,UR:0,DCD:0};(ev.inter||[]).forEach(x=>{if(
 const evDate=d=>d?new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"}):"";
 function viewEvals(){app.innerHTML=push("Évaluations")+`<div id="evBody"><div class="loading">Chargement…</div></div>`;bindBack(()=>go("home"));
  const draw=()=>{const E=evCache||{mine:[],asEnc:[]};const b=$("#evBody");if(!b)return;const todo=E.asEnc.filter(e=>!e.encDone&&e.status!=="done");
-  const row=(e,asEnc)=>`<button class="row" data-ev="${esc(e.id)}"><span class="ic" style="background:${e.status==="done"?"#1f9d55":"#ff9f0a"}">${e.num}</span><span class="tx"><b>${asEnc?esc(e.candN)+" · ":""}Vacation n°${e.num}</b><span>${esc(evDate(e.date))}${e.enc&&e.enc.name&&!asEnc?" · encadrant : "+esc(e.enc.name):""} · ${e.status==="done"?"clôturée":asEnc&&!e.encDone?"à remplir":"brouillon"}</span></span><span class="chev">${I.chev}</span></button>`;
+  const row=(e,asEnc)=>`<button class="row" data-ev="${esc(e.id)}"><span class="ic" style="background:${e.status==="done"?"#1f9d55":"#ff9f0a"}">${e.num}</span><span class="tx"><b>${asEnc?esc(e.candN)+" · ":""}Vacation n°${e.num}</b><span>${esc(evDate(e.date))}${e.cs?" · CS "+esc(e.cs):""}${e.enc&&e.enc.name&&!asEnc?" · encadrant : "+esc(e.enc.name):""} · ${e.status==="done"?"clôturée":asEnc&&!e.encDone?"à remplir":"brouillon"}</span></span><span class="chev">${I.chev}</span></button>`;
   b.innerHTML=`<p class="sub" style="margin-top:12px">La synthèse de tes vacations d'accompagnement : tu remplis l'en-tête et ton avis ; ton encadrant renseigne les interventions, les compétences et son avis. Le PDF de la fiche se génère à la fin.</p>
    <button class="btn full" id="evNew">Nouvelle vacation</button>
    ${todo.length?`<div class="sect">À évaluer (tu es encadrant)</div><div class="list">${todo.map(e=>row(e,true)).join("")}</div>`:""}
@@ -1211,7 +1211,7 @@ function viewEvals(){app.innerHTML=push("Évaluations")+`<div id="evBody"><div c
   b.querySelectorAll("[data-ev]").forEach(x=>x.onclick=()=>evOpen(x.dataset.ev))};
  draw();evLoad().then(draw).catch(e=>{const b=$("#evBody");if(b&&!evCache)b.innerHTML=`<p class="small">${esc(e.error||"Pas de connexion.")}</p>`})}
 async function evOpen(id,back){try{const j=await api("ev/get?eid="+encodeURIComponent(id));evEdit(j.ev,j.role,back)}catch(e){toast(e.error||"Fiche introuvable.")}}
-function evEdit(ev,role,back){back=back||viewEvals;const tok={};app._ev=tok;if(role==="cand"&&ev.status!=="done"||!board)loadBoard(true).then(()=>{const s=$("#evEnc");if(app._ev===tok&&s&&!s.disabled&&document.activeElement!==s){const keep=collect();apply(keep);draw()}}).catch(()=>{});
+function evEdit(ev,role,back){back=back||viewEvals;const tok={};app._ev=tok;if(!SECT)loadSect().then(()=>{const s=$("#evCs");if(app._ev===tok&&s&&!s.disabled&&document.activeElement!==s){const keep=collect();apply(keep);draw()}}).catch(()=>{});if(role==="cand"&&ev.status!=="done"||!board)loadBoard(true).then(()=>{const s=$("#evEnc");if(app._ev===tok&&s&&!s.disabled&&document.activeElement!==s){const keep=collect();apply(keep);draw()}}).catch(()=>{});
  const open=ev.status!=="done",candEdit=role==="cand"&&open;let encAcc,encEdit,interEdit;const encCalc=()=>{encAcc=!!(ev.enc&&ev.enc.uid);encEdit=open&&(role==="enc"||(role==="cand"&&!encAcc));interEdit=encEdit};encCalc();
  const dis=f=>f?"":"disabled";let saveT=null,dirty=false;
  const seg=(name,opts,val,ok)=>`<div class="seg evseg" data-seg="${name}">${opts.map(([k,l])=>`<button type="button" data-v="${k}" aria-pressed="${val===k}" ${dis(ok)}>${l}</button>`).join("")}</div>`;
@@ -1225,6 +1225,7 @@ function evEdit(ev,role,back){back=back||viewEvals;const tok={};app._ev=tok;if(r
    <label>Encadrant<select id="evEnc" ${dis(candEdit)}><option value="">— choisir —</option>${members().map(p=>`<option value="u:${esc(p.id)}" ${ev.enc&&ev.enc.uid===p.id?"selected":""}>${esc(p.pseudo)}${p.unite?" · "+esc(p.unite):""}</option>`).join("")}<option value="free" ${ev.enc&&!ev.enc.uid?"selected":""}>Autre (saisir le nom)</option></select></label>
    ${ev.enc&&!ev.enc.uid?`<label>Nom de l'encadrant<input id="evEncN" maxlength="60" value="${esc(ev.enc&&!ev.enc.uid?ev.enc.name:"")}" ${dis(candEdit)}></label>`:""}
    ${encAcc?`<p class="small" style="margin:4px 0 0">${esc(ev.enc.name)} remplit sa partie depuis son compte (Assistant CI › Évaluations).</p>`:ev.enc?`<p class="small" style="margin:4px 0 0">Ton encadrant n'a pas de compte : il remplit sa partie sur ton téléphone.</p>`:""}
+   ${(()=>{const L=SECT?SECT.sect.concat(SECT.extra||[]).map(x=>x.name).sort((a,b)=>a.localeCompare(b,"fr")):[];const free=ev.cs&&L.length&&!L.includes(ev.cs);return `<label>Centre de secours de la garde<select id="evCs" ${dis(candEdit)}><option value="">— choisir —</option>${L.map(n=>`<option ${ev.cs===n?"selected":""}>${esc(n)}</option>`).join("")}<option value="__" ${free||ev._csFree?"selected":""}>Autre (saisir)</option>${!L.length&&ev.cs?`<option selected>${esc(ev.cs)}</option>`:""}</select></label>${free||ev._csFree?`<label>Nom du centre de secours<input id="evCsN" maxlength="40" value="${esc(free?ev.cs:"")}" ${dis(candEdit)}></label>`:""}`})()}
    <div class="small" style="margin:10px 0 4px">Équipage</div>${seg("equip",EV_EQ,ev.equip,candEdit)}
    <div class="evcount"><span>Sans suite <b>${c.SS}</b></span><span>UA <b>${c.UA}</b></span><span>UR <b>${c.UR}</b></span><span>DCD <b>${c.DCD}</b></span><span>Victimes <b>${tot}</b></span></div><p class="small" style="margin:2px 0 0">Calculé à partir des interventions ci-dessous.</p></div>
   <div class="sect">Interventions (${(ev.inter||[]).length})${interEdit?"":" · encadrant"}</div>${!interEdit&&role==="cand"&&!(ev.inter||[]).length?`<p class="small" style="margin:0 4px 8px">Ton encadrant renseigne les interventions de la vacation.</p>`:""}
@@ -1247,17 +1248,18 @@ function evEdit(ev,role,back){back=back||viewEvals;const tok={};app._ev=tok;if(r
   </div></div>`;
   bindBack(()=>{flush();back()});bind()};
  const collect=()=>{const p={};const sv=n=>{const b=app.querySelector(`[data-seg="${n}"] [aria-pressed="true"]`);return b?b.dataset.v:""};
-  if(candEdit){const es=$("#evEnc"),en=$("#evEncN");if(es)p.enc=es.value==="free"?{name:en?en.value:(ev.enc&&ev.enc.name||"")}:es.value?{uid:es.value.slice(2)}:null;p.date=$("#evDate").value;p.horaires=$("#evHor").value;p.equip=sv("equip");p.autoCi={v:sv("autoCi"),c:$("#evACc").value}}
+  if(candEdit){const es=$("#evEnc"),en=$("#evEncN");if(es)p.enc=es.value==="free"?{name:en?en.value:(ev.enc&&ev.enc.name||"")}:es.value?{uid:es.value.slice(2)}:null;p.date=$("#evDate").value;p.horaires=$("#evHor").value;{const cs=$("#evCs"),cn=$("#evCsN");if(cs)p.cs=cs.value==="__"?(cn?cn.value.trim():""):cs.value}p.equip=sv("equip");p.autoCi={v:sv("autoCi"),c:$("#evACc").value}}
   if(interEdit)p.inter=[...app.querySelectorAll("[data-int]")].map(c=>{const i=c.dataset.int;return {t:sv("t"+i),motif:c.querySelector('[data-f="motif"]').value,pos:c.querySelector('[data-f="pos"]').value,axes:c.querySelector('[data-f="axes"]').value}});
   if(encEdit){p.comps={};EV_C.forEach(([k])=>{const c=app.querySelector(`[data-comp="${k}"]`);p.comps[k]={lvl:+sv("c"+k)||0,obs:c.querySelector('[data-f="obs"]').value}});p.autoEnc={v:sv("autoEnc"),c:$("#evAEc").value};p.reserve=$("#evRes").checked}
   return p};
  const apply=p=>{Object.assign(ev,{...p,comps:p.comps?{...(ev.comps||{}),...p.comps}:ev.comps})};
  const save=async(extra)=>{const p={...collect(),...(extra||{})};apply(p);dirty=false;const st=$("#evSt");if(st)st.textContent="Enregistrement…";
-  try{const j=await api("ev/save","POST",{eid:ev.id,patch:p});Object.assign(ev,j.ev);if($("#evSt"))$("#evSt").textContent="Enregistré ✓";return true}catch(e){if($("#evSt"))$("#evSt").textContent=e.offline?"Hors connexion : réessaie avec du réseau.":(e.error||"Erreur d'enregistrement.");return false}};
+  try{const j=await api("ev/save","POST",{eid:ev.id,patch:p});Object.assign(ev,j.ev);if($("#evSt"))$("#evSt").textContent="Enregistré ✓";return true}catch(e){if(e.status===404){toast("Cette fiche n'existe plus : elle a été supprimée par le candidat ou un administrateur.");evLoad().catch(()=>{});if(app._ev===tok)back();return false}if($("#evSt"))$("#evSt").textContent=e.offline?"Hors connexion : réessaie avec du réseau.":(e.error||"Erreur d'enregistrement.");return false}};
  const later=()=>{if(role==="admin"||!open)return;dirty=true;clearTimeout(saveT);saveT=setTimeout(()=>save(),800);const c=evCount({inter:collect().inter||ev.inter});const e=app.querySelector(".evcount");if(e&&interEdit){apply({inter:collect().inter});const t=c.SS+c.UA+c.UR+c.DCD;e.innerHTML=`<span>Sans suite <b>${c.SS}</b></span><span>UA <b>${c.UA}</b></span><span>UR <b>${c.UR}</b></span><span>DCD <b>${c.DCD}</b></span><span>Victimes <b>${t}</b></span>`}};
  const flush=()=>{if(dirty){clearTimeout(saveT);save()}};
  const bind=()=>{app.querySelectorAll(".evform input:not([type=checkbox]),.evform textarea").forEach(x=>x.addEventListener("input",later));const rs=$("#evRes");if(rs)rs.onchange=later;
   app.querySelectorAll("[data-seg] button").forEach(b=>b.onclick=()=>{if(b.disabled)return;const g=b.closest("[data-seg]");g.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b&&x.getAttribute("aria-pressed")!=="true"?"true":"false"));later()});
+  const csS=$("#evCs");if(csS)csS.onchange=async()=>{if(csS.value==="__"){apply(collect());ev._csFree=true;draw();const n=$("#evCsN");if(n)n.focus();return}ev._csFree=false;await save();draw()};
   const en=$("#evEnc");if(en)en.onchange=async()=>{const v=en.value;if(v==="free"){apply(collect());ev.enc={uid:null,name:""};draw();const n=$("#evEncN");if(n)n.focus();return}
    await save();draw()};
   const ai=$("#evAddI");if(ai)ai.onclick=async()=>{apply(collect());ev.inter=[...(ev.inter||[]),{t:"",motif:"",pos:"",axes:""}];await save({inter:ev.inter});draw();const l=app.querySelectorAll("[data-int]");if(l.length)l[l.length-1].scrollIntoView({block:"center"})};
@@ -1281,7 +1283,7 @@ async function evPdf(ev){await loadScriptOnce("pdflib/pdf-lib.min.js");const {PD
  const circle=(pg,x0,top,x1,bot)=>pg.drawEllipse({x:(x0+x1)/2,y:H-(top+bot)/2,xScale:(x1-x0)/2+3,yScale:(bot-top)/2+2,borderColor:ink,borderWidth:1.2});
  const c=evCount(ev),date=ev.date?new Date(ev.date+"T12:00:00").toLocaleDateString("fr-FR"):"",enc=ev.enc&&ev.enc.name||"";
  // page 1 : en-tête et compétences 1 à 5
- const p1=P[0];box(p1,date,140,121,276,139);box(p1,ev.horaires,402,121,552,139);box(p1,ev.candN,140,141,276,159);box(p1,String(ev.num),402,141,552,159);box(p1,enc,140,161,276,179);
+ const p1=P[0];box(p1,date,140,121,276,139);box(p1,[ev.horaires,ev.cs?"CS "+ev.cs:""].filter(Boolean).join(" · "),402,121,552,139);box(p1,ev.candN,140,141,276,159);box(p1,String(ev.num),402,141,552,159);box(p1,enc,140,161,276,179);
  const eq={ul:372.2,ext:437.6,mixte:510.4}[ev.equip];if(eq)mark(p1,eq,165.5);
  box(p1,String(c.SS),140,182,203,200,{font:FB});box(p1,String(c.UA),287,182,356,200,{font:FB});box(p1,String(c.UR),415,182,454,200,{font:FB});box(p1,String(c.DCD),514,182,552,200,{font:FB});
  const compTxt=k=>{const v=(ev.comps||{})[k]||{};return (v.lvl?`[${EV_L[v.lvl]}] `:"")+(v.obs||"")};
@@ -1332,7 +1334,7 @@ async function skillPdf(o){await loadScriptOnce("pdflib/pdf-lib.min.js");const {
  const A=EV_C.map(([k])=>skAnalyse(L,k));const ok=A.filter(a=>a.st==="ok"),work=A.filter(a=>a.st==="work"),none=A.filter(a=>a.st==="none");
  const lab=k=>(EV_C.find(c=>c[0]===k)||[,k])[1],desc=k=>(EV_C.find(c=>c[0]===k)||[,,""])[2];
  const avg=e=>{const r=EV_C.map(([k])=>e.comps&&e.comps[k]&&e.comps[k].lvl||0).filter(Boolean);return r.length?r.reduce((a,b)=>a+b,0)/r.length:null};
- const R=L.filter(skRated);const dF=s=>s?new Date(s+"T12:00:00").toLocaleDateString("fr-FR"):"";const vac=e=>`n°${e.num}${e.date?" ("+dF(e.date)+")":""}`;
+ const R=L.filter(skRated);const dF=s=>s?new Date(s+"T12:00:00").toLocaleDateString("fr-FR"):"";const vac=e=>`n°${e.num}${e.date||e.cs?" ("+[e.date?dF(e.date):"",e.cs?"CS "+e.cs:""].filter(Boolean).join(", ")+")":""}`;
  const cnt={UA:0,UR:0,DCD:0,SS:0};L.forEach(e=>(e.inter||[]).forEach(x=>{if(cnt[x.t]!=null)cnt[x.t]++}));const nInter=cnt.UA+cnt.UR+cnt.DCD+cnt.SS;
  const encs=[...new Set(L.map(e=>e.enc&&e.enc.name).filter(Boolean))];const lastAvg=R.length?avg(R[R.length-1]):null;
  // ------- page 1 : en-tête
