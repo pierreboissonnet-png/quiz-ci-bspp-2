@@ -762,7 +762,7 @@ h1.big{font-size:34px;letter-spacing:.2px}
 .rings .rg{animation:rgfill 1.1s cubic-bezier(.2,.8,.2,1) both}
 @keyframes rgfill{from{stroke-dashoffset:var(--L)}}
 .rgl{display:grid;gap:7px}.rgl span{display:block;font-size:12.5px;color:#9a9aa1}.rgl b{font:700 21px/1.1 var(--rounded);font-variant-numeric:tabular-nums}
-.rgl .r1 b{color:#ff375f}.rgl .r2 b{color:#a6ff00}.rgl .r3 b{color:#00d4ff}
+.rgl .r1 b{color:#34c759}.rgl .r2 b{color:#ff3b4f}.rgl .r3 b{color:#ff9f0a}
 .rgk{grid-column:1/-1;display:flex;gap:16px;font-size:13px;color:#9a9aa1;border-top:.5px solid rgba(255,255,255,.14);padding-top:10px;margin-top:4px}.rgk b{color:#fff}
 /* chiffres arrondis */
 .ring b,.kpi b,.result .score,.sttile b,.dnum{font-family:var(--rounded)}
@@ -810,3 +810,10 @@ button:active:not(:disabled),.tile:active,.row:active,.chip:active{transform:sca
 /* accessibilité : réduire les animations */
 @media (prefers-reduced-motion: reduce){.view.a-tab,.view.a-push,.view.a-back,.opt.good,.opt.bad,.vbanner,.rings .rg,.loading::after{animation:none!important}button:active,.tile:active,.row:active{transform:none!important}.ltbar,.sheet{transition:none}}
 .clog{margin-top:10px}.clh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.clv{font:700 15px var(--rounded);padding:3px 10px;border-radius:999px;background:var(--card2);font-variant-numeric:tabular-nums}.clv.cur{background:var(--red);color:#fff}.clog ul{margin:8px 0 0;padding-left:20px}.clog li{margin:4px 0;font-size:15px}
+
+/* 6.0.1 : marge basse sous la barre d'onglets, quelle que soit l'ambiance (On Fire imposait 90 px) */
+body:not(.pushed) .view,body.onfire:not(.pushed) .view{padding-bottom:calc(124px + env(safe-area-inset-bottom,0px))}
+body.onfire:not(.pushed) .tabbar{bottom:calc(18px + env(safe-area-inset-bottom,0px))}
+/* barre de titre du haut : centrée sur le bouton Signaler (38 px), marges haut et bas égales */
+.ltbar{padding:calc(env(safe-area-inset-top,0px) + 10px) 70px 10px;line-height:38px;height:auto}
+body:not(.pushed) #firefx .firetag{bottom:calc(88px + env(safe-area-inset-bottom,0px))}

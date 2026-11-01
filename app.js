@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="6.0.0";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="6.0.1";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -422,7 +422,7 @@ function confettiBurst(){if(RM()||document.querySelector(".confetti"))return;con
  try{navigator.vibrate&&navigator.vibrate([20,40,20])}catch(e){}}
 // anneaux façon Forme sur l'accueil : connaissances, défi de la semaine, série de jours
 function ringsCard(pct,defi,days,ko,rev){const ring=(r,col,p)=>{const L=2*Math.PI*r,v=Math.max(0,Math.min(1,p));return `<circle cx="60" cy="60" r="${r}" fill="none" stroke="${col}" stroke-opacity=".2" stroke-width="12"/><circle class="rg" cx="60" cy="60" r="${r}" fill="none" stroke="${col}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${L}" stroke-dashoffset="${L*(1-v)}" style="--L:${L}" transform="rotate(-90 60 60)"/>`};
- return `<div class="card rings" role="img" aria-label="Connaissances ${pct} %, défi de la semaine ${defi==null?"pas encore joué":defi+" sur 20"}, série de ${days} jour${days>1?"s":""}"><svg viewBox="0 0 120 120" aria-hidden="true">${ring(52,"#ff375f",pct/100)}${ring(38,"#a6ff00",(defi||0)/20)}${ring(24,"#00d4ff",days/7)}</svg>
+ return `<div class="card rings" role="img" aria-label="Connaissances ${pct} %, défi de la semaine ${defi==null?"pas encore joué":defi+" sur 20"}, série de ${days} jour${days>1?"s":""}"><svg viewBox="0 0 120 120" aria-hidden="true">${ring(52,"#34c759",pct/100)}${ring(38,"#ff3b4f",(defi||0)/20)}${ring(24,"#ff9f0a",days/7)}</svg>
   <div class="rgl"><div class="r1"><span>Connaissances</span><b>${pct} %</b></div><div class="r2"><span>Défi de la semaine</span><b>${defi==null?"à jouer":defi+"/20"}</b></div><div class="r3"><span>Série</span><b>${days} jour${days>1?"s":""}</b></div></div>
   <div class="rgk"><span><b>${ko}</b> fiche${ko>1?"s":""} à travailler</span><span><b>${rev}</b> à revoir</span></div></div>`}
 // grand titre qui se réduit dans une barre floutée en défilant (écrans d'onglet)
@@ -744,7 +744,9 @@ function renderChat(){const c=$("#chat");if(!c)return;
   c.innerHTML=(chatLog.length?"":`<div class="msg bot">Bonjour ! Exemples de questions :<div class="sugg" style="margin-top:10px">${SUGG.map(s=>`<button data-sg="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`)+chatLog.map(m=>m.me?`<div class="msg me">${esc(m.text)}</div>`:`<div class="msg bot">${m.html}</div>`).join("");
   c.querySelectorAll("[data-sg]").forEach(b=>b.onclick=()=>ask(b.dataset.sg));
   c.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>{const [d,p,t]=b.dataset.open.split("|");openDoc(d,+p,t?t.split(","):[])});
-  bindSrc(c);window.scrollTo(0,document.body.scrollHeight)}
+  bindSrc(c);
+  // 6.0.1 : on montre le début de la réponse (la question posée en haut de l'écran) et non sa fin
+  const qs=c.querySelectorAll(".msg.me");const lastQ=qs[qs.length-1];if(lastQ){const y=lastQ.getBoundingClientRect().top+scrollY-70;window.scrollTo({top:Math.max(0,y),behavior:RM()?"auto":"smooth"})}else window.scrollTo(0,0)}
 async function ask(q){chatLog.push({me:1,text:q});const wait={html:`<span class="typing"><i></i><i></i><i></i></span> ${IDX?"":"Chargement des référentiels…"}`};chatLog.push(wait);renderChat();
   try{await loadIndex()}catch(e){wait.html="Je n'arrive pas à charger les référentiels. Ouvre l'appli une fois avec du réseau pour les télécharger.";renderChat();return}
   await new Promise(r=>setTimeout(r,30));
@@ -2869,6 +2871,7 @@ function bindPush(){const b=$("#pushT");if(!b)return;b.onclick=async()=>{const m
 function viewMe(head){app.innerHTML=head+`${meCard()}${me&&!me.expired?rankCard():""}${usageCard()}${fireCard()}${pushCard()}<div class="sect">Aide</div><div class="list"><button class="row" id="openTuto"><span class="ic" style="background:#e3051b">${TUTO_IC}</span><span class="tx"><b>Tutoriel et présentation</b><span>Revoir la visite guidée de l'appli</span></span><span class="chev">${I.chev}</span></button><button class="row" data-bug><span class="ic" style="background:#0f1d36;color:#fff">${BUG_IC}</span><span class="tx"><b>Signaler un problème</b><span>Erreur dans une question, bouton qui ne marche pas… (avec capture d'écran)</span></span><span class="chev">${I.chev}</span></button><button class="row" id="openLog"><span class="ic" style="background:#5e5ce6">${I.list}</span><span class="tx"><b>Changelog</b><span>Les versions et ce qui a changé · version ${APP_VER}</span></span><span class="chev">${I.chev}</span></button></div><p class="small" style="margin:8px 4px 0">Pour corriger les bugs, l'appli enregistre ton activité (pages ouvertes, boutons touchés, réponses, erreurs) pendant 30 jours. Seuls les administrateurs y ont accès.</p>${updCard()}${accountCard()}`;bindProfTabs();bindMe();bindUsage();bindFire();bindPush();bindRank();$("#openTuto").onclick=()=>openTuto();$("#openLog").onclick=()=>viewChangelog(()=>go("profile",true));$("#forceUpd").onclick=forceUpdate;checkOnline()}
 // 6.0.0 : changelog (du plus récent au plus ancien)
 const CHANGELOG=[
+["6.0.1","Correctifs",["Le contenu ne passe plus sous la barre d'onglets (ambiance On Fire comprise)","Barre de titre du haut aux marges équilibrées","Assistant : la réponse s'affiche à partir de son début","Couleurs des anneaux de l'accueil aux couleurs de l'appli"]],
 ["6.0.0","Nouveau look",["Barre d'onglets en bas : Accueil, Réviser, Outils, Stats, Profil, avec une pastille quand quelque chose t'attend","Nouvel onglet Outils : radio, codes CRI, carte, hôpitaux, documents, lexique, grades, assistant, évaluations (et Administration pour les admins)","Accueil en widgets colorés et trois anneaux : connaissances, défi de la semaine, série de jours","Animations : réponses, changements d'écran, confettis sur un sans-faute, un record ou une montée en grade","Fenêtres qui se ferment en glissant vers le bas, retour en balayant depuis le bord gauche","Grands titres qui se réduisent, chargement plus fluide, graphiques avec la moyenne, mode sombre soigné","Bouton Changelog dans le Profil"]],
 ["5.3.3","Contenu",["Question Q1308 reformulée pour se suffire à elle-même (son contexte était dans la question précédente)","Vérification de toutes les questions : aucune autre ne dépendait de la précédente"]],
 ["5.3.2","Compagnies et indicatifs",["Carte des secteurs : compagnie de rattachement et PC de compagnie pour les 27 CS","Indicatif CRf du 1er engin (par exemple « 901 de Montmartre ») sur la fiche du CS et dans la liste","« C'est mon CS de garde » remplit aussi le numéro d'engin","Mon indicatif radio : numéro prérempli en choisissant le CS","Messages radio : « d'Auteuil » au lieu de « de Auteuil »"]],
