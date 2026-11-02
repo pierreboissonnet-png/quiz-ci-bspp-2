@@ -449,7 +449,7 @@ body.doused #firefx .flames{opacity:.12}
 .hic{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:#d92d20;color:#fff;flex:none}.hic svg{width:26px;height:26px}
 .hic.sm{width:34px;height:34px;border-radius:9px}.hic.sm svg{width:20px;height:20px}
 .hbs{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-.hb{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);white-space:nowrap}
+.hb{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;color:var(--c);position:relative;isolation:isolate;white-space:nowrap}.hb::before{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--c);opacity:.14;z-index:-1}
 .hb.on{background:var(--c);color:#fff}
 .hnotes{margin:10px 0 0;padding-left:18px;font-size:13px;color:var(--muted)}.hnotes li{margin:4px 0}
 .hospcard{margin-top:12px}
@@ -749,7 +749,7 @@ h1.big{font-size:34px;letter-spacing:.2px}
 .row .ic{border-radius:7px}
 /* accueil : widgets colorés */
 .tiles{gap:12px}
-.tile[data-tc]{--tc:#0a84ff;background:linear-gradient(150deg,var(--tc),color-mix(in srgb,var(--tc) 72%,#000))!important;color:#fff;border-radius:22px;padding:16px;min-height:128px;box-shadow:0 8px 20px color-mix(in srgb,var(--tc) 28%,transparent)}
+.tile[data-tc]{--tc:#0a84ff;--tc2:#0060df;--tcs:rgba(0,0,0,.18);background:linear-gradient(150deg,var(--tc),var(--tc2))!important;color:#fff;border-radius:22px;padding:16px;min-height:128px;box-shadow:0 8px 20px var(--tcs)}
 .tile[data-tc] b{color:#fff;font-size:17px}
 .tile[data-tc] span:not(.ic),.tile[data-tc] div span{color:rgba(255,255,255,.86)!important}
 .tile[data-tc] .ic{background:rgba(255,255,255,.22)!important;border-radius:12px}
@@ -817,3 +817,9 @@ body.onfire:not(.pushed) .tabbar{bottom:calc(18px + env(safe-area-inset-bottom,0
 /* barre de titre du haut : centrée sur le bouton Signaler (38 px), marges haut et bas égales */
 .ltbar{padding:calc(env(safe-area-inset-top,0px) + 10px) 70px 10px;line-height:38px;height:auto}
 body:not(.pushed) #firefx .firetag{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
+/* 6.0.2 : carte des anneaux cliquable */
+.rgl button{display:block;text-align:left;color:inherit;padding:0;background:none}
+.rgdefi{grid-column:1/-1;display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;border-radius:14px;background:rgba(255,59,79,.18);color:#fff;font-weight:600;font-size:15px}
+.rgdefi svg{width:18px;height:18px;flex:none}.rgdefi svg:first-child{color:#ff3b4f}.rgdefi svg:last-child{margin-left:auto;opacity:.6}
+.rgk button{display:inline-flex;align-items:center;gap:4px;color:#9a9aa1;background:none;padding:2px 0;font-size:13px}.rgk button b{color:#fff}.rgk button svg{width:13px;height:13px;opacity:.6}.rgk button:disabled{opacity:.5}
+.rings svg[data-rgo]{cursor:pointer}.rgl b svg{width:14px;height:14px;margin-left:3px;vertical-align:-1px;opacity:.55}
