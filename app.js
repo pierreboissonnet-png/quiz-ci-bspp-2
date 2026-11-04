@@ -6,7 +6,7 @@ const FICHE=Object.fromEntries(FICHES.map(f=>[f.id,f]));
 const LETTERS="ABCD";
 const store={get(k,d){try{const v=localStorage.getItem("cq_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("cq_"+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem("cq_"+k)}catch(e){}}};
 /* ---- journal d'activité : actions et erreurs, envoyées par lots au serveur (conservées 30 jours, visibles des admins) ---- */
-const APP_VER="6.0.2";const LOG_S=Math.random().toString(36).slice(2,10);
+const APP_VER="6.0.3";const LOG_S=Math.random().toString(36).slice(2,10);
 let logBuf=store.get("logBuf",[]);let logT=null;
 // contexte joint à chaque évènement : écran, jeu en cours, niveau, mode, ambiance, réseau
 let curGame=null,lastPick=null,qShownAt=0,lastEcran="";
@@ -1041,10 +1041,10 @@ function rankResultNote(ev){const n=$(".result");if(!n||!ev)return;const d=docum
 function rankCard(compact){const g=rankObj.g,need=rankNeed(g),top=rankTop();const ex=Math.min(rankObj.ex,need);
  const st=top?`Tu as atteint le grade le plus élevé. Garde la main : 3 exercices d'affilée sous 50 % te feraient redescendre.`
   :rankReady()?`L'examen de passage au grade de <b>${esc(rankName(g+1))}</b> est disponible.`
-  :rankObj.wait>0?`Examen raté : nouvel essai après encore <b>${rankObj.wait}</b> exercice${rankObj.wait>1?"s":""} réussi${rankObj.wait>1?"s":""}.`
+  :rankObj.wait>0?`Examen de ${esc(rankName(g+1))} raté : réussis encore <b>${rankObj.wait}</b> exercice${rankObj.wait>1?"s":""} (≥ 50 %, au moins 5 questions) pour le retenter.`
   :`Encore <b>${need-ex}</b> exercice${need-ex>1?"s":""} réussi${need-ex>1?"s":""} (≥ 50 %) avant l'examen de passage au grade de ${esc(rankName(g+1))}.`;
  return `<div class="card rkcard"><div class="rkrow">${gradeSvg(rankCode(g),"rkbadge")}<div style="flex:1;min-width:0"><span class="small">Mon grade de progression</span><b class="rkname">${esc(rankName(g))}</b></div></div>
-  ${top?"":`<div class="rkbar"><i style="width:${Math.round(ex/need*100)}%"></i></div><div class="small rkcount">${ex}/${need} exercices réussis</div>`}
+  ${top?"":rankObj.wait>0?`<div class="rkbar"><i style="width:${Math.round((3-Math.min(3,rankObj.wait))/3*100)}%"></i></div><div class="small rkcount">${3-Math.min(3,rankObj.wait)}/3 exercices réussis avant le nouvel essai</div>`:`<div class="rkbar"><i style="width:${Math.round(ex/need*100)}%"></i></div><div class="small rkcount">${ex}/${need} exercices réussis</div>`}
   <p class="small" style="margin:8px 0 0">${st}${rankObj.bad>0&&g>0?` <span class="rkwarn">${rankObj.bad}/3 exercice${rankObj.bad>1?"s":""} raté${rankObj.bad>1?"s":""} d'affilée.</span>`:""}</p>
   ${rankReady()?`<button class="btn full" data-rkexam style="margin-top:10px">Passer l'examen de ${esc(rankName(g+1))}</button>`:""}
   ${compact?"":`<details class="rkhow"><summary>Comment monter en grade ?</summary><ul><li>Chaque exercice d'au moins 5 questions réussi à 50 % ou plus compte pour ton avancement.</li><li>Après assez d'exercices réussis, un <b>examen de passage</b> se débloque : ${RANK_Q} questions, ${RANK_PASS} bonnes réponses pour être promu.</li><li>Examen raté : nouvel essai après 3 exercices réussis.</li><li><b>3 exercices d'affilée sous 50 %</b> : tu redescends d'un grade.</li><li>Au-delà de ${esc(rankName(RANK_CAP))}, seuls les exercices du niveau Officier comptent.</li></ul></details>`}</div>`}
@@ -2680,24 +2680,24 @@ function hospCard(h){const d=hospMe?kmTo(hospMe,h.ll):null;
   ${h.nt?`<ul class="hnotes">${Object.entries(h.nt).map(([k,v])=>`<li><b>${esc(HSP[k])}</b> : ${esc(v)}</li>`).join("")}</ul>`:""}</div>`}
 function carteHospView(){const b=$("#cbody");
  b.innerHTML=`<div class="chips" style="margin-bottom:10px"><button class="chip" id="hNear">${PIN} Le plus proche</button>${[["all","Tous"],...Object.entries(HSP)].map(([k,l])=>`<button class="chip" data-hf="${k}" aria-pressed="${k===hospF}">${k!=="all"?`<i class="gdot" style="background:${HCOL[k]}"></i>`:""}${esc(l)}</button>`).join("")}</div>
-  <div class="mapbox"><div id="map"></div></div><div id="hinfo"></div><div id="hlist"></div>
+  <div class="mapbox hosp"><div id="map"></div></div><div id="hinfo"></div><div id="hlist"></div>
   <p class="small" style="margin:10px 4px 0">Liste indicative : l'orientation de la victime est décidée par la régulation, pas par l'équipage. Distances à vol d'oiseau. Sources : AP-HP, urgences spécialisées (juin 2025) ; liste de l'appli Agate (F.-X. Coudert) ; Base Adresse Nationale.</p>`;
  const L=window.L;const {m,layers}=makeMap($("#map"),{quiz:1});cartMap=m;cleanup=()=>{try{m.remove()}catch(e){}cartMap=null};
  styleSect(layers,()=>({color:"#8e8e93",weight:1,opacity:.5,fillColor:"#8e8e93",fillOpacity:.04}));
  const mk={};let meMk=null;
  const icon=(h,on)=>L.divIcon({className:"",html:`<span class="hpin${on?" on":""}${hospF!=="all"&&!h.sp.includes(hospF)?" off":""}">H</span>`,iconSize:[26,26],iconAnchor:[13,13]});
- HOSP.forEach(h=>{mk[h.n]=L.marker(h.ll,{icon:icon(h,false),title:h.n}).addTo(m).on("click",()=>select(h))});
+ HOSP.forEach(h=>{mk[h.n]=L.marker(h.ll,{icon:icon(h,false),title:h.n}).addTo(m).on("click",()=>select(h,false,true))});
  const draw=()=>{HOSP.forEach(h=>mk[h.n].setIcon(icon(h,hospSel===h.n)));const li=hospList();
   $("#hlist").innerHTML=`<div class="sect">${hospF==="all"?"Tous les hôpitaux":esc(HSP[hospF])}${hospMe?" · du plus proche au plus loin":""}</div><div class="list">${li.map(({h,d})=>`<button class="row" data-h="${esc(h.n)}"><span class="hic sm">${H_IC}</span><span class="tx"><b>${esc(h.n)}${d!=null?` · ${fmtKm(d)}`:""}</b><span>${esc(h.adr)}</span><span class="hbs">${hBadges(h)}</span></span><span class="chev">${I.chev}</span></button>`).join("")||`<p class="small" style="padding:12px">Aucun hôpital pour ce filtre.</p>`}</div>`;
   $("#hlist").querySelectorAll("[data-h]").forEach(x=>x.onclick=()=>{select(HOSP.find(h=>h.n===x.dataset.h),true);$("#map").scrollIntoView({behavior:"smooth",block:"start"})})};
- const select=(h,fit)=>{hospSel=h.n;draw();$("#hinfo").innerHTML=hospCard(h);if(fit)m.setView(h.ll,15);alog("hopital",h.n)};
+ const select=(h,fit,show)=>{hospSel=h.n;draw();$("#hinfo").innerHTML=hospCard(h);if(fit)m.setView(h.ll,15);if(show){const c=$("#hinfo .hospcard");if(c)setTimeout(()=>c.scrollIntoView({behavior:RM()?"auto":"smooth",block:"start"}),80)}alog("hopital",h.n)};
  const fitAll=()=>{const pts=hospList().map(x=>x.h.ll);if(hospMe)pts.push(hospMe);if(pts.length)m.fitBounds(L.latLngBounds(pts),{padding:[24,24],maxZoom:15})};
  b.querySelectorAll("[data-hf]").forEach(x=>x.onclick=()=>{hospF=x.dataset.hf;store.set("hospF",hospF);b.querySelectorAll("[data-hf]").forEach(y=>y.setAttribute("aria-pressed",y===x));draw();
   if(hospMe){const n=hospList()[0];if(n){select(n.h);m.fitBounds(L.latLngBounds([hospMe,n.h.ll]),{padding:[40,40],maxZoom:15})}}else fitAll()});
  const near=()=>{if(!navigator.geolocation){toast("Localisation indisponible.");return}toast("Localisation en cours…");
   navigator.geolocation.getCurrentPosition(p=>{if(cartMap!==m)return;hospMe=[p.coords.latitude,p.coords.longitude];
    if(meMk)m.removeLayer(meMk);meMk=L.circleMarker(hospMe,{radius:8,color:"#fff",weight:3,fillColor:"#0a84ff",fillOpacity:1}).addTo(m);
-   const n=hospList()[0];if(!n){draw();toast("Aucun hôpital pour ce filtre.");return}select(n.h);m.fitBounds(L.latLngBounds([hospMe,n.h.ll]),{padding:[40,40],maxZoom:15});
+   const n=hospList()[0];if(!n){draw();toast("Aucun hôpital pour ce filtre.");return}select(n.h,false,true);m.fitBounds(L.latLngBounds([hospMe,n.h.ll]),{padding:[40,40],maxZoom:15});
    toast(`Le plus proche${hospF!=="all"?` (${HSP[hospF]})`:""} : ${n.h.n}, ${fmtKm(n.d)}.`)},
    ()=>toast("Localisation refusée ou impossible."),{enableHighAccuracy:true,timeout:12000})};
  $("#hNear").onclick=near;draw();const s=hospSel&&HOSP.find(h=>h.n===hospSel);if(s)select(s,true);else fitAll();
@@ -2878,6 +2878,7 @@ function bindPush(){const b=$("#pushT");if(!b)return;b.onclick=async()=>{const m
 function viewMe(head){app.innerHTML=head+`${meCard()}${me&&!me.expired?rankCard():""}${usageCard()}${fireCard()}${pushCard()}<div class="sect">Aide</div><div class="list"><button class="row" id="openTuto"><span class="ic" style="background:#e3051b">${TUTO_IC}</span><span class="tx"><b>Tutoriel et présentation</b><span>Revoir la visite guidée de l'appli</span></span><span class="chev">${I.chev}</span></button><button class="row" data-bug><span class="ic" style="background:#0f1d36;color:#fff">${BUG_IC}</span><span class="tx"><b>Signaler un problème</b><span>Erreur dans une question, bouton qui ne marche pas… (avec capture d'écran)</span></span><span class="chev">${I.chev}</span></button><button class="row" id="openLog"><span class="ic" style="background:#5e5ce6">${I.list}</span><span class="tx"><b>Changelog</b><span>Les versions et ce qui a changé · version ${APP_VER}</span></span><span class="chev">${I.chev}</span></button></div><p class="small" style="margin:8px 4px 0">Pour corriger les bugs, l'appli enregistre ton activité (pages ouvertes, boutons touchés, réponses, erreurs) pendant 30 jours. Seuls les administrateurs y ont accès.</p>${updCard()}${accountCard()}`;bindProfTabs();bindMe();bindUsage();bindFire();bindPush();bindRank();$("#openTuto").onclick=()=>openTuto();$("#openLog").onclick=()=>viewChangelog(()=>go("profile",true));$("#forceUpd").onclick=forceUpdate;checkOnline()}
 // 6.0.0 : changelog (du plus récent au plus ancien)
 const CHANGELOG=[
+["6.0.3","Correctifs",["Hôpitaux : carte moins haute pour faire défiler la page facilement, et la fiche de l'hôpital choisi s'affiche à l'écran (au-dessus de la barre d'onglets)","Grade : après un examen raté, la barre montre les exercices réussis avant le nouvel essai (et non plus 6/6)"]],
 ["6.0.2","Accueil et signalements",["Carte des anneaux cliquable : les connaissances ouvrent les fiches, la série et les anneaux ouvrent les statistiques, « à revoir » lance la révision","Défi de la semaine « à jouer » : un toucher lance directement le défi","La capture d'écran jointe aux signalements fonctionne de nouveau sur l'accueil"]],
 ["6.0.1","Correctifs",["Le contenu ne passe plus sous la barre d'onglets (ambiance On Fire comprise)","Barre de titre du haut aux marges équilibrées","Assistant : la réponse s'affiche à partir de son début","Couleurs des anneaux de l'accueil aux couleurs de l'appli"]],
 ["6.0.0","Nouveau look",["Barre d'onglets en bas : Accueil, Réviser, Outils, Stats, Profil, avec une pastille quand quelque chose t'attend","Nouvel onglet Outils : radio, codes CRI, carte, hôpitaux, documents, lexique, grades, assistant, évaluations (et Administration pour les admins)","Accueil en widgets colorés et trois anneaux : connaissances, défi de la semaine, série de jours","Animations : réponses, changements d'écran, confettis sur un sans-faute, un record ou une montée en grade","Fenêtres qui se ferment en glissant vers le bas, retour en balayant depuis le bord gauche","Grands titres qui se réduisent, chargement plus fluide, graphiques avec la moyenne, mode sombre soigné","Bouton Changelog dans le Profil"]],

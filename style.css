@@ -823,3 +823,7 @@ body:not(.pushed) #firefx .firetag{bottom:calc(88px + env(safe-area-inset-bottom
 .rgdefi svg{width:18px;height:18px;flex:none}.rgdefi svg:first-child{color:#ff3b4f}.rgdefi svg:last-child{margin-left:auto;opacity:.6}
 .rgk button{display:inline-flex;align-items:center;gap:4px;color:#9a9aa1;background:none;padding:2px 0;font-size:13px}.rgk button b{color:#fff}.rgk button svg{width:13px;height:13px;opacity:.6}.rgk button:disabled{opacity:.5}
 .rings svg[data-rgo]{cursor:pointer}.rgl b svg{width:14px;height:14px;margin-left:3px;vertical-align:-1px;opacity:.55}
+
+/* 6.0.3 : hôpitaux, carte plus basse et fiche jamais cachée par la barre d'onglets */
+.mapbox.hosp #map{height:clamp(220px,40svh,400px)}
+#hinfo .hospcard{scroll-margin-top:96px;scroll-margin-bottom:calc(120px + env(safe-area-inset-bottom))}
