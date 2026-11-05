@@ -657,10 +657,10 @@ body.zmir .qtext,body.zmir .opt>span:last-child,body.zmir .vf .opt{transform:sca
 .evgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.evgrid label{margin-top:0}
 .evgrid+.evgrid{margin-top:8px}
 .evseg{margin-top:6px}.evseg button{padding:0 6px;font-size:12.5px}.evseg button:disabled{cursor:default}
-.evseg[data-seg^="c"] button[aria-pressed="true"][data-v="1"]{background:#d92d20;color:#fff}
-.evseg[data-seg^="c"] button[aria-pressed="true"][data-v="2"]{background:#ff9f0a;color:#fff}
-.evseg[data-seg^="c"] button[aria-pressed="true"][data-v="3"]{background:#34c759;color:#fff}
-.evseg[data-seg^="c"] button[aria-pressed="true"][data-v="4"]{background:#1f7a3f;color:#fff}
+.evseg:is([data-seg^="c"],[data-seg^="s"]) button[aria-pressed="true"][data-v="1"]{background:#d92d20;color:#fff}
+.evseg:is([data-seg^="c"],[data-seg^="s"]) button[aria-pressed="true"][data-v="2"]{background:#ff9f0a;color:#fff}
+.evseg:is([data-seg^="c"],[data-seg^="s"]) button[aria-pressed="true"][data-v="3"]{background:#34c759;color:#fff}
+.evseg:is([data-seg^="c"],[data-seg^="s"]) button[aria-pressed="true"][data-v="4"]{background:#1f7a3f;color:#fff}
 .evcount{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 .evcount span{background:var(--card2);border-radius:8px;padding:5px 9px;font-size:13px;color:var(--muted)}.evcount b{color:var(--ink);margin-left:2px}
 .evih{display:flex;align-items:center;gap:8px}.evih .evseg{flex:1;margin-top:0}
@@ -827,3 +827,7 @@ body:not(.pushed) #firefx .firetag{bottom:calc(88px + env(safe-area-inset-bottom
 /* 6.0.3 : hôpitaux, carte plus basse et fiche jamais cachée par la barre d'onglets */
 .mapbox.hosp #map{height:clamp(220px,40svh,400px)}
 #hinfo .hospcard{scroll-margin-top:96px;scroll-margin-bottom:calc(120px + env(safe-area-inset-bottom))}
+
+/* 6.1.0 : auto-évaluation du candidat */
+.evself{padding:10px 0;border-bottom:1px solid var(--sep)}.evself:last-child{border-bottom:0;padding-bottom:2px}.evself:first-child{padding-top:2px}
+.evself b{display:block;font-size:14px;margin-bottom:8px}

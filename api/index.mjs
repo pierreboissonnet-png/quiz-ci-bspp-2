@@ -143,7 +143,7 @@ const nameFromEmail = (p) => { const m = /^([a-z0-9-]+)\.([a-z0-9.-]+)@/i.exec(p
 async function evList(st, key) { return (await st.get(key, { type: "json" })) || []; }
 async function evLink(st, key, id, add) { let l = (await evList(st, key)).filter((x) => x !== id); if (add) l.unshift(id); await st.setJSON(key, l.slice(0, 200)); }
 const evRole = (ev, me, cfg) => (ev.cand === me.id ? "cand" : ev.enc && ev.enc.uid === me.id ? "enc" : isAdmin(me, cfg) ? "admin" : null);
-const evSum = (ev) => ({ id: ev.id, cand: ev.cand, candN: ev.candN, num: ev.num, date: ev.date, cs: ev.cs || "", enc: ev.enc, status: ev.status, encDone: !!ev.encDone, updated: ev.updated, comps: Object.fromEntries(EV_COMPS.map((k) => [k, (ev.comps && ev.comps[k] && ev.comps[k].lvl) || 0])), autoEnc: ev.autoEnc && ev.autoEnc.v || "", autoCi: ev.autoCi && ev.autoCi.v || "", n: (ev.inter || []).length, cnt: (ev.inter || []).reduce((c, x) => { if (c[x.t] != null) c[x.t]++; return c; }, { UA: 0, UR: 0, DCD: 0, SS: 0 }) });
+const evSum = (ev) => ({ id: ev.id, cand: ev.cand, candN: ev.candN, num: ev.num, date: ev.date, cs: ev.cs || "", enc: ev.enc, status: ev.status, encDone: !!ev.encDone, updated: ev.updated, comps: Object.fromEntries(EV_COMPS.map((k) => [k, (ev.selfC && ev.selfC[k]) || 0])), autoEnc: ev.autoEnc && ev.autoEnc.v || "", autoCi: ev.autoCi && ev.autoCi.v || "", n: (ev.inter || []).length, cnt: (ev.inter || []).reduce((c, x) => { if (c[x.t] != null) c[x.t]++; return c; }, { UA: 0, UR: 0, DCD: 0, SS: 0 }) });
 function evClean(ev, patch, role) {
   const s = (v, n) => clean(v, n), lvl = (v) => Math.max(0, Math.min(4, Math.round(Number(v) || 0)));
   const encPart = role === "enc" || (role === "cand" && !(ev.enc && ev.enc.uid));
@@ -151,10 +151,11 @@ function evClean(ev, patch, role) {
     if ("date" in patch) ev.date = s(patch.date, 10); if ("cs" in patch) ev.cs = s(patch.cs, 40); if ("horaires" in patch) ev.horaires = s(patch.horaires, 40);
     if ("equip" in patch) ev.equip = ["ul", "ext", "mixte"].includes(patch.equip) ? patch.equip : "";
     if ("autoCi" in patch && patch.autoCi) ev.autoCi = { v: ["oui", "non"].includes(patch.autoCi.v) ? patch.autoCi.v : "", c: s(patch.autoCi.c, 1500) };
+    if (patch.selfC && typeof patch.selfC === "object") { ev.selfC = ev.selfC || {}; for (const k of EV_COMPS) if (k in patch.selfC) ev.selfC[k] = lvl(patch.selfC[k]); }
   }
   if (encPart && Array.isArray(patch.inter)) ev.inter = patch.inter.slice(0, 20).map((x) => ({ t: ["UA", "UR", "DCD", "SS"].includes(x.t) ? x.t : "", motif: s(x.motif, 120), pos: s(x.pos, 1200), axes: s(x.axes, 1200) }));
   if (encPart) {
-    if (patch.comps && typeof patch.comps === "object") { ev.comps = ev.comps || {}; for (const k of EV_COMPS) if (patch.comps[k]) ev.comps[k] = { lvl: lvl(patch.comps[k].lvl), obs: s(patch.comps[k].obs, 1500) }; }
+    if (patch.comps && typeof patch.comps === "object") { ev.comps = ev.comps || {}; for (const k of EV_COMPS) if (patch.comps[k]) ev.comps[k] = { lvl: (ev.comps[k] && ev.comps[k].lvl) || 0, obs: s(patch.comps[k].obs, 1500) }; }
     if ("autoEnc" in patch && patch.autoEnc) ev.autoEnc = { v: ["oui", "non"].includes(patch.autoEnc.v) ? patch.autoEnc.v : "", c: s(patch.autoEnc.c, 1500) };
     if ("reserve" in patch) ev.reserve = !!patch.reserve;
     if (role === "enc" && "encDone" in patch) ev.encDone = !!patch.encDone;
@@ -308,7 +309,7 @@ async function verifyGoogle(idToken) {
 }
 
 // 3.4.0 : notification « nouvelle version disponible » envoyée une seule fois par version (verrou Redis SET NX)
-const APP_VERSION = "6.0.3"; let announced = false;
+const APP_VERSION = "6.1.0"; let announced = false;
 async function announceVersion(st) {
   try {
     const r = await redis(["SET", NS + "ver/announced/" + APP_VERSION, "1", "NX"]); if (r !== "OK") return;
@@ -716,6 +717,11 @@ async function handler(req) {
       const bug = { id, no, at: Date.now(), uid: me.id, pseudo: clean(me.pseudo, 24), email: me.email || "", name: nameFromEmail(me), text: txt, ctx, img: !!img, status: "new", note: "" };
       await st.setJSON("bug/" + id, bug); if (img) await st.set("bugimg/" + id, img);
       const ids = (await st.get("bugs", { type: "json" })) || []; ids.unshift(id); await st.setJSON("bugs", ids.slice(0, 2000));
+      try { // 6.1.0 : les administrateurs et le super administrateur sont prévenus
+        const cfgB = await settings(st); const short = txt.length > 90 ? txt.slice(0, 89) + "…" : txt;
+        for (const p of await allProfiles(st)) if (p.id !== me.id && !p.blocked && Array.isArray(p.push) && p.push.length && isAdmin(p, cfgB))
+          await pushTo(st, p.id, { title: "🐞 Nouveau signalement n°" + no, body: `${clean(me.pseudo, 24)} : ${short}`, tag: "bug-" + id, nav: "bug:" + id });
+      } catch (e) {}
       return json({ ok: true, no });
     }
     if (route === "log" && req.method === "POST") {
