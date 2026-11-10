@@ -833,3 +833,6 @@ body:not(.pushed) #firefx .firetag{bottom:calc(88px + env(safe-area-inset-bottom
 .evself b{display:block;font-size:14px;margin-bottom:8px}
 /* 6.1.1 : l'animation d'entrée d'un écran ne doit pas élargir la page (le téléphone dézoomait) */
 html{overflow-x:hidden}body{overflow-x:clip}
+
+/* 6.1.2 : situation du message de rentrée fixée sous la barre de titre */
+.mrsit.stick{position:sticky;top:var(--navh,59px);z-index:12;box-shadow:0 6px 16px rgba(0,0,0,.12);max-height:42vh;overflow:auto}
