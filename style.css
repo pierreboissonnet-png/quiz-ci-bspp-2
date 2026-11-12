@@ -836,3 +836,4 @@ html{overflow-x:hidden}body{overflow-x:clip}
 
 /* 6.1.2 : situation du message de rentrée fixée sous la barre de titre */
 .mrsit.stick{position:sticky;top:var(--navh,59px);z-index:12;box-shadow:0 6px 16px rgba(0,0,0,.12);max-height:42vh;overflow:auto}
+.mrsit.stick .qtext{font-size:15px;line-height:1.4}
